@@ -19,6 +19,7 @@ Business Rules Enforced:
 Generated manually on 2025-12-16
 """
 from django.db import migrations, models
+from django.conf import settings
 import django.db.models.deletion
 from django.utils import timezone
 import uuid
@@ -116,7 +117,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('products', '__first__'),
-        migrations.swappable_dependency('AUTH_USER_MODEL'),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
@@ -243,7 +244,7 @@ class Migration(migrations.Migration):
                     blank=True,
                     null=True,
                     on_delete=django.db.models.deletion.SET_NULL,
-                    to='AUTH_USER_MODEL',
+                    to=settings.AUTH_USER_MODEL,
                     verbose_name='Created By'
                 )),
                 ('location', models.ForeignKey(
