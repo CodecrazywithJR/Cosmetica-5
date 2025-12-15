@@ -891,7 +891,7 @@ class ClinicalPhoto(models.Model):
             models.Index(fields=['photo_kind'], name='idx_clinical_photo_kind'),
             models.Index(fields=['is_deleted'], name='idx_clinical_photo_deleted'),
             # Timeline index: ordered by patient and creation date
-            models.Index(fields=['patient', '-created_at'], name='idx_clinical_photo_patient_timeline'),
+            models.Index(fields=['patient', '-created_at'], name='idx_clin_photo_timeline'),
         ]
     
     def __str__(self):

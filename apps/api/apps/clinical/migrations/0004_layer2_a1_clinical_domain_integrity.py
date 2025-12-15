@@ -153,8 +153,6 @@ def clean_inconsistent_photo_encounters(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('encounters', '0001_initial'),  # Adjust to your latest migration
-        ('photos', '0001_initial'),      # Adjust to your latest migration
         ('clinical', '0003_clinical_audit_log'),
     ]
 
