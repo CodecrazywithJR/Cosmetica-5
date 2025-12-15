@@ -14,6 +14,7 @@ class EncounterSerializer(serializers.ModelSerializer):
     Full encounter serializer.
     
     AUDIT: Logs create/update actions to ClinicalAuditLog.
+    VALIDATION: Enforces clinical domain invariants (patient-appointment coherence).
     """
     patient_details = PatientListSerializer(source='patient', read_only=True)
     
@@ -21,6 +22,41 @@ class EncounterSerializer(serializers.ModelSerializer):
         model = Encounter
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate(self, attrs):
+        """
+        Validate clinical domain invariants.
+        
+        CRITICAL: If encounter references an appointment, both must share the same patient.
+        """
+        patient = attrs.get('patient')
+        appointment = attrs.get('appointment')
+        
+        # If updating, get current values if not provided
+        if self.instance:
+            if not patient:
+                patient = self.instance.patient
+            if 'appointment' not in attrs and self.instance.appointment:
+                appointment = self.instance.appointment
+        
+        # INVARIANT: Patient is required
+        if not patient:
+            raise serializers.ValidationError({
+                'patient': 'Encounter must have a patient assigned.'
+            })
+        
+        # INVARIANT: Appointment-Patient coherence
+        if appointment and appointment.patient_id != patient.id:
+            raise serializers.ValidationError({
+                'appointment': (
+                    f'Appointment patient mismatch: '
+                    f'encounter.patient={patient.id} but '
+                    f'appointment.patient={appointment.patient_id}. '
+                    f'Both must reference the same patient.'
+                )
+            })
+        
+        return attrs
     
     def create(self, validated_data):
         """Create encounter with audit logging."""

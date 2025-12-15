@@ -74,3 +74,32 @@ class SkinPhoto(models.Model):
     
     def __str__(self):
         return f"Photo of {self.patient} - {self.body_part} ({self.taken_at.strftime('%Y-%m-%d')})"
+    
+    def clean(self):
+        """
+        Validate clinical domain invariants.
+        
+        CRITICAL: If photo references an encounter, both must share the same patient.
+        """
+        from django.core.exceptions import ValidationError
+        
+        super().clean()
+        
+        # INVARIANT: Patient is required (already enforced by FK NOT NULL)
+        if not self.patient_id:
+            raise ValidationError({
+                'patient': 'Photo must have a patient assigned.'
+            })
+        
+        # INVARIANT: Encounter-Patient coherence
+        # If photo has an encounter, both must reference the same patient
+        if self.encounter_id and self.encounter:
+            if self.encounter.patient_id != self.patient_id:
+                raise ValidationError({
+                    'encounter': (
+                        f'Encounter patient mismatch: '
+                        f'photo.patient={self.patient_id} but '
+                        f'encounter.patient={self.encounter.patient_id}. '
+                        f'Both must reference the same patient.'
+                    )
+                })

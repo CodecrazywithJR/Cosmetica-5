@@ -461,10 +461,54 @@ class Encounter(models.Model):
             models.Index(fields=['occurred_at'], name='idx_encounter_occurred_at'),
             models.Index(fields=['status'], name='idx_encounter_status'),
             models.Index(fields=['is_deleted'], name='idx_encounter_deleted'),
+            # Timeline index: ordered by patient and creation date
+            models.Index(fields=['patient', '-created_at'], name='idx_encounter_patient_timeline'),
         ]
     
     def __str__(self):
         return f"Encounter {self.type} - {self.patient} ({self.occurred_at.date()})"
+    
+    def clean(self):
+        """
+        Validate clinical domain invariants.
+        
+        CRITICAL BUSINESS RULE: If encounter references an appointment,
+        then appointment.patient MUST match encounter.patient.
+        """
+        from django.core.exceptions import ValidationError
+        
+        super().clean()
+        
+        # INVARIANT: Patient is required (already enforced by FK NOT NULL)
+        if not self.patient_id:
+            raise ValidationError({
+                'patient': 'Encounter must have a patient assigned.'
+            })
+        
+        # INVARIANT: Appointment-Patient coherence
+        # If encounter has an appointment, both must reference the same patient
+        if self.appointment_id:
+            # Load appointment if not already loaded
+            if not hasattr(self, '_appointment_cache'):
+                from apps.clinical.models import Appointment
+                try:
+                    self._appointment_cache = Appointment.objects.get(pk=self.appointment_id)
+                except Appointment.DoesNotExist:
+                    raise ValidationError({
+                        'appointment': f'Appointment {self.appointment_id} does not exist.'
+                    })
+            
+            appointment = self._appointment_cache if hasattr(self, '_appointment_cache') else self.appointment
+            
+            if appointment and appointment.patient_id != self.patient_id:
+                raise ValidationError({
+                    'appointment': (
+                        f'Appointment patient mismatch: '
+                        f'encounter.patient={self.patient_id} but '
+                        f'appointment.patient={appointment.patient_id}. '
+                        f'Both must reference the same patient.'
+                    )
+                })
 
 
 class Appointment(models.Model):
@@ -846,6 +890,8 @@ class ClinicalPhoto(models.Model):
             models.Index(fields=['taken_at'], name='idx_clinical_photo_taken_at'),
             models.Index(fields=['photo_kind'], name='idx_clinical_photo_kind'),
             models.Index(fields=['is_deleted'], name='idx_clinical_photo_deleted'),
+            # Timeline index: ordered by patient and creation date
+            models.Index(fields=['patient', '-created_at'], name='idx_clinical_photo_patient_timeline'),
         ]
     
     def __str__(self):

@@ -12,12 +12,48 @@ class SkinPhotoSerializer(serializers.ModelSerializer):
     Full skin photo serializer.
     
     AUDIT: Logs create/update actions to ClinicalAuditLog.
+    VALIDATION: Enforces clinical domain invariants (patient-encounter coherence).
     """
     
     class Meta:
         model = SkinPhoto
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at', 'thumbnail', 'thumbnail_generated']
+    
+    def validate(self, attrs):
+        """
+        Validate clinical domain invariants.
+        
+        CRITICAL: If photo references an encounter, both must share the same patient.
+        """
+        patient = attrs.get('patient')
+        encounter = attrs.get('encounter')
+        
+        # If updating, get current values if not provided
+        if self.instance:
+            if not patient:
+                patient = self.instance.patient
+            if 'encounter' not in attrs and self.instance.encounter:
+                encounter = self.instance.encounter
+        
+        # INVARIANT: Patient is required
+        if not patient:
+            raise serializers.ValidationError({
+                'patient': 'Photo must have a patient assigned.'
+            })
+        
+        # INVARIANT: Encounter-Patient coherence
+        if encounter and encounter.patient_id != patient.id:
+            raise serializers.ValidationError({
+                'encounter': (
+                    f'Encounter patient mismatch: '
+                    f'photo.patient={patient.id} but '
+                    f'encounter.patient={encounter.patient_id}. '
+                    f'Both must reference the same patient.'
+                )
+            })
+        
+        return attrs
     
     def create(self, validated_data):
         """Create a new SkinPhoto and log the creation."""
