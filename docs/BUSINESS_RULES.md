@@ -373,21 +373,32 @@ Las siguientes decisiones se documentaron pero NO se bloquearon en código (perm
 
 **Encounter:**
 - `type`, `status`, `occurred_at`
-- `chief_complaint`, `assessment`, `plan`
-- `internal_notes`
+- `chief_complaint` (truncado a 200 caracteres)
+- `assessment` (truncado a 200 caracteres)
+- `plan` (truncado a 200 caracteres)
+- ❌ **NO INCLUYE:** `internal_notes` (demasiado sensible)
 
 **ClinicalPhoto:**
-- `body_part`, `tags`, `taken_at`
-- `notes`, `image` (nombre de archivo)
+- `body_part`, `tags` (máximo 5 elementos), `taken_at`
+- `image` (nombre de archivo)
+- ❌ **NO INCLUYE:** `notes` (puede contener observaciones clínicas sensibles)
 
 **Metadata Adicional:**
 - `actor_user_id`: Quién realizó el cambio
 - `patient_id`: A qué paciente pertenece el cambio
 - `changed_fields`: Lista de campos modificados (solo en updates)
-- `before`: Snapshot antes del cambio
-- `after`: Snapshot después del cambio
-- `request.ip`: IP del cliente
-- `request.user_agent`: Navegador/app
+- `before`: Snapshot antes del cambio (campos whitelisteados)
+- `after`: Snapshot después del cambio (campos whitelisteados)
+- `request.ip`: IP del cliente **ANONIMIZADA** (ej: 192.168.1.xxx - último octeto enmascarado)
+- `request.user_agent`: Navegador/app (truncado a 100 caracteres)
+
+**Protecciones de Privacidad:**
+1. ✅ Snapshots parciales (no payload completo)
+2. ✅ Campos sensibles excluidos (internal_notes, notes)
+3. ✅ IPs anonimizadas (último octeto = xxx)
+4. ✅ User-agent truncado (100 chars)
+5. ✅ Campos de texto limitados (200 chars)
+6. ✅ Tags limitados (5 elementos máximo)
 
 **Consultas Típicas:**
 
@@ -413,7 +424,7 @@ ClinicalAuditLog.objects.filter(
 )
 ```
 
-**Ejemplo de Entrada:**
+**Ejemplo de Entrada (con protecciones de privacidad):**
 
 ```json
 {
@@ -432,16 +443,23 @@ ClinicalAuditLog.objects.filter(
       "assessment": null
     },
     "after": {
-      "chief_complaint": "Severe skin rash",
-      "assessment": "Dermatitis contact suspected"
+      "chief_complaint": "Severe skin rash on arms and...",
+      "assessment": "Contact dermatitis suspected,..."
     },
     "request": {
-      "ip": "192.168.1.100",
-      "user_agent": "Mozilla/5.0..."
+      "ip": "192.168.1.xxx",
+      "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chr..."
     }
   }
 }
 ```
+
+**Nota de Seguridad:**
+- ⚠️ Los snapshots son **parciales** (no todo el modelo)
+- ⚠️ Los campos largos están **truncados** a 200 caracteres
+- ⚠️ Las IPs están **anonimizadas** (último octeto enmascarado)
+- ⚠️ Los `internal_notes` y `notes` **NO** se guardan en auditoría
+- ✅ Solo se registra información mínima necesaria para trazabilidad
 
 **Optimizaciones:**
 - **No se registra** si no hay cambios reales (validación en serializer)

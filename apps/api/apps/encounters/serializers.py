@@ -70,15 +70,20 @@ class EncounterSerializer(serializers.ModelSerializer):
         return instance
     
     def _get_audit_snapshot(self, instance):
-        """Get snapshot of clinically relevant fields for audit."""
+        """
+        Get snapshot of clinically relevant fields for audit.
+        
+        CRITICAL: Only includes essential fields for audit trail.
+        Excludes internal_notes to minimize sensitive data exposure.
+        """
         return {
             'type': instance.type,
             'status': instance.status,
             'occurred_at': instance.occurred_at.isoformat() if instance.occurred_at else None,
-            'chief_complaint': instance.chief_complaint,
-            'assessment': instance.assessment,
-            'plan': instance.plan,
-            'internal_notes': instance.internal_notes,
+            'chief_complaint': instance.chief_complaint[:200] if instance.chief_complaint else None,
+            'assessment': instance.assessment[:200] if instance.assessment else None,
+            'plan': instance.plan[:200] if instance.plan else None,
+            # internal_notes excluded - too sensitive for audit logs
         }
 
 

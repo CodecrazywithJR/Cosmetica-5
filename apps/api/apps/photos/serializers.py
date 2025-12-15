@@ -64,12 +64,17 @@ class SkinPhotoSerializer(serializers.ModelSerializer):
         return instance
     
     def _get_audit_snapshot(self, instance):
-        """Get snapshot of clinically relevant fields."""
+        """
+        Get snapshot of clinically relevant fields for audit.
+        
+        CRITICAL: Only metadata, no sensitive clinical details.
+        Notes field excluded to minimize exposure.
+        """
         return {
             'body_part': instance.body_part,
-            'tags': instance.tags,
+            'tags': instance.tags[:5] if instance.tags else [],  # Limit to 5 tags
             'taken_at': instance.taken_at.isoformat() if instance.taken_at else None,
-            'notes': instance.notes,
+            # notes excluded - can contain sensitive clinical observations
             'image': instance.image.name if instance.image else None,
         }
 

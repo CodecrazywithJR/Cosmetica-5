@@ -1079,11 +1079,18 @@ def log_clinical_audit(
     if after:
         metadata['after'] = after
     
-    # Capture request metadata if available
+    # Capture request metadata if available (anonymized for privacy)
     if request:
+        # Anonymize IP: keep first 3 octets, mask last one (e.g., 192.168.1.xxx)
+        ip = request.META.get('REMOTE_ADDR', '')
+        if ip and '.' in ip:
+            parts = ip.split('.')
+            if len(parts) == 4:
+                ip = f"{parts[0]}.{parts[1]}.{parts[2]}.xxx"
+        
         metadata['request'] = {
-            'ip': request.META.get('REMOTE_ADDR'),
-            'user_agent': request.META.get('HTTP_USER_AGENT', '')[:200],
+            'ip': ip,
+            'user_agent': request.META.get('HTTP_USER_AGENT', '')[:100],  # Truncate to 100 chars
         }
     
     # Create audit log
