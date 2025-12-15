@@ -1,0 +1,39 @@
+{
+  "nav": {
+    "home": "Home",
+    "about": "About",
+    "services": "Services",
+    "team": "Our Team",
+    "blog": "Blog",
+    "contact": "Contact"
+  },
+  "home": {
+    "hero": {
+      "title": "Professional Dermatology & Cosmetics",
+      "subtitle": "Your skin health is our priority",
+      "cta": "Book Appointment"
+    },
+    "services": {
+      "title": "Our Services",
+      "viewAll": "View All Services"
+    }
+  },
+  "contact": {
+    "title": "Contact Us",
+    "form": {
+      "name": "Your Name",
+      "email": "Email",
+      "phone": "Phone (optional)",
+      "message": "Message",
+      "submit": "Send Message",
+      "success": "Thank you! We will contact you soon.",
+      "error": "Error sending message. Please try again."
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "readMore": "Read More",
+    "backToHome": "Back to Home"
+  }
+}

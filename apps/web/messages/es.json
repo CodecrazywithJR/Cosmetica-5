@@ -1,0 +1,41 @@
+{
+  "app": {
+    "title": "DermaEMR - Gestión de Práctica Dermatológica",
+    "subtitle": "Registros de Pacientes y POS Cosmética"
+  },
+  "nav": {
+    "dashboard": "Panel de Control",
+    "patients": "Pacientes",
+    "encounters": "Consultas",
+    "photos": "Fotos",
+    "products": "Productos",
+    "sales": "Ventas"
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "search": "Buscar",
+    "filter": "Filtrar"
+  },
+  "health": {
+    "checking": "Verificando conexión con backend...",
+    "connected": "Conectado al backend",
+    "disconnected": "No se puede conectar al backend",
+    "database": "Base de datos",
+    "redis": "Redis",
+    "status_ok": "OK",
+    "status_error": "Error"
+  },
+  "patients": {
+    "title": "Pacientes",
+    "list": "Lista de Pacientes",
+    "new": "Nuevo Paciente",
+    "search_placeholder": "Buscar por nombre, teléfono o email",
+    "no_patients": "No se encontraron pacientes"
+  }
+}
