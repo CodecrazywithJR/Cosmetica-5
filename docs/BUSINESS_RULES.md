@@ -343,6 +343,204 @@ Las siguientes decisiones se documentaron pero NO se bloquearon en código (perm
 
 ---
 
+## 10. Auditoría Ligera de Cambios Clínicos ✅
+
+**Regla:** Todos los cambios en datos clínicos deben ser rastreables sin afectar el rendimiento.
+
+**Implementación:**
+- Modelo `ClinicalAuditLog` con UUID PK, timestamps, actor, acción, tipo de entidad
+- JSONField `metadata` con snapshots before/after, campos cambiados, info de request
+- Helper function `log_clinical_audit()` para logging centralizado
+- Integración en serializers (no signals) para control preciso
+- Solo se registra cuando hay cambios reales (optimización)
+
+**Entidades Auditadas:**
+- `Encounter` (create, update)
+- `ClinicalPhoto` (create, update)
+- `Consent` (preparado para integración)
+- `Appointment` (preparado para integración)
+
+**Migración:**
+- `apps/clinical/migrations/0003_clinical_audit_log.py`
+- Índices en: created_at, actor_user, entity_type, entity_id, patient, action
+
+**Permisos:**
+- Acceso a `ClinicalAuditLog`: Solo roles clínicos (IsClinicalStaff)
+- Reception **NO** puede ver logs de auditoría
+- Misma protección que datos clínicos
+
+**Campos Capturados por Entidad:**
+
+**Encounter:**
+- `type`, `status`, `occurred_at`
+- `chief_complaint`, `assessment`, `plan`
+- `internal_notes`
+
+**ClinicalPhoto:**
+- `body_part`, `tags`, `taken_at`
+- `notes`, `image` (nombre de archivo)
+
+**Metadata Adicional:**
+- `actor_user_id`: Quién realizó el cambio
+- `patient_id`: A qué paciente pertenece el cambio
+- `changed_fields`: Lista de campos modificados (solo en updates)
+- `before`: Snapshot antes del cambio
+- `after`: Snapshot después del cambio
+- `request.ip`: IP del cliente
+- `request.user_agent`: Navegador/app
+
+**Consultas Típicas:**
+
+```python
+# Todos los cambios de un paciente
+ClinicalAuditLog.objects.filter(patient=patient).order_by('-created_at')
+
+# Cambios en un encuentro específico
+ClinicalAuditLog.objects.filter(
+    entity_type='Encounter',
+    entity_id=encounter_id
+)
+
+# Cambios realizados por un usuario
+ClinicalAuditLog.objects.filter(actor_user=user)
+
+# Cambios en las últimas 24 horas
+from django.utils import timezone
+from datetime import timedelta
+
+ClinicalAuditLog.objects.filter(
+    created_at__gte=timezone.now() - timedelta(days=1)
+)
+```
+
+**Ejemplo de Entrada:**
+
+```json
+{
+  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "created_at": "2025-12-15T14:30:00Z",
+  "actor_user": 12,
+  "action": "update",
+  "entity_type": "Encounter",
+  "entity_id": "a3c5e9d2-1f4b-4c3a-9b7e-8d6f5a4b3c2d",
+  "patient": 45,
+  "appointment": null,
+  "metadata": {
+    "changed_fields": ["chief_complaint", "assessment"],
+    "before": {
+      "chief_complaint": "Skin rash",
+      "assessment": null
+    },
+    "after": {
+      "chief_complaint": "Severe skin rash",
+      "assessment": "Dermatitis contact suspected"
+    },
+    "request": {
+      "ip": "192.168.1.100",
+      "user_agent": "Mozilla/5.0..."
+    }
+  }
+}
+```
+
+**Optimizaciones:**
+- **No se registra** si no hay cambios reales (validación en serializer)
+- **No bloquea** operaciones (async logging si es necesario)
+- **No usa signals** (control explícito en serializers)
+- **Índices** en campos de consulta frecuente
+
+**Tests:**
+- `test_audit_log_created_on_encounter_update`
+- `test_audit_log_includes_changed_fields`
+- `test_audit_log_no_entry_on_no_changes`
+- `test_audit_log_created_on_photo_creation`
+- `test_audit_log_queryable_by_patient`
+- `test_audit_log_captures_request_metadata`
+
+**Código:**
+```python
+# En serializer
+from apps.clinical.models import log_clinical_audit
+
+def update(self, instance, validated_data):
+    before_snapshot = self._get_audit_snapshot(instance)
+    
+    # Detectar cambios
+    changed_fields = []
+    for field, value in validated_data.items():
+        if getattr(instance, field) != value:
+            changed_fields.append(field)
+    
+    instance = super().update(instance, validated_data)
+    
+    # Solo registrar si hubo cambios
+    if changed_fields:
+        log_clinical_audit(
+            actor=request.user,
+            instance=instance,
+            action='update',
+            before=before_snapshot,
+            after=self._get_audit_snapshot(instance),
+            changed_fields=changed_fields,
+            patient=instance.patient,
+            request=request
+        )
+    
+    return instance
+```
+
+---
+
+## 11. Bootstrap Automático del Rol Reception ✅
+
+**Regla:** El rol "Reception" debe existir automáticamente en todos los entornos.
+
+**Implementación:**
+- Data migration: `apps/authz/migrations/0002_bootstrap_reception_role.py`
+- Patrón idempotente: `Role.objects.get_or_create(name='reception')`
+- Safe reverse: Solo elimina si no hay usuarios asignados
+
+**Beneficios:**
+- No requiere pasos manuales en deploy
+- Funciona en dev, staging, producción
+- Elimina errores por rol faltante
+
+**Migración:**
+```python
+def create_reception_role(apps, schema_editor):
+    Role = apps.get_model('authz', 'Role')
+    role, created = Role.objects.get_or_create(name='reception')
+    if created:
+        print("✅ Reception role created")
+
+def reverse_create_reception_role(apps, schema_editor):
+    Role = apps.get_model('authz', 'Role')
+    UserRole = apps.get_model('authz', 'UserRole')
+    
+    # Safety check: don't delete if users assigned
+    if UserRole.objects.filter(role__name='reception').exists():
+        print("⚠️ Cannot delete Reception role - users assigned")
+        return
+    
+    Role.objects.filter(name='reception').delete()
+```
+
+**Tests:**
+- `test_reception_role_exists_after_migrations`
+- `test_reception_role_idempotent`
+- `test_can_assign_reception_role_to_user`
+
+**Uso:**
+```python
+from apps.authz.models import Role, UserRole
+
+# Asignar rol a usuario
+reception_role = Role.objects.get(name='reception')
+UserRole.objects.create(user=new_user, role=reception_role)
+```
+
+---
+
 ## Próximos Pasos (Opcional)
 
 Si se requiere mayor robustez:
@@ -362,9 +560,10 @@ Si se requiere mayor robustez:
    ]
    ```
 
-2. **Auditoría completa de historia clínica:**
-   - Instalar `django-simple-history`
-   - Agregar a modelos: `Encounter`, `ClinicalPhoto`
+2. **Exportación de auditoría para compliance:**
+   - Endpoint: `GET /api/v1/audit-export/?patient_id=X&start_date=Y`
+   - Formato CSV/PDF para reguladores
+   - Firma digital de logs exportados
 
 3. **Webhooks para Calendly:**
    - Endpoint dedicado: `POST /webhooks/calendly/`
@@ -379,4 +578,4 @@ Si se requiere mayor robustez:
 
 **Implementado por:** GitHub Copilot  
 **Revisado:** Pendiente  
-**Versión:** 1.0
+**Versión:** 1.1 (con auditoría y bootstrap)

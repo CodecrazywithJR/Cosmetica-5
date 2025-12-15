@@ -116,6 +116,21 @@ class AppointmentStatusChoices(models.TextChoices):
     NO_SHOW = 'no_show', 'No Show'
 
 
+class AuditActionChoices(models.TextChoices):
+    """Clinical audit log action types"""
+    CREATE = 'create', 'Create'
+    UPDATE = 'update', 'Update'
+    DELETE = 'delete', 'Delete'
+
+
+class AuditEntityTypeChoices(models.TextChoices):
+    """Clinical entity types for audit logging"""
+    ENCOUNTER = 'Encounter', 'Encounter'
+    CLINICAL_PHOTO = 'ClinicalPhoto', 'Clinical Photo'
+    CONSENT = 'Consent', 'Consent'
+    APPOINTMENT = 'Appointment', 'Appointment'
+
+
 class EncounterPhotoRelationChoices(models.TextChoices):
     """Relation type for encounter-photo link"""
     ATTACHED = 'attached', 'Attached'
@@ -913,4 +928,174 @@ class EncounterDocument(models.Model):
     
     def __str__(self):
         return f"{self.encounter} - {self.document} ({self.kind})"
+
+
+class ClinicalAuditLog(models.Model):
+    """
+    Lightweight audit trail for clinical entity changes.
+    
+    BUSINESS RULE: Maintains traceability of clinical changes without locking.
+    Tracks who changed what and when for Encounter, ClinicalPhoto, Consent, etc.
+    
+    Fields:
+    - id: UUID PK
+    - created_at: timestamp of action
+    - actor_user: who made the change (nullable for system actions)
+    - action: create|update|delete
+    - entity_type: type of entity changed
+    - entity_id: UUID of the entity
+    - patient: related patient (for easier querying)
+    - appointment: related appointment (if applicable)
+    - metadata: JSON with changed_fields, before/after snapshots, request info
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    actor_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='clinical_audit_logs',
+        help_text='User who performed the action (null for system actions)'
+    )
+    
+    action = models.CharField(
+        max_length=10,
+        choices=AuditActionChoices.choices
+    )
+    
+    entity_type = models.CharField(
+        max_length=50,
+        choices=AuditEntityTypeChoices.choices,
+        help_text='Type of clinical entity (Encounter, ClinicalPhoto, etc.)'
+    )
+    
+    entity_id = models.UUIDField(
+        help_text='UUID of the entity that was changed'
+    )
+    
+    # Optional related entities for easier querying
+    patient = models.ForeignKey(
+        'Patient',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='audit_logs',
+        help_text='Related patient (if applicable)'
+    )
+    
+    appointment = models.ForeignKey(
+        'Appointment',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='audit_logs',
+        help_text='Related appointment (if applicable)'
+    )
+    
+    metadata = models.JSONField(
+        default=dict,
+        help_text='Changed fields, before/after snapshots, request metadata'
+    )
+    
+    class Meta:
+        db_table = 'clinical_audit_log'
+        verbose_name = 'Clinical Audit Log'
+        verbose_name_plural = 'Clinical Audit Logs'
+        indexes = [
+            models.Index(fields=['created_at'], name='idx_audit_created_at'),
+            models.Index(fields=['actor_user'], name='idx_audit_actor'),
+            models.Index(fields=['entity_type'], name='idx_audit_entity_type'),
+            models.Index(fields=['entity_id'], name='idx_audit_entity_id'),
+            models.Index(fields=['patient'], name='idx_audit_patient'),
+            models.Index(fields=['action'], name='idx_audit_action'),
+        ]
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        actor = self.actor_user.email if self.actor_user else 'system'
+        return f"{self.action} on {self.entity_type}[{str(self.entity_id)[:8]}] by {actor}"
+
+
+# ============================================================================
+# Audit Helper Functions
+# ============================================================================
+
+def log_clinical_audit(
+    actor,
+    instance,
+    action,
+    before=None,
+    after=None,
+    changed_fields=None,
+    patient=None,
+    appointment=None,
+    request=None
+):
+    """
+    Helper function to create clinical audit log entries.
+    
+    Args:
+        actor: User instance or None for system actions
+        instance: The clinical entity instance being audited
+        action: 'create'|'update'|'delete'
+        before: Dict of field values before change (for updates)
+        after: Dict of field values after change (for updates)
+        changed_fields: List of field names that changed
+        patient: Patient instance (optional, can be inferred from instance)
+        appointment: Appointment instance (optional)
+        request: Django request object (to capture IP/user-agent)
+    
+    Returns:
+        ClinicalAuditLog instance
+    """
+    # Determine entity type from instance
+    entity_type_map = {
+        'Encounter': AuditEntityTypeChoices.ENCOUNTER,
+        'ClinicalPhoto': AuditEntityTypeChoices.CLINICAL_PHOTO,
+        'Consent': AuditEntityTypeChoices.CONSENT,
+        'Appointment': AuditEntityTypeChoices.APPOINTMENT,
+    }
+    
+    entity_type = entity_type_map.get(
+        instance.__class__.__name__,
+        instance.__class__.__name__
+    )
+    
+    # Try to infer patient from instance if not provided
+    if not patient and hasattr(instance, 'patient'):
+        patient = instance.patient
+    
+    # Build metadata
+    metadata = {}
+    
+    if changed_fields:
+        metadata['changed_fields'] = changed_fields
+    
+    if before:
+        metadata['before'] = before
+    
+    if after:
+        metadata['after'] = after
+    
+    # Capture request metadata if available
+    if request:
+        metadata['request'] = {
+            'ip': request.META.get('REMOTE_ADDR'),
+            'user_agent': request.META.get('HTTP_USER_AGENT', '')[:200],
+        }
+    
+    # Create audit log
+    audit_log = ClinicalAuditLog.objects.create(
+        actor_user=actor,
+        action=action,
+        entity_type=entity_type,
+        entity_id=instance.pk,
+        patient=patient,
+        appointment=appointment,
+        metadata=metadata
+    )
+    
+    return audit_log
 

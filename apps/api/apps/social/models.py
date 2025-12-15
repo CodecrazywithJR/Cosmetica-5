@@ -7,6 +7,7 @@ NEVER uses clinical bucket or exposes patient data.
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.postgres.fields import ArrayField
+from django.conf import settings
 
 
 class InstagramPost(models.Model):
@@ -73,7 +74,7 @@ class InstagramPost(models.Model):
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
     created_by = models.ForeignKey(
-        'auth.User',
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

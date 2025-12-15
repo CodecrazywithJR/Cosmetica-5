@@ -1,6 +1,7 @@
 """Stock movement models."""
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 
 
 class StockMove(models.Model):
@@ -24,7 +25,7 @@ class StockMove(models.Model):
     
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     created_by = models.ForeignKey(
-        'auth.User',
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
