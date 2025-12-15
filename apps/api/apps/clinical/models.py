@@ -101,12 +101,19 @@ class AppointmentSourceChoices(models.TextChoices):
 
 
 class AppointmentStatusChoices(models.TextChoices):
-    """Appointment status"""
-    SCHEDULED = 'scheduled', 'Scheduled'
+    """
+    Appointment status with allowed transitions:
+    - draft -> confirmed | cancelled
+    - confirmed -> checked_in | cancelled | no_show
+    - checked_in -> completed | cancelled
+    - completed, cancelled, no_show are terminal states
+    """
+    DRAFT = 'draft', 'Draft'
     CONFIRMED = 'confirmed', 'Confirmed'
-    ATTENDED = 'attended', 'Attended'
-    NO_SHOW = 'no_show', 'No Show'
+    CHECKED_IN = 'checked_in', 'Checked In'
+    COMPLETED = 'completed', 'Completed'
     CANCELLED = 'cancelled', 'Cancelled'
+    NO_SHOW = 'no_show', 'No Show'
 
 
 class EncounterPhotoRelationChoices(models.TextChoices):
@@ -465,11 +472,11 @@ class Appointment(models.Model):
     - created_at, updated_at
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # BUSINESS RULE: Patient is REQUIRED (no appointments without patient)
     patient = models.ForeignKey(
         'Patient',
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
+        on_delete=models.PROTECT,  # Changed from SET_NULL - cannot delete patient with appointments
         related_name='appointments'
     )
     practitioner = models.ForeignKey(
@@ -528,8 +535,151 @@ class Appointment(models.Model):
             models.Index(fields=['is_deleted'], name='idx_appointment_deleted'),
         ]
     
+    # BUSINESS RULE: Allowed status transitions
+    _ALLOWED_TRANSITIONS = {
+        'draft': ['confirmed', 'cancelled'],
+        'confirmed': ['checked_in', 'cancelled', 'no_show'],
+        'checked_in': ['completed', 'cancelled'],
+        'completed': [],  # Terminal state
+        'cancelled': [],  # Terminal state
+        'no_show': [],    # Terminal state
+    }
+    
+    # BUSINESS RULE: Active statuses that block practitioner availability
+    _ACTIVE_STATUSES = ['draft', 'confirmed', 'checked_in']
+    
     def __str__(self):
         return f"Appointment {self.scheduled_start.date()} - {self.patient}"
+    
+    def clean(self):
+        """
+        Model-level validation for business rules.
+        
+        BUSINESS RULES:
+        1. Patient is required (no appointments without patient)
+        2. scheduled_end must be after scheduled_start
+        3. No overlapping appointments for same practitioner in active statuses
+        """
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        
+        errors = {}
+        
+        # RULE 1: Patient is required
+        if not self.patient_id:
+            errors['patient'] = 'La cita requiere un paciente asignado'
+        
+        # RULE 2: Valid time range
+        if self.scheduled_start and self.scheduled_end:
+            if self.scheduled_end <= self.scheduled_start:
+                errors['scheduled_end'] = 'La hora de fin debe ser posterior a la hora de inicio'
+        
+        # RULE 3: No overlaps for same practitioner (only for active statuses)
+        if self.practitioner_id and self.status in self._ACTIVE_STATUSES:
+            overlaps = self._check_practitioner_overlap()
+            if overlaps.exists():
+                errors['scheduled_start'] = (
+                    f'El profesional ya tiene una cita en este horario. '
+                    f'Estados que bloquean: {", ".join(self._ACTIVE_STATUSES)}'
+                )
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def _check_practitioner_overlap(self):
+        """
+        Check for overlapping appointments with same practitioner.
+        
+        Overlap occurs when:
+        - Same practitioner
+        - Status is in active statuses (draft, confirmed, checked_in)
+        - Time ranges overlap: (start1 < end2) AND (start2 < end1)
+        - Not soft-deleted
+        - Not the current instance (for updates)
+        
+        Returns:
+            QuerySet of overlapping appointments
+        """
+        from django.db.models import Q
+        
+        if not self.practitioner_id or not self.scheduled_start or not self.scheduled_end:
+            return Appointment.objects.none()
+        
+        # Base query: same practitioner, active statuses, not deleted
+        qs = Appointment.objects.filter(
+            practitioner_id=self.practitioner_id,
+            status__in=self._ACTIVE_STATUSES,
+            is_deleted=False
+        )
+        
+        # Exclude current instance if updating
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        
+        # Check for time overlap: (start1 < end2) AND (start2 < end1)
+        qs = qs.filter(
+            Q(scheduled_start__lt=self.scheduled_end) &
+            Q(scheduled_end__gt=self.scheduled_start)
+        )
+        
+        return qs
+    
+    def transition_status(self, new_status, user=None, reason=None):
+        """
+        Transition appointment to a new status with validation.
+        
+        BUSINESS RULES:
+        1. Only allowed transitions are permitted (see _ALLOWED_TRANSITIONS)
+        2. no_show can only be set after scheduled_start has passed
+        3. Terminal states cannot be changed
+        
+        Args:
+            new_status: New status value
+            user: User performing the transition (for audit)
+            reason: Reason for transition (for cancellation/no_show)
+        
+        Returns:
+            tuple: (success: bool, error_message: str | None)
+        
+        Raises:
+            ValidationError: If transition is not allowed
+        """
+        from django.core.exceptions import ValidationError
+        from django.utils import timezone
+        
+        # Check if current status allows any transitions
+        allowed = self._ALLOWED_TRANSITIONS.get(self.status, [])
+        if not allowed:
+            raise ValidationError(
+                f'El estado "{self.get_status_display()}" es terminal y no puede cambiarse'
+            )
+        
+        # Check if transition is allowed
+        if new_status not in allowed:
+            raise ValidationError(
+                f'Transición no permitida: {self.get_status_display()} → {self.get_status_display()}. '
+                f'Transiciones válidas: {", ".join(allowed)}'
+            )
+        
+        # RULE: no_show only after scheduled_start
+        if new_status == 'no_show':
+            now = timezone.now()
+            if self.scheduled_start > now:
+                raise ValidationError(
+                    'No se puede marcar como "No Show" antes de la hora de inicio de la cita'
+                )
+            if reason:
+                self.no_show_reason = reason
+        
+        # RULE: Store cancellation reason
+        if new_status == 'cancelled' and reason:
+            self.cancellation_reason = reason
+        
+        # Perform transition
+        old_status = self.status
+        self.status = new_status
+        
+        return True, None
 
 
 class Consent(models.Model):

@@ -3,6 +3,7 @@ Clinical serializers for Patient and PatientGuardian.
 Based on API_CONTRACTS.md PAC section.
 """
 from rest_framework import serializers
+from django.core.exceptions import ValidationError
 from apps.clinical.models import (
     Patient,
     PatientGuardian,
@@ -76,7 +77,12 @@ class PatientListSerializer(serializers.ModelSerializer):
 
 
 class PatientDetailSerializer(serializers.ModelSerializer):
-    """Serializer for Patient detail/create/update (all fields)"""
+    """
+    Serializer for Patient detail/create/update (all fields).
+    
+    BUSINESS RULE: Reception cannot see clinical notes.
+    The 'notes' field is hidden for Reception users.
+    """
     referral_source = ReferralSourceSerializer(read_only=True)
     referral_source_id = serializers.UUIDField(
         write_only=True,
@@ -111,7 +117,7 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             'referral_source',
             'referral_source_id',
             'referral_details',
-            'notes',
+            'notes',  # CLINICAL FIELD - Hidden for Reception
             'row_version',
             'is_deleted',
             'deleted_at',
@@ -222,6 +228,30 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             first_name = validated_data.get('first_name', instance.first_name)
             last_name = validated_data.get('last_name', instance.last_name)
             instance.full_name_normalized = f"{first_name} {last_name}".strip().lower()
+        
+        # Update instance
+        instance.save()
+        return instance
+    
+    def to_representation(self, instance):
+        """
+        BUSINESS RULE: Hide clinical fields (notes) for Reception users.
+        """
+        representation = super().to_representation(instance)
+        
+        # Check if user is Reception
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            user_roles = set(
+                request.user.user_roles.values_list('role__name', flat=True)
+            )
+            
+            # Hide clinical fields for Reception
+            if 'Reception' in user_roles:
+                # Remove clinical notes field
+                representation.pop('notes', None)
+        
+        return representation
         
         # Update fields
         for attr, value in validated_data.items():
@@ -337,7 +367,12 @@ class AppointmentDetailSerializer(serializers.ModelSerializer):
 
 
 class AppointmentWriteSerializer(serializers.ModelSerializer):
-    """Serializer for Appointment create/update"""
+    """
+    Serializer for Appointment create/update.
+    
+    BUSINESS RULE: Status changes must use the /transition/ endpoint,
+    not direct PATCH/PUT. Status is read-only after creation.
+    """
     
     class Meta:
         model = Appointment
@@ -368,6 +403,16 @@ class AppointmentWriteSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
     
+    def validate_patient_id(self, value):
+        """
+        BUSINESS RULE: Patient is required for all appointments.
+        """
+        if not value:
+            raise serializers.ValidationError(
+                'La cita requiere un paciente asignado'
+            )
+        return value
+    
     def validate_source(self, value):
         """Validate source enum"""
         valid_sources = [choice[0] for choice in AppointmentSourceChoices.choices]
@@ -378,12 +423,26 @@ class AppointmentWriteSerializer(serializers.ModelSerializer):
         return value
     
     def validate_status(self, value):
-        """Validate status enum"""
-        valid_statuses = [choice[0] for choice in AppointmentStatusChoices.choices]
-        if value not in valid_statuses:
+        """
+        BUSINESS RULE: Status can only be set on creation.
+        For updates, use the /transition/ endpoint.
+        """
+        # Allow setting status on creation
+        if not self.instance:
+            valid_statuses = [choice[0] for choice in AppointmentStatusChoices.choices]
+            if value not in valid_statuses:
+                raise serializers.ValidationError(
+                    f"Valor inválido. Opciones: {', '.join(valid_statuses)}"
+                )
+            return value
+        
+        # Block direct status change on update
+        if self.instance and value != self.instance.status:
             raise serializers.ValidationError(
-                f"Valor inválido. Opciones: {', '.join(valid_statuses)}"
+                'No se puede cambiar el estado directamente. '
+                'Use el endpoint /appointments/{id}/transition/ para cambiar el estado.'
             )
+        
         return value
     
     def validate_external_id(self, value):
@@ -398,6 +457,30 @@ class AppointmentWriteSerializer(serializers.ModelSerializer):
                     "Ya existe una cita con este external_id"
                 )
         return value
+    
+    def validate(self, attrs):
+        """
+        Model-level validation using Appointment.clean()
+        
+        This will check:
+        - Patient is required
+        - No overlapping appointments
+        - Valid time range
+        """
+        # Create a temporary instance for validation
+        instance = self.instance or Appointment()
+        
+        # Update instance with attrs
+        for key, value in attrs.items():
+            setattr(instance, key, value)
+        
+        # Run model validation
+        try:
+            instance.clean()
+        except ValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
+        
+        return attrs
     
     def validate(self, attrs):
         """Cross-field validation"""

@@ -621,6 +621,67 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         
         return Response(status=status.HTTP_204_NO_CONTENT)
     
+    @action(detail=True, methods=['post'], url_path='transition')
+    def transition_status(self, request, pk=None):
+        """
+        POST /api/v1/appointments/{id}/transition/
+        
+        Transition appointment to a new status with validation.
+        
+        BUSINESS RULES:
+        - Only allowed transitions are permitted (see model)
+        - no_show can only be set after scheduled_start has passed
+        - Terminal states (completed, cancelled, no_show) cannot be changed
+        
+        Request body:
+        {
+            "status": "confirmed",  # New status
+            "reason": "Patient requested cancellation"  # Optional reason for cancel/no_show
+        }
+        
+        Allowed transitions:
+        - draft -> confirmed | cancelled
+        - confirmed -> checked_in | cancelled | no_show
+        - checked_in -> completed | cancelled
+        
+        Returns:
+            200: Transition successful
+            400: Invalid transition or validation error
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
+        appointment = self.get_object()
+        new_status = request.data.get('status')
+        reason = request.data.get('reason')
+        
+        if not new_status:
+            return Response(
+                {'error': 'El campo "status" es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate with transaction and row locking to prevent race conditions
+        try:
+            with transaction.atomic():
+                # Lock the row for update
+                appointment = Appointment.objects.select_for_update().get(pk=pk)
+                
+                # Attempt transition
+                appointment.transition_status(new_status, user=request.user, reason=reason)
+                
+                # Save the appointment
+                appointment.save()
+                
+                # Return updated appointment
+                serializer = AppointmentDetailSerializer(appointment)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+                
+        except DjangoValidationError as e:
+            return Response(
+                {'error': str(e.message) if hasattr(e, 'message') else str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
     @action(detail=False, methods=['post'], url_path='calendly/sync')
     def calendly_sync(self, request):
         """

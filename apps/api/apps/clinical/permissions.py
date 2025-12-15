@@ -1,8 +1,38 @@
 """
 Clinical permissions for API endpoints.
 Based on API_CONTRACTS.md permission matrix.
+
+BUSINESS RULE: Reception role cannot access clinical data (diagnoses, notes, clinical photos, encounters).
 """
 from rest_framework import permissions
+
+
+class IsClinicalStaff(permissions.BasePermission):
+    """
+    Permission for clinical endpoints (encounters, clinical photos, diagnoses).
+    
+    BUSINESS RULE: Only Admin and Practitioner can access clinical data.
+    Reception is explicitly blocked from clinical endpoints.
+    
+    - Admin: Full access
+    - Practitioner: Full access
+    - Reception: NO ACCESS (business rule)
+    - Accounting: NO ACCESS
+    - Marketing: NO ACCESS
+    """
+    
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Get user roles
+        user_roles = set(
+            request.user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        # BUSINESS RULE: Only Admin and Practitioner can access clinical data
+        allowed_roles = {'Admin', 'Practitioner'}
+        return bool(user_roles & allowed_roles)
 
 
 class PatientPermission(permissions.BasePermission):
