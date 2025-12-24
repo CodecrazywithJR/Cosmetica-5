@@ -36,12 +36,12 @@ class TestClinicalAuditLog:
     @pytest.fixture
     def patient(self):
         """Create a test patient."""
-        from apps.patients.models import Patient
+        from apps.clinical.models import Patient
         return Patient.objects.create(
             first_name='Juan',
             last_name='Pérez',
-            date_of_birth='1990-01-01',
-            phone_number='555-1234',
+            birth_date='1990-01-01',
+            phone='555-1234',
             email='juan@example.com'
         )
     

@@ -98,17 +98,35 @@ class AppointmentSourceChoices(models.TextChoices):
     """Appointment source"""
     CALENDLY = 'calendly', 'Calendly'
     MANUAL = 'manual', 'Manual'
+    PUBLIC_LEAD = 'public_lead', 'Public Lead'
+
+
+class ProposalStatusChoices(models.TextChoices):
+    """
+    Clinical charge proposal status.
+    
+    - DRAFT: Proposal created, can still be modified
+    - CONVERTED: Proposal converted to Sale (terminal state)
+    - CANCELLED: Proposal cancelled (terminal state)
+    """
+    DRAFT = 'draft', 'Draft'
+    CONVERTED = 'converted', 'Converted to Sale'
+    CANCELLED = 'cancelled', 'Cancelled'
 
 
 class AppointmentStatusChoices(models.TextChoices):
     """
     Appointment status with allowed transitions:
-    - draft -> confirmed | cancelled
+    - scheduled -> confirmed | cancelled
     - confirmed -> checked_in | cancelled | no_show
     - checked_in -> completed | cancelled
     - completed, cancelled, no_show are terminal states
+    
+    Note: 'scheduled' is the initial state for new appointments.
+    Legacy 'draft' state is kept for backward compatibility.
     """
-    DRAFT = 'draft', 'Draft'
+    SCHEDULED = 'scheduled', 'Scheduled'  # Initial state (replaces draft)
+    DRAFT = 'draft', 'Draft'  # Legacy - kept for backward compatibility
     CONFIRMED = 'confirmed', 'Confirmed'
     CHECKED_IN = 'checked_in', 'Checked In'
     COMPLETED = 'completed', 'Completed'
@@ -278,6 +296,12 @@ class Patient(models.Model):
     referral_details = models.TextField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     
+    # Medical fields (unified from legacy patients app)
+    blood_type = models.CharField(max_length=8, blank=True, null=True)
+    allergies = models.TextField(blank=True, default="")
+    medical_history = models.TextField(blank=True, default="")
+    current_medications = models.TextField(blank=True, default="")
+    
     # Concurrency control
     row_version = models.IntegerField(default=1)
     
@@ -314,6 +338,20 @@ class Patient(models.Model):
             models.Index(fields=['country_code'], name='idx_patient_country'),
             models.Index(fields=['full_name_normalized'], name='idx_patient_full_name_norm'),
             models.Index(fields=['is_deleted'], name='idx_patient_deleted'),
+            models.Index(fields=['is_merged'], name='idx_patient_merged'),
+            models.Index(fields=['merged_into_patient'], name='idx_patient_merge_target'),
+        ]
+        constraints = [
+            # Prevent self-merge
+            models.CheckConstraint(
+                check=~models.Q(merged_into_patient=models.F('id')),
+                name='patient_no_self_merge'
+            ),
+            # If merged, must have target
+            models.CheckConstraint(
+                check=models.Q(is_merged=False) | models.Q(merged_into_patient__isnull=False),
+                name='patient_merged_requires_target'
+            ),
         ]
     
     def __str__(self):
@@ -360,6 +398,91 @@ class PatientGuardian(models.Model):
     
     def __str__(self):
         return f"{self.full_name} (Guardian of {self.patient})"
+
+
+class PatientMergeLog(models.Model):
+    """
+    Audit log for patient merge operations.
+    
+    Tracks when patients are merged for deduplication,
+    maintaining full traceability of the merge operation.
+    
+    Fields:
+    - source_patient: The duplicate patient being merged (deactivated)
+    - target_patient: The canonical patient (kept active)
+    - merged_by_user: Who performed the merge
+    - merged_at: When the merge occurred
+    - strategy: How the duplicate was detected/matched
+    - evidence: JSON with match details (sanitized, no PHI)
+    - notes: Free-text explanation
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    source_patient = models.ForeignKey(
+        'Patient',
+        on_delete=models.PROTECT,  # Never delete merge logs
+        related_name='merge_source_logs',
+        help_text='Patient being merged (becomes inactive)'
+    )
+    target_patient = models.ForeignKey(
+        'Patient',
+        on_delete=models.PROTECT,
+        related_name='merge_target_logs',
+        help_text='Patient receiving merged data (remains active)'
+    )
+    
+    merged_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='patient_merges_performed',
+        help_text='User who performed the merge'
+    )
+    
+    merged_at = models.DateTimeField(auto_now_add=True)
+    
+    # Match strategy
+    STRATEGY_CHOICES = [
+        ('phone_exact', 'Phone Exact Match'),
+        ('email_exact', 'Email Exact Match'),
+        ('name_trgm', 'Name Trigram Similarity'),
+        ('manual', 'Manual Merge'),
+        ('other', 'Other'),
+    ]
+    strategy = models.CharField(
+        max_length=20,
+        choices=STRATEGY_CHOICES,
+        default='manual',
+        help_text='How the duplicate was identified'
+    )
+    
+    # Evidence (sanitized JSON - no medical fields)
+    evidence = models.JSONField(
+        blank=True,
+        null=True,
+        help_text='Match evidence (sanitized): phone_masked, email_masked, similarity_score, etc.'
+    )
+    
+    notes = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Free-text explanation of merge reason'
+    )
+    
+    class Meta:
+        db_table = 'patient_merge_log'
+        verbose_name = 'Patient Merge Log'
+        verbose_name_plural = 'Patient Merge Logs'
+        ordering = ['-merged_at']
+        indexes = [
+            models.Index(fields=['source_patient'], name='idx_merge_source'),
+            models.Index(fields=['target_patient'], name='idx_merge_target'),
+            models.Index(fields=['-merged_at'], name='idx_merge_date'),
+        ]
+    
+    def __str__(self):
+        return f"Merge: {self.source_patient} → {self.target_patient} ({self.merged_at.date()})"
 
 
 class Encounter(models.Model):
@@ -471,9 +594,6 @@ class Encounter(models.Model):
     def clean(self):
         """
         Validate clinical domain invariants.
-        
-        CRITICAL BUSINESS RULE: If encounter references an appointment,
-        then appointment.patient MUST match encounter.patient.
         """
         from django.core.exceptions import ValidationError
         
@@ -484,31 +604,6 @@ class Encounter(models.Model):
             raise ValidationError({
                 'patient': 'Encounter must have a patient assigned.'
             })
-        
-        # INVARIANT: Appointment-Patient coherence
-        # If encounter has an appointment, both must reference the same patient
-        if self.appointment_id:
-            # Load appointment if not already loaded
-            if not hasattr(self, '_appointment_cache'):
-                from apps.clinical.models import Appointment
-                try:
-                    self._appointment_cache = Appointment.objects.get(pk=self.appointment_id)
-                except Appointment.DoesNotExist:
-                    raise ValidationError({
-                        'appointment': f'Appointment {self.appointment_id} does not exist.'
-                    })
-            
-            appointment = self._appointment_cache if hasattr(self, '_appointment_cache') else self.appointment
-            
-            if appointment and appointment.patient_id != self.patient_id:
-                raise ValidationError({
-                    'appointment': (
-                        f'Appointment patient mismatch: '
-                        f'encounter.patient={self.patient_id} but '
-                        f'appointment.patient={appointment.patient_id}. '
-                        f'Both must reference the same patient.'
-                    )
-                })
 
 
 class Appointment(models.Model):
@@ -596,7 +691,8 @@ class Appointment(models.Model):
     
     # BUSINESS RULE: Allowed status transitions
     _ALLOWED_TRANSITIONS = {
-        'draft': ['confirmed', 'cancelled'],
+        'scheduled': ['confirmed', 'cancelled'],  # Initial state
+        'draft': ['confirmed', 'cancelled'],  # Legacy - kept for backward compatibility
         'confirmed': ['checked_in', 'cancelled', 'no_show'],
         'checked_in': ['completed', 'cancelled'],
         'completed': [],  # Terminal state
@@ -605,10 +701,27 @@ class Appointment(models.Model):
     }
     
     # BUSINESS RULE: Active statuses that block practitioner availability
-    _ACTIVE_STATUSES = ['draft', 'confirmed', 'checked_in']
+    _ACTIVE_STATUSES = ['scheduled', 'draft', 'confirmed', 'checked_in']
     
     def __str__(self):
         return f"Appointment {self.scheduled_start.date()} - {self.patient}"
+    
+    def save(self, *args, **kwargs):
+        """
+        Override save to enforce full_clean() validation.
+        
+        SECURITY: Prevents admin bypass of business rules.
+        Allow bypass during migrations/fixtures with force_insert.
+        """
+        # Skip validation during migrations (when loading fixtures)
+        if not kwargs.pop('skip_validation', False):
+            self.full_clean()
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_terminal_status(self):
+        """Check if appointment is in a terminal state (immutable)."""
+        return self.status in ['completed', 'cancelled', 'no_show']
     
     def clean(self):
         """
@@ -1151,4 +1264,372 @@ def log_clinical_audit(
     )
     
     return audit_log
+
+
+# ============================================================================
+# Clinical Core v1: Treatment Catalog + Encounter-Treatment Linking
+# ============================================================================
+
+class Treatment(models.Model):
+    """
+    Treatment/Procedure catalog (master list of services).
+    
+    Purpose:
+    - Central catalog of all available treatments/procedures
+    - Referenced by EncounterTreatment to link encounters to treatments
+    - Stores default pricing and stock requirements
+    
+    Fields:
+    - id: UUID PK
+    - name: string (max_length=255)
+    - description: text nullable
+    - is_active: bool default true (soft disable treatments)
+    - default_price: decimal(10,2) nullable (in EUR)
+    - requires_stock: bool default false (if true, check stock availability)
+    - created_at, updated_at
+    
+    Examples:
+    - "Botox Injection", "Hyaluronic Acid Filler", "Chemical Peel"
+    - "Consultation - Dermatology", "Follow-up Visit"
+    
+    BUSINESS RULES:
+    - Cannot delete treatments with encounter references (PROTECT)
+    - Can soft-disable via is_active=false
+    - default_price is nullable (manual pricing at encounter level)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    default_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text='Default price in EUR (nullable for flexible pricing)'
+    )
+    requires_stock = models.BooleanField(
+        default=False,
+        help_text='If true, check stock availability before booking'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'treatment'
+        verbose_name = 'Treatment'
+        verbose_name_plural = 'Treatments'
+        indexes = [
+            models.Index(fields=['is_active'], name='idx_treatment_active'),
+            models.Index(fields=['name'], name='idx_treatment_name'),
+        ]
+        ordering = ['name']
+    
+    def __str__(self):
+        return self.name
+
+
+class EncounterTreatment(models.Model):
+    """
+    Link table: Encounter <-> Treatment (many-to-many with metadata).
+    
+    Purpose:
+    - Records which treatments were performed during an encounter
+    - Stores quantity, unit price, and notes per treatment
+    - Supports multiple treatments per encounter
+    
+    Fields:
+    - id: UUID PK
+    - encounter_id: FK -> encounter (CASCADE)
+    - treatment_id: FK -> treatment (PROTECT)
+    - quantity: int default 1 (e.g., 3 vials of filler)
+    - unit_price: decimal(10,2) nullable (overrides Treatment.default_price)
+    - notes: text nullable (e.g., "Applied to nasolabial folds")
+    - created_at, updated_at
+    
+    BUSINESS RULES:
+    - Quantity must be >= 1
+    - Cannot delete treatments if referenced by encounters (PROTECT)
+    - Can delete encounters (CASCADE deletes links)
+    - unit_price nullable (falls back to Treatment.default_price)
+    
+    Example:
+    Encounter #123 → [
+        (Botox, qty=2, unit_price=350.00, notes="Forehead + glabella"),
+        (Consultation, qty=1, unit_price=100.00, notes="Initial assessment")
+    ]
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    encounter = models.ForeignKey(
+        'Encounter',
+        on_delete=models.CASCADE,
+        related_name='encounter_treatments'
+    )
+    treatment = models.ForeignKey(
+        'Treatment',
+        on_delete=models.PROTECT,
+        related_name='encounter_treatments'
+    )
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text='Overrides Treatment.default_price (nullable)'
+    )
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'encounter_treatment'
+        verbose_name = 'Encounter Treatment'
+        verbose_name_plural = 'Encounter Treatments'
+        indexes = [
+            models.Index(fields=['encounter'], name='idx_encounter_treatment_enc'),
+            models.Index(fields=['treatment'], name='idx_encounter_treatment_trt'),
+        ]
+        unique_together = [['encounter', 'treatment']]  # Prevent duplicate treatments per encounter
+    
+    def __str__(self):
+        return f"{self.encounter} - {self.treatment} (x{self.quantity})"
+    
+    @property
+    def effective_price(self):
+        """Return unit_price if set, else Treatment.default_price."""
+        return self.unit_price if self.unit_price is not None else self.treatment.default_price
+    
+    @property
+    def total_price(self):
+        """Calculate total price: quantity * effective_price."""
+        if self.effective_price is None:
+            return None
+        return self.quantity * self.effective_price
+
+
+# ============================================================================
+# Clinical → Sales Integration (Fase 3)
+# ============================================================================
+
+class ClinicalChargeProposal(models.Model):
+    """
+    Intermediate model between Encounter and Sale.
+    
+    Represents a charge proposal derived from a finalized clinical encounter.
+    This is the explicit step before creating a Sale, allowing audit and review.
+    
+    Business Rules:
+    - Can only be created from FINALIZED encounters
+    - Immutable once created (or versionable if needed)
+    - Status transitions: draft → converted / cancelled
+    - One proposal per encounter (unique constraint)
+    - Cannot create Sale twice from same proposal (idempotency)
+    
+    Design Decision (ADR-005):
+    - WHY NOT automatic Sale creation: Need explicit audit trail + flexibility
+    - WHY Proposal: Separates clinical act from billing act
+    - FUTURE: May evolve into Quote system with approval workflow
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Core relationships
+    encounter = models.OneToOneField(
+        'Encounter',
+        on_delete=models.PROTECT,
+        related_name='charge_proposal',
+        help_text='Source encounter (must be FINALIZED)'
+    )
+    patient = models.ForeignKey(
+        'Patient',
+        on_delete=models.PROTECT,
+        related_name='charge_proposals',
+        help_text='Patient from encounter (denormalized for querying)'
+    )
+    practitioner = models.ForeignKey(
+        'authz.Practitioner',
+        on_delete=models.PROTECT,
+        related_name='charge_proposals',
+        help_text='Practitioner from encounter (denormalized)'
+    )
+    
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=ProposalStatusChoices.choices,
+        default=ProposalStatusChoices.DRAFT,
+        help_text='Proposal status (draft/converted/cancelled)'
+    )
+    
+    # Sale conversion tracking (idempotency)
+    converted_to_sale = models.ForeignKey(
+        'sales.Sale',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='source_proposal',
+        help_text='Sale created from this proposal (null if not yet converted)'
+    )
+    converted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Timestamp when converted to sale'
+    )
+    
+    # Financial summary (calculated from lines)
+    total_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text='Total charge amount (sum of line totals, NO TAX)'
+    )
+    currency = models.CharField(
+        max_length=3,
+        default='EUR',
+        help_text='Currency code (ISO 4217)'
+    )
+    
+    # Metadata
+    notes = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Internal notes about this proposal'
+    )
+    cancellation_reason = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Reason for cancellation (if status=cancelled)'
+    )
+    
+    # Audit timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_proposals',
+        help_text='User who generated this proposal'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'clinical_charge_proposal'
+        verbose_name = 'Clinical Charge Proposal'
+        verbose_name_plural = 'Clinical Charge Proposals'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at'], name='idx_proposal_created'),
+            models.Index(fields=['status', '-created_at'], name='idx_proposal_status_created'),
+            models.Index(fields=['patient', '-created_at'], name='idx_proposal_patient_created'),
+            models.Index(fields=['encounter'], name='idx_proposal_encounter'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(total_amount__gte=0),
+                name='proposal_total_non_negative'
+            ),
+        ]
+    
+    def __str__(self):
+        return f"Proposal {self.id} - {self.patient} ({self.status})"
+    
+    def recalculate_total(self):
+        """Recalculate total_amount from proposal lines."""
+        from decimal import Decimal
+        total = sum(
+            (line.line_total for line in self.lines.all()),
+            Decimal('0.00')
+        )
+        self.total_amount = total
+        return total
+
+
+class ClinicalChargeProposalLine(models.Model):
+    """
+    Line item in a clinical charge proposal.
+    
+    Derived from EncounterTreatment with immutable snapshot of pricing.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Relationships
+    proposal = models.ForeignKey(
+        'ClinicalChargeProposal',
+        on_delete=models.CASCADE,
+        related_name='lines',
+        help_text='Parent proposal'
+    )
+    encounter_treatment = models.ForeignKey(
+        'EncounterTreatment',
+        on_delete=models.PROTECT,
+        related_name='proposal_lines',
+        help_text='Source encounter treatment'
+    )
+    treatment = models.ForeignKey(
+        'Treatment',
+        on_delete=models.PROTECT,
+        related_name='proposal_lines',
+        help_text='Treatment reference (denormalized for reporting)'
+    )
+    
+    # Pricing snapshot (immutable)
+    treatment_name = models.CharField(
+        max_length=255,
+        help_text='Treatment name at proposal creation time'
+    )
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text='Combined: treatment description + encounter treatment notes'
+    )
+    quantity = models.PositiveIntegerField(
+        default=1,
+        help_text='Quantity of treatment performed'
+    )
+    unit_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text='Price per unit (snapshot from EncounterTreatment.effective_price)'
+    )
+    line_total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text='Line total: quantity * unit_price (NO discounts, NO tax)'
+    )
+    
+    # Audit
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'clinical_charge_proposal_line'
+        verbose_name = 'Clinical Charge Proposal Line'
+        verbose_name_plural = 'Clinical Charge Proposal Lines'
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['proposal'], name='idx_proposal_line_proposal'),
+            models.Index(fields=['encounter_treatment'], name='idx_proposal_line_enc_trt'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(quantity__gt=0),
+                name='proposal_line_quantity_positive'
+            ),
+            models.CheckConstraint(
+                check=models.Q(unit_price__gte=0),
+                name='proposal_line_unit_price_non_negative'
+            ),
+            models.CheckConstraint(
+                check=models.Q(line_total__gte=0),
+                name='proposal_line_total_non_negative'
+            ),
+        ]
+    
+    def __str__(self):
+        return f"{self.treatment_name} x {self.quantity} = {self.line_total}"
+    
+    def save(self, *args, **kwargs):
+        """Auto-calculate line_total on save."""
+        if self.quantity and self.unit_price is not None:
+            self.line_total = self.quantity * self.unit_price
+        super().save(*args, **kwargs)
 

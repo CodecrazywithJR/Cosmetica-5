@@ -61,23 +61,23 @@ class TestEncounterAppointmentPatientCoherence:
     
     @pytest.fixture
     def patient_a(self):
-        from apps.patients.models import Patient
+        from apps.clinical.models import Patient
         return Patient.objects.create(
             first_name='Alice',
             last_name='Anderson',
-            date_of_birth='1990-01-01',
-            phone_number='555-0001',
+            birth_date='1990-01-01',
+            phone='555-0001',
             email='alice@example.com'
         )
     
     @pytest.fixture
     def patient_b(self):
-        from apps.patients.models import Patient
+        from apps.clinical.models import Patient
         return Patient.objects.create(
             first_name='Bob',
             last_name='Brown',
-            date_of_birth='1985-05-15',
-            phone_number='555-0002',
+            birth_date='1985-05-15',
+            phone='555-0002',
             email='bob@example.com'
         )
     
@@ -183,12 +183,12 @@ class TestEncounterCanExistWithoutAppointment:
     
     @pytest.fixture
     def patient(self):
-        from apps.patients.models import Patient
+        from apps.clinical.models import Patient
         return Patient.objects.create(
             first_name='Charlie',
             last_name='Chen',
-            date_of_birth='1992-03-20',
-            phone_number='555-0003',
+            birth_date='1992-03-20',
+            phone='555-0003',
             email='charlie@example.com'
         )
     
@@ -222,23 +222,23 @@ class TestSkinPhotoEncounterPatientCoherence:
     
     @pytest.fixture
     def patient_a(self):
-        from apps.patients.models import Patient
+        from apps.clinical.models import Patient
         return Patient.objects.create(
             first_name='Diana',
             last_name='Davis',
-            date_of_birth='1988-07-12',
-            phone_number='555-0004',
+            birth_date='1988-07-12',
+            phone='555-0004',
             email='diana@example.com'
         )
     
     @pytest.fixture
     def patient_b(self):
-        from apps.patients.models import Patient
+        from apps.clinical.models import Patient
         return Patient.objects.create(
             first_name='Eve',
             last_name='Evans',
-            date_of_birth='1995-11-30',
-            phone_number='555-0005',
+            birth_date='1995-11-30',
+            phone='555-0005',
             email='eve@example.com'
         )
     
@@ -334,12 +334,12 @@ class TestReceptionCannotAccessClinicalEntities:
     
     @pytest.fixture
     def patient(self):
-        from apps.patients.models import Patient
+        from apps.clinical.models import Patient
         return Patient.objects.create(
             first_name='Frank',
             last_name='Foster',
-            date_of_birth='1987-02-14',
-            phone_number='555-0006',
+            birth_date='1987-02-14',
+            phone='555-0006',
             email='frank@example.com'
         )
     

@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 
-from .views import HealthCheckView, DiagnosticsView
+from .views import HealthCheckView, DiagnosticsView, CurrentUserView
 
 urlpatterns = [
     # Health check
@@ -21,4 +21,7 @@ urlpatterns = [
     path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    
+    # Current user profile (requires authentication)
+    path('auth/me/', CurrentUserView.as_view(), name='current_user'),
 ]

@@ -11,6 +11,9 @@ from apps.clinical.models import (
     Appointment,
     AppointmentSourceChoices,
     AppointmentStatusChoices,
+    Encounter,
+    Treatment,
+    EncounterTreatment,
 )
 
 
@@ -578,3 +581,301 @@ class AppointmentWriteSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("scheduled_end es obligatorio")
         return value
+
+
+# Patient Merge Serializers
+
+class MergeCandidateSerializer(serializers.Serializer):
+    """Serializer for merge candidate results."""
+    patient_id = serializers.UUIDField(read_only=True)
+    display_name = serializers.CharField(read_only=True)
+    masked_phone = serializers.CharField(read_only=True)
+    masked_email = serializers.CharField(read_only=True)
+    birth_date = serializers.DateField(read_only=True, allow_null=True)
+    score = serializers.FloatField(read_only=True)
+    match_reasons = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+
+class PatientMergeRequestSerializer(serializers.Serializer):
+    """Serializer for patient merge request."""
+    source_patient_id = serializers.UUIDField(required=True)
+    target_patient_id = serializers.UUIDField(required=True)
+    strategy = serializers.ChoiceField(
+        choices=['phone_exact', 'email_exact', 'name_trgm', 'manual', 'other'],
+        default='manual'
+    )
+    notes = serializers.CharField(required=False, allow_blank=True)
+    evidence = serializers.JSONField(required=False, allow_null=True)
+
+
+class PatientMergeResponseSerializer(serializers.Serializer):
+    """Serializer for patient merge response."""
+    target_patient_id = serializers.UUIDField(read_only=True)
+    moved_relations_summary = serializers.DictField(read_only=True)
+    merge_log_id = serializers.UUIDField(read_only=True)
+
+
+# ============================================================================
+# Clinical Core v1: Encounter, Treatment, EncounterTreatment Serializers
+# ============================================================================
+
+class TreatmentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Treatment catalog.
+    
+    Used for:
+    - Listing all available treatments (GET /api/v1/treatments/)
+    - Creating new treatments (POST /api/v1/treatments/) - Admin only
+    - Updating treatments (PATCH /api/v1/treatments/{id}/) - Admin only
+    """
+    class Meta:
+        model = Treatment
+        fields = [
+            'id',
+            'name',
+            'description',
+            'is_active',
+            'default_price',
+            'requires_stock',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def validate_name(self, value):
+        """Validate name is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("El nombre del tratamiento es obligatorio")
+        return value.strip()
+
+
+class EncounterTreatmentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for EncounterTreatment (nested in Encounter).
+    
+    Fields:
+    - treatment_id: FK to Treatment (write)
+    - treatment: nested Treatment object (read)
+    - quantity, unit_price, notes
+    - effective_price (read-only): unit_price or Treatment.default_price
+    - total_price (read-only): quantity * effective_price
+    """
+    treatment = TreatmentSerializer(read_only=True)
+    treatment_id = serializers.UUIDField(write_only=True)
+    effective_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    
+    class Meta:
+        model = EncounterTreatment
+        fields = [
+            'id',
+            'treatment_id',
+            'treatment',
+            'quantity',
+            'unit_price',
+            'notes',
+            'effective_price',
+            'total_price',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'effective_price', 'total_price', 'created_at', 'updated_at']
+    
+    def validate_quantity(self, value):
+        """Validate quantity >= 1."""
+        if value < 1:
+            raise serializers.ValidationError("La cantidad debe ser al menos 1")
+        return value
+    
+    def validate_treatment_id(self, value):
+        """Validate treatment exists and is active."""
+        try:
+            treatment = Treatment.objects.get(id=value)
+            if not treatment.is_active:
+                raise serializers.ValidationError(
+                    f"El tratamiento '{treatment.name}' está inactivo"
+                )
+        except Treatment.DoesNotExist:
+            raise serializers.ValidationError("Tratamiento no encontrado")
+        return value
+
+
+class EncounterListSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Encounter list view (GET /api/v1/encounters/).
+    
+    Includes:
+    - Basic encounter info
+    - Patient name
+    - Practitioner name
+    - Treatment count
+    """
+    patient_name = serializers.SerializerMethodField()
+    practitioner_name = serializers.SerializerMethodField()
+    treatment_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Encounter
+        fields = [
+            'id',
+            'patient',
+            'patient_name',
+            'practitioner',
+            'practitioner_name',
+            'type',
+            'status',
+            'occurred_at',
+            'treatment_count',
+            'created_at',
+        ]
+        read_only_fields = fields
+    
+    def get_patient_name(self, obj):
+        """Return patient full name."""
+        return f"{obj.patient.first_name} {obj.patient.last_name}"
+    
+    def get_practitioner_name(self, obj):
+        """Return practitioner display name."""
+        return obj.practitioner.display_name if obj.practitioner else None
+    
+    def get_treatment_count(self, obj):
+        """Return count of treatments in this encounter."""
+        return obj.encounter_treatments.count()
+
+
+class EncounterDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Encounter detail view (GET /api/v1/encounters/{id}/).
+    
+    Includes:
+    - All encounter fields
+    - Nested treatments list
+    - Patient details
+    - Practitioner details
+    """
+    patient = serializers.SerializerMethodField()
+    practitioner = serializers.SerializerMethodField()
+    encounter_treatments = EncounterTreatmentSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Encounter
+        fields = [
+            'id',
+            'patient',
+            'practitioner',
+            'location',
+            'type',
+            'status',
+            'occurred_at',
+            'chief_complaint',
+            'assessment',
+            'plan',
+            'internal_notes',
+            'encounter_treatments',
+            'signed_at',
+            'signed_by_user',
+            'row_version',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'signed_at', 'signed_by_user', 'row_version', 'created_at', 'updated_at']
+    
+    def get_patient(self, obj):
+        """Return patient basic info."""
+        return {
+            'id': obj.patient.id,
+            'first_name': obj.patient.first_name,
+            'last_name': obj.patient.last_name,
+            'email': obj.patient.email,
+            'phone': obj.patient.phone,
+        }
+    
+    def get_practitioner(self, obj):
+        """Return practitioner basic info."""
+        if not obj.practitioner:
+            return None
+        return {
+            'id': obj.practitioner.id,
+            'display_name': obj.practitioner.display_name,
+            'specialty': obj.practitioner.specialty,
+        }
+
+
+class EncounterWriteSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Encounter create/update (POST/PATCH /api/v1/encounters/).
+    
+    Features:
+    - Nested treatments creation
+    - Status transition validation
+    - RBAC field restrictions (clinical_notes requires ClinicalOps)
+    """
+    encounter_treatments = EncounterTreatmentSerializer(many=True, required=False)
+    
+    class Meta:
+        model = Encounter
+        fields = [
+            'id',
+            'patient',
+            'practitioner',
+            'location',
+            'type',
+            'status',
+            'occurred_at',
+            'chief_complaint',
+            'assessment',
+            'plan',
+            'internal_notes',
+            'encounter_treatments',
+        ]
+        read_only_fields = ['id']
+    
+    def validate(self, attrs):
+        """Validate business rules and RBAC restrictions."""
+        # Validate status transitions
+        if self.instance and 'status' in attrs:
+            old_status = self.instance.status
+            new_status = attrs['status']
+            if old_status != new_status:
+                allowed_transitions = {
+                    'draft': ['finalized', 'cancelled'],
+                    'finalized': [],  # Terminal state
+                    'cancelled': [],  # Terminal state
+                }
+                if new_status not in allowed_transitions.get(old_status, []):
+                    raise serializers.ValidationError({
+                        'status': f"Transición inválida: {old_status} -> {new_status}"
+                    })
+        
+        return attrs
+    
+    def create(self, validated_data):
+        """Create encounter with nested treatments."""
+        treatments_data = validated_data.pop('encounter_treatments', [])
+        
+        with transaction.atomic():
+            encounter = Encounter.objects.create(**validated_data)
+            
+            # Create treatments
+            for treatment_data in treatments_data:
+                treatment_id = treatment_data.pop('treatment_id')
+                treatment = Treatment.objects.get(id=treatment_id)
+                EncounterTreatment.objects.create(
+                    encounter=encounter,
+                    treatment=treatment,
+                    **treatment_data
+                )
+        
+        return encounter
+    
+    def update(self, instance, validated_data):
+        """Update encounter (treatments are updated separately)."""
+        # Remove treatments from validated_data (handle separately)
+        validated_data.pop('encounter_treatments', None)
+        
+        # Update encounter fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        return instance

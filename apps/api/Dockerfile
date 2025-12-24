@@ -25,8 +25,9 @@ RUN pip install --upgrade pip && \
 # Copy project
 COPY . .
 
-# Create non-root user
+# Create non-root user and prepare directories
 RUN useradd -m -u 1000 django && \
+    mkdir -p /app/staticfiles /app/media && \
     chown -R django:django /app
 
 USER django

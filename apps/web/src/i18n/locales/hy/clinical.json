@@ -1,0 +1,86 @@
+{
+  "encounter": {
+    "title": "Խորհրդատվության մանրամասներ",
+    "status": {
+      "draft": "Սևագիր",
+      "finalized": "Ավարտված",
+      "cancelled": "Չեղարկված"
+    },
+    "type": {
+      "medical_consult": "Բժշկական խորհրդատվություն",
+      "cosmetic_consult": "Կոսմետիկ խորհրդատվություն",
+      "follow_up": "Հետագա այց",
+      "aesthetic_procedure": "Գեղագիտական ​​ընթացակարգ"
+    }
+  },
+  "sections": {
+    "patientInfo": "Հիվանդի տեղեկություններ",
+    "encounterInfo": "Խորհրդատվության տեղեկություններ",
+    "treatments": "Ընթացակարգեր"
+  },
+  "patientLabels": {
+    "name": "Անուն",
+    "email": "Email",
+    "phone": "Հեռախոս",
+    "dateOfBirth": "Ծննդյան ամսաթիվ"
+  },
+  "encounterLabels": {
+    "practitioner": "Մասնագետ",
+    "type": "Տեսակ",
+    "date": "Ամսաթիվ",
+    "status": "Կարգավիճակ",
+    "chiefComplaint": "Հիմնական բողոք",
+    "assessment": "Գնահատական",
+    "plan": "Բուժման պլան"
+  },
+  "treatmentLabels": {
+    "treatment": "Ընթացակարգ",
+    "quantity": "Քանակ",
+    "unitPrice": "Միավորի գինը",
+    "total": "Ընդամենը",
+    "notes": "Նշումներ"
+  },
+  "actions": {
+    "addTreatment": "Ավելացնել ընթացակարգ",
+    "finalize": "Ավարտել խորհրդատվությունը",
+    "generateProposal": "Ստեղծել առաջարկություն",
+    "back": "Հետ",
+    "cancel": "Չեղարկել",
+    "add": "Ավելացնել",
+    "finalizing": "Ավարտում...",
+    "generating": "Ստեղծում...",
+    "adding": "Ավելացնում..."
+  },
+  "modals": {
+    "addTreatmentTitle": "Ավելացնել ընթացակարգ",
+    "treatmentIdLabel": "Ընթացակարգի ID *",
+    "treatmentIdPlaceholder": "Մուտքագրեք ընթացակարգի UUID",
+    "quantityLabel": "Քանակ *",
+    "unitPriceLabel": "Միավորի գինը (ոչ պարտադիր)",
+    "unitPricePlaceholder": "Թողեք դատարկ ստանդարտ գնի համար",
+    "notesLabel": "Նշումներ (ոչ պարտադիր)",
+    "notesPlaceholder": "Լրացուցիչ նշումներ այս ընթացակարգի մասին",
+    "finalizeTitle": "Ավարտել խորհրդատվությունը",
+    "finalizeWarning": "Վստա՞հ եք, որ ուզում եք ավարտել այս խորհրդատվությունը:",
+    "finalizeDescription": "Ավարտելուց հետո խորհրդատվությունը կդառնա անփոփոխելի։ Դուք չեք կարողանա ավելացնել կամ հեռացնել ընթացակարգեր։",
+    "finalizeIrreversible": "Այս գործողությունը անդառնալի է։",
+    "confirmFinalize": "Այո, ավարտել խորհրդատվությունը"
+  },
+  "empty": {
+    "noTreatments": "Ընթացակարգեր դեռ չեն ավելացվել"
+  },
+  "messages": {
+    "proposalGenerated": "Առաջարկությունը հաջողությամբ ստեղծվեց։ ID:",
+    "mustAddTreatments": "Ավելացրեք գոնե մեկ ընթացակարգ մինչև խորհրդատվության ավարտը"
+  },
+  "errors": {
+    "loadingFailed": "Խորհրդատվության բեռնման սխալ",
+    "notFound": "Խորհրդատվությունը չի գտնվել",
+    "addingTreatmentFailed": "Չհաջողվեց ավելացնել ընթացակարգը",
+    "finalizingFailed": "Չհաջողվեց ավարտել խորհրդատվությունը",
+    "generatingProposalFailed": "Չհաջողվեց ստեղծել առաջարկությունը"
+  },
+  "loading": {
+    "encounter": "Խորհրդատվության բեռնում..."
+  }
+}

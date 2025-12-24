@@ -4,12 +4,15 @@
     "subtitle": "Dossiers Patients et POS Cosmétiques"
   },
   "nav": {
-    "dashboard": "Tableau de bord",
+    "agenda": "Agenda",
     "patients": "Patients",
     "encounters": "Consultations",
-    "photos": "Photos",
-    "products": "Produits",
-    "sales": "Ventes"
+    "proposals": "Propositions",
+    "sales": "Ventes",
+    "admin": "Administration",
+    "actions": {
+      "logout": "Déconnexion"
+    }
   },
   "common": {
     "loading": "Chargement...",
@@ -20,7 +23,9 @@
     "delete": "Supprimer",
     "edit": "Modifier",
     "search": "Rechercher",
-    "filter": "Filtrer"
+    "filter": "Filtrer",
+    "languageLabel": "Langue",
+    "user": "Utilisateur"
   },
   "health": {
     "checking": "Vérification de la connexion backend...",
@@ -37,5 +42,33 @@
     "new": "Nouveau Patient",
     "search_placeholder": "Rechercher par nom, téléphone ou email",
     "no_patients": "Aucun patient trouvé"
+  },
+  "agenda": {
+    "title": "Agenda",
+    "filters": {
+      "date": "Date",
+      "status": "Statut",
+      "allStatuses": "Tous les statuts"
+    },
+    "appointment": {
+      "status": {
+        "scheduled": "Programmé",
+        "confirmed": "Confirmé",
+        "in_progress": "En Cours",
+        "completed": "Terminé",
+        "cancelled": "Annulé",
+        "no_show": "Absent"
+      }
+    },
+    "errors": {
+      "title": "Impossible de charger l'agenda",
+      "description": "Nous rencontrons des difficultés pour nous connecter au serveur. Veuillez vérifier votre connexion internet et réessayer.",
+      "loadingFailed": "Échec du chargement des rendez-vous"
+    },
+    "emptyState": {
+      "title": "Aucun rendez-vous pour ce jour",
+      "description": "Il n'y a pas de rendez-vous programmés pour la date sélectionnée. Les rendez-vous apparaîtront ici lorsqu'ils seront créés.",
+      "action": "Créer un Nouveau Rendez-vous"
+    }
   }
 }

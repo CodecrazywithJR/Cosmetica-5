@@ -15,7 +15,7 @@ Módulo de gestión de contenido para el sitio web público de la clínica.
 │                                                               │
 │  CLINICAL/ERP (Auth Required)          PUBLIC (No Auth)      │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━        ━━━━━━━━━━━━━━━━━━━  │
-│  • apps.patients                       • apps.website        │
+│  • apps.clinical (patients unified)• apps.website            │
 │  • apps.encounters                     • /public/* endpoints │
 │  • apps.photos                         • Marketing bucket    │
 │  • apps.products                                             │

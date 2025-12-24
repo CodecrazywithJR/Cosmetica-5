@@ -32,9 +32,9 @@ class SkinPhoto(models.Model):
     
     # Relationships
     patient = models.ForeignKey(
-        'patients.Patient',
+        'clinical.Patient',
         on_delete=models.CASCADE,
-        related_name='photos',
+        related_name='legacy_photos',
         verbose_name=_('Patient')
     )
     encounter = models.ForeignKey(

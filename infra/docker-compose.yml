@@ -25,7 +25,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-emr_user} -d ${POSTGRES_DB:-emr_derma_db}"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}
@@ -113,7 +113,7 @@ services:
     command: >
       sh -c "
       python manage.py migrate --noinput &&
-      python manage.py collectstatic --noinput &&
+      if [ \"$DJANGO_COLLECTSTATIC\" != \"0\" ]; then python manage.py collectstatic --noinput; fi &&
       python manage.py ensure_superuser &&
       gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120 --access-logfile - --error-logfile -
       "
@@ -159,6 +159,9 @@ services:
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-DEBUG}
+      
+      # Static/Media (set to 0 to skip collectstatic in dev)
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:

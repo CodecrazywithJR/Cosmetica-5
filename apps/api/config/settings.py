@@ -9,6 +9,10 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Application version
+VERSION = os.environ.get('APP_VERSION', '1.0.0')
+COMMIT_HASH = os.environ.get('COMMIT_HASH', None)
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production')
 
@@ -39,16 +43,17 @@ INSTALLED_APPS = [
     'apps.documents',   # document (unified)
     'apps.commerce',    # products, inventory, sales, invoices, payments
     'apps.website',     # cms_*, website_settings, marketing_media_asset, public_lead
-    'apps.social',      # social_* (Instagram Manual Pack)
+    # 'apps.social',      # social_* (Instagram Manual Pack) - DISABLED: AUTH_USER_MODEL issue
     'apps.ops',         # audit_log, diagnostics
+    'apps.legal',       # legal_entity (minimal, no fiscal logic) - See ADR-002
     
     # Legacy apps (to be migrated)
-    'apps.patients',
     'apps.encounters',
     'apps.photos',
     'apps.products',
     'apps.stock',
     'apps.sales',
+    'apps.pos',  # Point of Sale with fuzzy patient search
     'apps.integrations',
 ]
 
@@ -63,6 +68,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.observability.correlation.RequestCorrelationMiddleware',  # Request correlation
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -156,6 +162,13 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
+    # Throttling configuration for public endpoints
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',  # Generic anonymous users (fallback)
+        'user': '1000/hour',  # Authenticated users (not typically throttled)
+        'lead_submissions': '10/hour',  # Public lead form submissions
+        'lead_burst': '2/min',  # Burst protection for lead submissions
+    },
 }
 
 # ==============================================================================
@@ -245,16 +258,25 @@ if not DEBUG:
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        'correlation': {
+            '()': 'apps.core.observability.logging.CorrelationFilter',
+        },
+    },
     'formatters': {
         'verbose': {
             'format': '{levelname} {asctime} {module} {message}',
             'style': '{',
         },
+        'json': {
+            '()': 'apps.core.observability.logging.SanitizedJSONFormatter',
+        },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
+            'formatter': 'json' if not DEBUG else 'verbose',
+            'filters': ['correlation'],
         },
     },
     'root': {
@@ -265,6 +287,11 @@ LOGGING = {
         'django': {
             'handlers': ['console'],
             'level': os.environ.get('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
     },

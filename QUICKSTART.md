@@ -1,5 +1,18 @@
 # EMR Dermatology + POS Cosmetics - Quick Start Guide
 
+## ⚙️ Prerequisites
+
+Before starting, ensure you have:
+
+- **Docker Desktop** installed and running (Docker Engine must be active)
+- **Make** utility (usually pre-installed on macOS/Linux)
+
+To verify Docker is ready:
+```bash
+docker info
+# Should display system info without errors
+```
+
 ## 🚀 Getting Started (First Time)
 
 ```bash
@@ -11,7 +24,44 @@ make install
 # - Build Docker images
 # - Start all services
 # - Wait for healthchecks
+
+# 2. Create admin user for login
+docker compose exec api python manage.py create_admin_dev
+
+# This creates:
+# - Email: yo@ejemplo.com
+# - Password: Libertad
+# - Role: Admin (full access)
 ```
+
+## 🔐 Login Credentials (Development)
+
+After running `create_admin_dev`:
+
+- **URL**: http://localhost:3000/es/login (or /en/login, /fr/login, etc.)
+- **Email**: yo@ejemplo.com
+- **Password**: Libertad
+- **Role**: Admin (full access to all modules)
+
+⚠️  **FOR DEVELOPMENT ONLY** - Remove this user in production!
+
+### Authentication Flow (Updated 2025-12-24)
+
+The system uses **JWT-based authentication** with automatic token refresh:
+
+1. **Login**: Enter email + password
+2. **Backend**: Returns `access_token` (60 min) + `refresh_token` (7 days)
+3. **Profile Fetch**: Frontend automatically fetches your user profile and roles
+4. **Redirect**: You're sent to the dashboard (`/{locale}`) based on your locale
+5. **Auto-Refresh**: When `access_token` expires, system automatically uses `refresh_token` to get a new one
+6. **Logout**: Click logout or refresh token expires → redirected to `/{locale}/login`
+
+**API Endpoints** (for reference):
+- `POST /api/auth/token/` - Login
+- `POST /api/auth/token/refresh/` - Refresh access token
+- `GET /api/auth/me/` - Get current user profile
+
+See `docs/PROJECT_DECISIONS.md` section 3 for full architecture details.
 
 ## 📋 Daily Development Workflow
 
@@ -75,6 +125,27 @@ make clean
 make dev
 ```
 
+### npm ci Fails (Missing package-lock.json)
+```bash
+# If Docker build fails with "npm ci can only install with existing package-lock.json"
+# This should not happen anymore, but if it does:
+cd apps/web  # or apps/site
+docker run --rm -v "$(pwd)":/app -w /app node:20-alpine npm install --package-lock-only
+```
+
+### Frontend i18n Issues (next-intl)
+```bash
+# If you see "Couldn't find next-intl config file" or i18n errors:
+rm -rf apps/web/.next
+cd apps/web && npm run dev
+```
+
+### Docker Build Cache Issues
+```bash
+# Rebuild without cache if you encounter persistent build errors:
+cd infra && docker compose build --no-cache
+```
+
 ### Complete Reset (Nuclear Option)
 ```bash
 make clean-all  # ⚠️  Deletes all data!
@@ -85,6 +156,13 @@ make dev
 ```bash
 make doctor
 ```
+
+## ℹ️ Docker Build Notes
+
+- All frontend services use `npm ci` for reproducible builds
+- Requires `package-lock.json` to be present and committed
+- Development Dockerfiles use `npm run dev` (hot reload enabled)
+- If adding/updating npm packages, regenerate lockfile and commit it
 
 ## 📍 Service URLs
 

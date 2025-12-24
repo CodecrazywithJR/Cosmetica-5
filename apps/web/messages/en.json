@@ -4,12 +4,15 @@
     "subtitle": "Patient Records & Cosmetics POS"
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "agenda": "Agenda",
     "patients": "Patients",
     "encounters": "Encounters",
-    "photos": "Photos",
-    "products": "Products",
-    "sales": "Sales"
+    "proposals": "Proposals",
+    "sales": "Sales",
+    "admin": "Administration",
+    "actions": {
+      "logout": "Sign Out"
+    }
   },
   "common": {
     "loading": "Loading...",
@@ -20,7 +23,9 @@
     "delete": "Delete",
     "edit": "Edit",
     "search": "Search",
-    "filter": "Filter"
+    "filter": "Filter",
+    "languageLabel": "Language",
+    "user": "User"
   },
   "health": {
     "checking": "Checking backend connection...",
@@ -37,5 +42,56 @@
     "new": "New Patient",
     "search_placeholder": "Search by name, phone, or email",
     "no_patients": "No patients found"
+  },
+  "agenda": {
+    "title": "Agenda",
+    "filters": {
+      "date": "Date",
+      "status": "Status",
+      "allStatuses": "All Statuses"
+    },
+    "table": {
+      "time": "Time",
+      "patient": "Patient",
+      "practitioner": "Practitioner",
+      "type": "Source",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "appointment": {
+      "type": {
+        "consultation": "Consultation",
+        "follow_up": "Follow-up",
+        "procedure": "Procedure"
+      },
+      "status": {
+        "scheduled": "Scheduled",
+        "confirmed": "Confirmed",
+        "checked_in": "Checked In",
+        "in_progress": "In Progress",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "no_show": "No Show"
+      }
+    },
+    "actions": {
+      "confirm": "Confirm",
+      "checkIn": "Check In",
+      "complete": "Complete",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "title": "Unable to load agenda",
+      "description": "We're having trouble connecting to the server. Please check your internet connection and try again.",
+      "loadingFailed": "Failed to load appointments"
+    },
+    "emptyState": {
+      "title": "No appointments for this day",
+      "description": "There are no scheduled appointments for the selected date. Appointments will appear here when created.",
+      "action": "Create New Appointment"
+    },
+    "summary": {
+      "totalAppointments": "Total appointments"
+    }
   }
 }

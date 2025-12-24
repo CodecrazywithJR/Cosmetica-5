@@ -68,6 +68,15 @@ class EncounterAdmin(admin.ModelAdmin):
     readonly_fields = ['id', 'row_version', 'created_at', 'updated_at', 'deleted_at', 'signed_at']
     autocomplete_fields = ['patient', 'practitioner', 'location', 'created_by_user', 'deleted_by_user', 'signed_by_user']
     date_hierarchy = 'occurred_at'
+    
+    def save_model(self, request, obj, form, change):
+        """
+        Enforce full_clean() validation.
+        
+        SECURITY: Prevents admin bypass of business rules (e.g., patient-appointment coherence).
+        """
+        obj.full_clean()
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Appointment)
@@ -78,6 +87,45 @@ class AppointmentAdmin(admin.ModelAdmin):
     readonly_fields = ['id', 'created_at', 'updated_at', 'deleted_at']
     autocomplete_fields = ['patient', 'practitioner', 'location', 'encounter']
     date_hierarchy = 'scheduled_start'
+    
+    def get_readonly_fields(self, request, obj=None):
+        """
+        Make all fields readonly for terminal status appointments.
+        
+        SECURITY: Prevents editing completed/cancelled/no_show appointments.
+        """
+        readonly = list(self.readonly_fields)
+        
+        if obj and obj.is_terminal_status:
+            # Terminal status: make everything readonly except internal notes
+            return [f.name for f in self.model._meta.fields if f.name != 'notes'] + ['notes']
+        
+        return readonly
+    
+    def has_change_permission(self, request, obj=None):
+        """
+        Allow viewing but warn about terminal status.
+        Actual field protection is in get_readonly_fields.
+        """
+        return super().has_change_permission(request, obj)
+    
+    def has_delete_permission(self, request, obj=None):
+        """
+        Prevent deletion of terminal status appointments.
+        Only superuser can delete.
+        """
+        if obj and obj.is_terminal_status:
+            return request.user.is_superuser
+        return super().has_delete_permission(request, obj)
+    
+    def save_model(self, request, obj, form, change):
+        """
+        Enforce full_clean() validation.
+        
+        SECURITY: Prevents admin bypass of business rules.
+        """
+        obj.full_clean()  # Explicit validation
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Consent)

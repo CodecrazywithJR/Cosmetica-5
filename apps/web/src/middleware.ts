@@ -12,6 +12,7 @@ export default createMiddleware({
 });
  
 export const config = {
-  // Match only internationalized pathnames
-  matcher: ['/', '/(ru|fr|en|uk|hy|es)/:path*']
+  // Match all pathnames except api routes and static files
+  // This will handle / and legacy routes like /login, /agenda, /encounters, /proposals
+  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)']
 };

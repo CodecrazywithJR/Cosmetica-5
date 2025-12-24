@@ -4,6 +4,19 @@ Operations/Diagnostics serializers.
 from rest_framework import serializers
 
 
+class UserProfileSerializer(serializers.Serializer):
+    """
+    User profile serializer for /api/auth/me/ endpoint.
+    
+    Returns authenticated user information including roles.
+    This is the contract between backend auth and frontend UI.
+    """
+    id = serializers.UUIDField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    roles = serializers.ListField(child=serializers.CharField(), read_only=True)
+
+
 class ServiceStatusSerializer(serializers.Serializer):
     """Service health status."""
     name = serializers.CharField()

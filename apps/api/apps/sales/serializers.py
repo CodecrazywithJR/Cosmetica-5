@@ -8,6 +8,11 @@ class SaleLineSerializer(serializers.ModelSerializer):
     """
     Serializer for SaleLine with business validations.
     """
+    quantity = serializers.IntegerField(
+        min_value=1,
+        help_text='Quantity must be a positive integer (no decimals)'
+    )
+    
     class Meta:
         model = SaleLine
         fields = [
@@ -245,3 +250,102 @@ class SaleTransitionSerializer(serializers.Serializer):
                 })
         
         return attrs
+
+
+# ============================================================================
+# Layer 3 C: Partial Refund Serializers
+# ============================================================================
+
+class SaleRefundLineSerializer(serializers.Serializer):
+    """
+    Serializer for partial refund line creation.
+    """
+    sale_line_id = serializers.UUIDField(
+        required=True,
+        help_text='ID of the original sale line to refund'
+    )
+    qty_refunded = serializers.IntegerField(
+        min_value=1,
+        required=True,
+        help_text='Quantity to refund (must be a positive integer, no decimals)'
+    )
+    amount_refunded = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        help_text='Amount to refund for this line (optional, calculated if omitted)'
+    )
+
+
+class SaleRefundCreateSerializer(serializers.Serializer):
+    """
+    Serializer for creating a partial refund.
+    
+    POST /sales/{id}/refunds/
+    {
+        "reason": "Customer returned 2 units due to defect",
+        "idempotency_key": "refund-abc-123",  // optional
+        "lines": [
+            {"sale_line_id": "uuid", "qty_refunded": 2, "amount_refunded": 600.00},
+            {"sale_line_id": "uuid", "qty_refunded": 1}
+        ]
+    }
+    """
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=1000,
+        help_text='Reason for the partial refund'
+    )
+    idempotency_key = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=255,
+        help_text='Unique key to prevent duplicate refunds'
+    )
+    lines = SaleRefundLineSerializer(
+        many=True,
+        required=True,
+        help_text='List of sale lines to refund with quantities'
+    )
+    
+    def validate_lines(self, lines):
+        """Validate at least one line provided."""
+        if not lines:
+            raise serializers.ValidationError('At least one refund line is required')
+        return lines
+
+
+class SaleRefundLineReadSerializer(serializers.Serializer):
+    """
+    Read-only serializer for sale refund line display.
+    """
+    id = serializers.UUIDField(read_only=True)
+    sale_line_id = serializers.UUIDField(source='sale_line.id', read_only=True)
+    product_name = serializers.CharField(source='sale_line.product_name', read_only=True)
+    qty_refunded = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    amount_refunded = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+
+class SaleRefundSerializer(serializers.Serializer):
+    """
+    Read-only serializer for sale refund display.
+    """
+    id = serializers.UUIDField(read_only=True)
+    sale_id = serializers.UUIDField(source='sale.id', read_only=True)
+    status = serializers.CharField(read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    reason = serializers.CharField(read_only=True)
+    total_amount = serializers.SerializerMethodField(read_only=True)
+    created_by = serializers.StringRelatedField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    lines = SaleRefundLineReadSerializer(many=True, read_only=True)
+    
+    def get_total_amount(self, obj):
+        """Calculate total refund amount from lines."""
+        from django.db.models import Sum
+        total = obj.lines.aggregate(Sum('amount_refunded'))['amount_refunded__sum']
+        return total or Decimal('0.00')

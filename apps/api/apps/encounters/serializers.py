@@ -3,7 +3,7 @@ Encounter serializers.
 """
 from rest_framework import serializers
 
-from apps.patients.serializers import PatientListSerializer
+from apps.clinical.serializers import PatientListSerializer
 from apps.clinical.models import log_clinical_audit
 
 from .models import Encounter

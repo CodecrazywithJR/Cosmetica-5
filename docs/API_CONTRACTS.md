@@ -3317,3 +3317,463 @@ Esta sección mapea los **25 use cases** documentados en `USE_CASES.md` a los en
 - **Concurrencia**: Pacientes y encounters usan `row_version` para optimistic locking (409 Conflict si no coincide)
 
 ---
+
+---
+
+## Patient Merge & Identity Resolution
+
+### Overview
+
+Patient merge operations allow consolidating duplicate patient records while maintaining complete data integrity and audit trail. 
+
+**⚠️ MANUAL ONLY**: The system NEVER executes automatic merges. The system detects candidates automatically using similarity scoring, but **every merge requires explicit human approval**.
+
+**Key Principles**:
+- **Detection is automatic**: The system continuously identifies potential duplicates
+- **Merge is always manual**: A clinical ops user must review and approve each merge
+- **Merge is irreversible**: Once executed, cannot be undone (only audited)
+- **Source patient becomes inactive**: Marked as `is_merged=true`
+- **All relationships move atomically**: Sales, Appointments, Encounters, Photos, Consents, Guardians
+
+### Functional Description
+
+**How It Works**:
+1. System automatically detects potential duplicates using phone, email, and name similarity
+2. Clinical ops reviews candidates via GET `/merge-candidates` endpoint
+3. User manually triggers merge via POST `/merge` endpoint with explicit strategy
+4. System validates, executes atomically, and creates audit log
+5. Source patient is marked as merged, all data moves to target
+
+**Clinical Context**:
+- **Phone exact match (strategy: `phone_exact`)**: Same patient called from different numbers, but primary phone matches
+- **Email exact match (strategy: `email_exact`)**: Different registration flows (website, reception, Calendly) same email
+- **Name similarity (strategy: `name_trgm`)**: Typos, accents, or different name orders (María González vs Maria Gonzalez)
+- **Manual review (strategy: `manual`)**: Clinical ops identified duplicate through chart review
+- **Other (strategy: `other`)**: Custom detection method (explain in notes)
+
+### Security & Permissions
+
+- **Allowed Roles**: ClinicalOps, Practitioner, Superuser
+- **Denied**: Marketing (explicitly blocked), Reception (unless in ClinicalOps)
+- **PHI Protection**: All evidence fields use masked phone/email (no PHI in logs/metrics/signals)
+
+---
+
+### GET /api/v1/clinical/patients/{patient_id}/merge-candidates
+
+Find potential duplicate patients for manual review and merge.
+
+**Permission**: `IsClinicalOpsOrAdmin`
+
+**URL Parameters**:
+- `patient_id` (UUID, required): Patient to find duplicates for
+
+**Query Parameters**:
+- `limit` (integer, optional): Max candidates to return (default: 20, max: 100)
+
+**Success Response** (`200 OK`):
+```json
+[
+  {
+    "patient_id": "abc123-...",
+    "display_name": "María González García",
+    "masked_phone": "+52•••••5678",
+    "masked_email": "m•••@gmail.com",
+    "birth_date": "1985-03-15",
+    "score": 1.00,
+    "match_reasons": [
+      "exact_phone_match",
+      "similar_name"
+    ],
+    "strategy_suggested": "phone_exact",
+    "confidence_explanation": "Same phone number (+52•••••5678). Name similarity 92%. Likely same person registered twice."
+  },
+  {
+    "patient_id": "def456-...",
+    "display_name": "Maria Gonzalez",
+    "masked_phone": "+52•••••1234",
+    "masked_email": "mar•••@hotmail.com",
+    "birth_date": "1985-03-15",
+    "score": 0.87,
+    "match_reasons": [
+      "name_similarity_high",
+      "birth_date_match"
+    ],
+    "strategy_suggested": "name_trgm",
+    "confidence_explanation": "Name similarity 87% (accents/spacing). Same birth date. Different phone/email - verify before merge."
+  },
+  {
+    "patient_id": "ghi789-...",
+    "display_name": "María G. García",
+    "masked_phone": "+52•••••9999",
+    "masked_email": "mgg•••@yahoo.com",
+    "birth_date": null,
+    "score": 0.62,
+    "match_reasons": [
+      "name_similarity_medium"
+    ],
+    "strategy_suggested": "manual",
+    "confidence_explanation": "Name similarity 62%. No birth date match. Requires manual chart review."
+  }
+]
+```
+
+**Real-World Example**:
+```bash
+# Scenario: Reception registered "María González" but patient previously 
+# existed as "Maria Gonzalez" (without accent). System detected duplicate.
+
+GET /api/v1/clinical/patients/550e8400-e29b-41d4-a716-446655440000/merge-candidates?limit=5
+Authorization: Bearer eyJhbGc...
+```
+
+**Response** (candidate detected automatically):
+```json
+[
+  {
+    "patient_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "display_name": "Maria Gonzalez",
+    "masked_phone": "+521•••••2340",
+    "masked_email": "maria•••@gmail.com",
+    "birth_date": "1985-03-15",
+    "score": 0.95,
+    "match_reasons": ["exact_phone_match", "name_similarity_high"],
+    "strategy_suggested": "phone_exact",
+    "confidence_explanation": "Exact phone match. Name 94% similar (accent difference). High confidence duplicate."
+  }
+]
+```
+
+**Score Ranking** (higher = more likely duplicate):
+- **1.00**: Exact phone match
+- **0.95**: Exact email match
+- **0.30-0.90**: Name trigram similarity (using pg_trgm)
+- **+0.05 bonus**: Birth date match (capped at 1.00)
+
+**Strategies** (returned in `match_reasons`):
+- `exact_phone_match`: Same phone_e164
+- `exact_email_match`: Same email (case-insensitive)
+- `name_similarity_high`: Trigram similarity > 0.7
+- `name_similarity_medium`: Trigram similarity 0.5-0.7
+- `birth_date_match`: Same birth date
+
+**Error Responses**:
+- `404 Not Found`: Patient not found
+- `403 Forbidden`: User lacks ClinicalOps permission
+
+**Example Request**:
+```bash
+GET /api/v1/clinical/patients/123e4567.../merge-candidates?limit=10
+Authorization: Bearer <jwt_token>
+```
+
+---
+
+### POST /api/v1/clinical/patients/merge
+
+**⚠️ CRITICAL: This operation is MANUAL ONLY. The system NEVER executes automatic merges.**
+
+Merge a source patient into a target patient. All relationships (Sales, Appointments, Encounters, Photos, Consents, Guardians, AuditLogs) are atomically transferred from source to target.
+
+**Permission**: `IsClinicalOpsOrAdmin`
+
+**Real-World Example Scenario**:
+```
+Situation: "María González" was registered twice:
+  - First entry (target): Calendly appointment, has 2 encounters
+  - Second entry (source): Reception walk-in, has 1 sale
+
+Clinical ops confirmed via phone call it's the same person.
+Decision: Merge source → target to consolidate medical history.
+```
+
+**Request Body**:
+```json
+{
+  "source_patient_id": "abc123...",
+  "target_patient_id": "def456...",
+  "strategy": "phone_exact",
+  "notes": "Duplicate found via phone match. Confirmed same person.",
+  "evidence": {
+    "phone_match": true,
+    "masked_phone": "+52•••••5678",
+    "name_similarity": 0.92,
+    "birth_date_match": true
+  }
+}
+```
+
+**Field Definitions**:
+
+- `source_patient_id` (UUID, required): Patient to merge FROM (will be marked inactive)
+- `target_patient_id` (UUID, required): Patient to merge INTO (keeps all data)
+- `strategy` (string, required): How duplicate was identified
+  - `manual`: Manual review by staff
+  - `phone_exact`: Exact phone number match
+  - `email_exact`: Exact email match
+  - `name_trgm`: Name trigram similarity
+  - `other`: Other method (explain in notes)
+- `notes` (string, optional): Free-text explanation for audit trail
+- `evidence` (object, optional): **Sanitized** match evidence
+  - **MUST NOT contain raw PHI** - use `masked_phone`, `masked_email`
+  - Can include: similarity scores, match types, masked identifiers
+
+**Success Response** (`200 OK`):
+```json
+{
+  "target_patient_id": "def456...",
+  "moved_relations_summary": {
+    "appointments": 3,
+    "encounters": 5,
+    "sales": 2,
+    "clinical_photos": 8,
+    "consents": 1,
+    "guardians": 0,
+    "audit_logs": 12
+  },
+  "merge_log_id": "merge789..."
+}
+```
+
+**Atomic Behavior**:
+- All operations execute in single database transaction
+- If ANY operation fails, ALL changes roll back
+- Source patient locked during merge (prevents concurrent edits)
+
+**Post-Merge State**:
+- Source patient: `is_merged=true`, `merged_into_patient=target_id`
+- Target patient: Contains all relationships from source
+- Audit log: `PatientMergeLog` entry created with strategy, evidence, notes
+- Signal: `patient_merged` emitted (only if transaction succeeds)
+- Metrics: `patient_merge_success_total{strategy="phone_exact"}` incremented
+
+**Validation Rules**:
+
+1. **No self-merge**: `source_patient_id` ≠ `target_patient_id`
+2. **Source not already merged**: Source must have `is_merged=false`
+3. **Target not already merged**: Target must have `is_merged=false`
+4. **No cycles**: Prevents A→B→C→A scenarios
+
+**Error Responses**:
+
+**400 Bad Request** - Validation failure:
+```json
+{
+  "error": "Cannot merge patient into itself"
+}
+```
+```json
+{
+  "error": "Source patient abc123... is already merged into def456..."
+}
+```
+```json
+{
+  "error": "Circular merge detected - cannot proceed"
+}
+```
+
+**404 Not Found** - Patient not found:
+```json
+{
+  "error": "Source or target patient not found"
+}
+```
+
+**403 Forbidden** - Permission denied:
+```json
+{
+  "error": "User does not have permission to perform patient merge"
+}
+```
+
+**500 Internal Server Error** - Unexpected error (transaction rolled back):
+```json
+{
+  "error": "An unexpected error occurred during merge"
+}
+```
+
+**Example Request**:
+```bash
+POST /api/v1/clinical/patients/merge
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "source_patient_id": "550e8400-e29b-41d4-a716-446655440000",
+  "target_patient_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "strategy": "phone_exact",
+  "notes": "Same phone confirmed. Duplicate entry from different reception staff.",
+  "evidence": {
+    "phone_match": true,
+    "masked_phone": "+52•••••5678",
+    "name_similarity": 0.95,
+    "emails_different": true
+  }
+}
+```
+
+**Example Response**:
+```json
+{
+  "target_patient_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "moved_relations_summary": {
+    "appointments": 2,
+    "encounters": 3,
+    "sales": 1,
+    "clinical_photos": 5,
+    "consents": 1,
+    "guardians": 0,
+    "audit_logs": 8
+  },
+  "merge_log_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+}
+```
+
+---
+
+### Audit Trail
+
+Every merge creates a `PatientMergeLog` record with:
+
+- `source_patient_id`: Patient merged from
+- `target_patient_id`: Patient merged into
+- `merged_by_user_id`: User who executed merge
+- `merged_at`: Timestamp (UTC)
+- `strategy`: Detection method (phone_exact, email_exact, etc.)
+- `evidence`: Sanitized match evidence (JSON, **no PHI**)
+- `notes`: Free-text explanation
+
+**Query merge history**:
+```sql
+SELECT * FROM patient_merge_log WHERE source_patient_id = '...' OR target_patient_id = '...' ORDER BY merged_at DESC;
+```
+
+---
+
+### Prometheus Metrics
+
+**Success Counter**:
+```
+patient_merge_total{strategy="phone_exact"} 42
+patient_merge_total{strategy="manual"} 18
+patient_merge_total{strategy="email_exact"} 8
+patient_merge_total{strategy="name_trgm"} 5
+patient_merge_total{strategy="other"} 2
+```
+
+**Failure Counter**:
+```
+patient_merge_failed_total{reason="self_merge"} 2
+patient_merge_failed_total{reason="source_already_merged"} 5
+patient_merge_failed_total{reason="target_already_merged"} 1
+patient_merge_failed_total{reason="circular_merge"} 0
+patient_merge_failed_total{reason="patient_not_found"} 3
+patient_merge_failed_total{reason="validation_error"} 7
+```
+
+**Metric Labels**:
+
+`strategy` (success counter):
+- `manual`: Staff manually identified duplicate through chart review
+- `phone_exact`: Detected via exact phone number match
+- `email_exact`: Detected via exact email match
+- `name_trgm`: Detected via name trigram similarity
+- `other`: Custom detection method
+
+`reason` (failure counter):
+- `self_merge`: Attempted to merge patient into itself
+- `source_already_merged`: Source patient already merged into another
+- `target_already_merged`: Target patient already merged (invalid target)
+- `circular_merge`: Would create cycle (A→B→C→A)
+- `patient_not_found`: Source or target patient does not exist
+- `validation_error`: Other validation failures
+
+**⚠️ PHI Protection**: Metrics contain NO patient identifiable information. Only aggregated counts with strategy/reason labels.
+
+---
+
+### Django Signal
+
+**Signal**: `apps.clinical.signals.patient_merged`
+
+**Emitted**: After successful merge (inside transaction)
+
+**Parameters** (all UUIDs, NO PHI):
+- `sender`: Patient model class
+- `source_patient_id`: UUID string of merged patient
+- `target_patient_id`: UUID string of target patient
+- `strategy`: String (phone_exact, manual, email_exact, name_trgm, other)
+- `merged_by_user_id`: UUID string of user who executed merge (or None)
+- `merge_log_id`: UUID string of PatientMergeLog entry
+
+**Example Listener** (for future integrations):
+```python
+from django.dispatch import receiver
+from django.db import transaction
+from apps.clinical.signals import patient_merged
+import logging
+
+logger = logging.getLogger(__name__)
+
+@receiver(patient_merged)
+def on_patient_merged(sender, source_patient_id, target_patient_id, 
+                       strategy, merged_by_user_id, merge_log_id, **kwargs):
+    """
+    Handle patient merge event.
+    
+    IMPORTANT: Use transaction.on_commit() to ensure actions only execute
+    if the merge transaction commits successfully. Otherwise, actions may
+    execute even if the transaction rolls back.
+    """
+    
+    def _execute_post_merge_actions():
+        # Example 1: Send notification to clinical ops
+        from apps.notifications.tasks import notify_merge_completed
+        notify_merge_completed.delay(
+            target_patient_id=target_patient_id,
+            merge_log_id=merge_log_id,
+            strategy=strategy
+        )
+        
+        # Example 2: Update external CRM (if integrated)
+        # from apps.integrations.crm import sync_patient_merge
+        # sync_patient_merge(source_id=source_patient_id, target_id=target_patient_id)
+        
+        # Example 3: Log for analytics (NO PHI)
+        logger.info(
+            "Patient merge completed",
+            extra={
+                'merge_log_id': merge_log_id,
+                'strategy': strategy,
+                'merged_by_user_id': merged_by_user_id
+            }
+        )
+    
+    # Only execute after transaction commits
+    transaction.on_commit(_execute_post_merge_actions)
+```
+
+---
+
+### Best Practices
+
+1. **Always review candidates manually** - Never auto-merge based on score alone
+2. **Document merge reason** - Use `notes` field to explain decision
+3. **Sanitize evidence** - Use `mask_phone()` and `mask_email()` before storing
+4. **Test thoroughly** - Verify all relationships moved correctly
+5. **Monitor metrics** - Track merge success/failure rates
+6. **Use transactions** - Leverage atomic behavior for safety
+
+---
+
+### Implementation Notes
+
+- **Database**: PostgreSQL with pg_trgm extension for fuzzy name matching
+- **Locking**: Uses `select_for_update()` to prevent concurrent merges
+- **Transaction**: All operations wrapped in `transaction.atomic()`
+- **Logging**: Structured logging with no PHI (uses masked identifiers)
+- **Metrics**: Prometheus counters with fallback (no hard dependency)
+
+---

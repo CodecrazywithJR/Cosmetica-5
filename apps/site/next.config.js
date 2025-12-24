@@ -1,3 +1,8 @@
+const withNextIntl = require('next-intl/plugin')(
+  // Specify the path to the i18n config file
+  './i18n.ts'
+);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -20,9 +25,6 @@ const nextConfig = {
     domains: ['localhost'], // MinIO domain for images
     formats: ['image/avif', 'image/webp'],
   },
-  
-  // Output configuration
-  output: 'standalone', // For Docker
 }
 
-module.exports = nextConfig
+module.exports = withNextIntl(nextConfig)

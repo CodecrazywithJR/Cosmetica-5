@@ -7,6 +7,27 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 
 
+# ============================================================================
+# Enums
+# ============================================================================
+
+class PractitionerRoleChoices(models.TextChoices):
+    """
+    Practitioner role types for clinical staff classification.
+    
+    - PRACTITIONER: Doctors, dermatologists (can perform procedures)
+    - ASSISTANT: Clinical assistants (support practitioners)
+    - CLINICAL_MANAGER: Clinical operations manager (oversees clinical staff)
+    """
+    PRACTITIONER = 'practitioner', 'Practitioner'
+    ASSISTANT = 'assistant', 'Assistant'
+    CLINICAL_MANAGER = 'clinical_manager', 'Clinical Manager'
+
+
+# ============================================================================
+# User Management
+# ============================================================================
+
 class UserManager(BaseUserManager):
     """Custom user manager for email-based authentication."""
     
@@ -134,15 +155,21 @@ class UserRole(models.Model):
 
 class Practitioner(models.Model):
     """
-    Practitioners (doctors, dermatologists) linked to users.
+    Practitioners (doctors, dermatologists, clinical staff) linked to users.
     
-    Fields from DOMAIN_MODEL.md:
+    Fields from DOMAIN_MODEL.md + Fase 2.2 requirements:
     - id: UUID PK
     - user_id: FK -> auth_user (unique)
-    - display_name
-    - specialty: default "Dermatology"
+    - display_name: string
+    - role_type: enum (PRACTITIONER, ASSISTANT, CLINICAL_MANAGER)
+    - specialty: string (default "Dermatology")
     - is_active: bool default true
     - created_at, updated_at
+    
+    BUSINESS RULES:
+    - Only PRACTITIONER role can perform clinical procedures
+    - ASSISTANT can support but not lead encounters
+    - CLINICAL_MANAGER can oversee but typically doesn't perform procedures
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(
@@ -151,6 +178,12 @@ class Practitioner(models.Model):
         related_name='practitioner'
     )
     display_name = models.CharField(max_length=255)
+    role_type = models.CharField(
+        max_length=20,
+        choices=PractitionerRoleChoices.choices,
+        default=PractitionerRoleChoices.PRACTITIONER,
+        help_text='Type of clinical role (practitioner, assistant, clinical_manager)'
+    )
     specialty = models.CharField(max_length=100, default='Dermatology')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -163,8 +196,9 @@ class Practitioner(models.Model):
         indexes = [
             models.Index(fields=['is_active'], name='idx_practitioner_active'),
             models.Index(fields=['display_name'], name='idx_practitioner_name'),
+            models.Index(fields=['role_type'], name='idx_practitioner_role'),
         ]
     
     def __str__(self):
-        return f"{self.display_name} ({self.specialty})"
+        return f"{self.display_name} ({self.get_role_type_display()})"
 

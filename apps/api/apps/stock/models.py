@@ -34,6 +34,7 @@ class StockMoveTypeChoices(models.TextChoices):
     PURCHASE_IN = 'purchase_in', _('Purchase In')
     ADJUSTMENT_IN = 'adjustment_in', _('Adjustment In')
     TRANSFER_IN = 'transfer_in', _('Transfer In')
+    REFUND_IN = 'refund_in', _('Refund In')  # Layer 3 B: Stock returned from refunded sale
     
     SALE_OUT = 'sale_out', _('Sale Out')
     ADJUSTMENT_OUT = 'adjustment_out', _('Adjustment Out')
@@ -213,6 +214,56 @@ class StockMove(models.Model):
     )
     
     # Reference to originating document (Sale, Adjustment, etc.)
+    sale = models.ForeignKey(
+        'sales.Sale',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_moves',
+        verbose_name=_('Sale'),
+        help_text=_('Sale that triggered this stock movement (if applicable)')
+    )
+    sale_line = models.ForeignKey(
+        'sales.SaleLine',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_moves',
+        verbose_name=_('Sale Line'),
+        help_text=_('Specific sale line that triggered this movement (if applicable)')
+    )
+    
+    # Layer 3 B: Refund tracking - link reversal moves to original OUT moves
+    reversed_move = models.OneToOneField(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reversal',
+        verbose_name=_('Reversed Move'),
+        help_text=_('For REFUND_IN moves: the original SALE_OUT move being reversed')
+    )
+    
+    # Layer 3 C: Partial Refund tracking
+    refund = models.ForeignKey(
+        'sales.SaleRefund',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='stock_moves',
+        verbose_name=_('Refund'),
+        help_text=_('Partial refund that generated this stock movement')
+    )
+    source_move = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='partial_reversals',
+        verbose_name=_('Source Move'),
+        help_text=_('Original SALE_OUT move being partially reversed (for partial refunds)')
+    )
+    
     reference_type = models.CharField(
         _('Reference Type'),
         max_length=50,
@@ -237,6 +288,23 @@ class StockMove(models.Model):
         verbose_name=_('Created By')
     )
     
+    def save(self, *args, **kwargs):
+        """
+        Override save to enforce full_clean() validation.
+        
+        SECURITY: Prevents admin bypass of business rules.
+        StockMove should be immutable after creation (audit trail).
+        """
+        if not kwargs.pop('skip_validation', False):
+            # Enforce immutability: no updates allowed (check if record already exists in DB)
+            if not self._state.adding:
+                raise ValidationError(
+                    'StockMove is immutable. Cannot update existing stock moves. '
+                    'Create a new adjustment move instead.'
+                )
+            self.full_clean()
+        super().save(*args, **kwargs)
+    
     class Meta:
         db_table = 'stock_moves'
         ordering = ['-created_at']
@@ -247,6 +315,13 @@ class StockMove(models.Model):
                 check=~models.Q(quantity=0),
                 name='stock_move_quantity_non_zero'
             ),
+            # Layer 3 C: Prevent duplicate partial refund moves
+            models.UniqueConstraint(
+                fields=['refund', 'source_move'],
+                condition=models.Q(refund__isnull=False, source_move__isnull=False),
+                name='uq_stockmove_refund_source_move',
+                violation_error_message='Duplicate stock move for refund and source move combination'
+            ),
         ]
         indexes = [
             models.Index(fields=['product', '-created_at'], name='idx_move_product'),
@@ -254,6 +329,11 @@ class StockMove(models.Model):
             models.Index(fields=['batch', '-created_at'], name='idx_move_batch'),
             models.Index(fields=['move_type', '-created_at'], name='idx_move_type'),
             models.Index(fields=['reference_type', 'reference_id'], name='idx_move_reference'),
+            models.Index(fields=['sale'], name='idx_stock_move_sale'),
+            models.Index(fields=['sale_line'], name='idx_stock_move_sale_line'),
+            models.Index(fields=['reversed_move'], name='idx_stock_move_reversed'),  # Layer 3 B
+            models.Index(fields=['refund', '-created_at'], name='idx_stock_move_refund'),  # Layer 3 C
+            models.Index(fields=['source_move'], name='idx_stock_move_source'),  # Layer 3 C
         ]
     
     def __str__(self):

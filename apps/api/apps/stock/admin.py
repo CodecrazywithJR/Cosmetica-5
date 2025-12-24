@@ -58,6 +58,31 @@ class StockMoveAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    def has_change_permission(self, request, obj=None):
+        """
+        StockMove is immutable - prevent all edits.
+        
+        SECURITY: Stock moves are audit trail and cannot be modified.
+        Only superuser can view, nobody can edit.
+        """
+        return False  # Nobody can edit, not even superuser
+    
+    def has_delete_permission(self, request, obj=None):
+        """
+        Prevent deletion of stock moves.
+        Only superuser can delete (for data cleanup only).
+        """
+        return request.user.is_superuser
+    
+    def save_model(self, request, obj, form, change):
+        """
+        Enforce full_clean() validation.
+        
+        SECURITY: Prevents admin bypass. Should never be called due to has_change_permission.
+        """
+        obj.full_clean()
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(StockOnHand)

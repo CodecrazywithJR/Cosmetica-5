@@ -1,0 +1,86 @@
+{
+  "encounter": {
+    "title": "Детали консультации",
+    "status": {
+      "draft": "Черновик",
+      "finalized": "Завершено",
+      "cancelled": "Отменено"
+    },
+    "type": {
+      "medical_consult": "Мед. консультация",
+      "cosmetic_consult": "Косметол. консультация",
+      "follow_up": "Повторный приём",
+      "aesthetic_procedure": "Эстетическая процедура"
+    }
+  },
+  "sections": {
+    "patientInfo": "Информация о пациенте",
+    "encounterInfo": "Информация о консультации",
+    "treatments": "Процедуры"
+  },
+  "patientLabels": {
+    "name": "Имя",
+    "email": "Email",
+    "phone": "Телефон",
+    "dateOfBirth": "Дата рождения"
+  },
+  "encounterLabels": {
+    "practitioner": "Специалист",
+    "type": "Тип",
+    "date": "Дата",
+    "status": "Статус",
+    "chiefComplaint": "Главная жалоба",
+    "assessment": "Оценка",
+    "plan": "План лечения"
+  },
+  "treatmentLabels": {
+    "treatment": "Процедура",
+    "quantity": "Количество",
+    "unitPrice": "Цена за ед.",
+    "total": "Итого",
+    "notes": "Примечания"
+  },
+  "actions": {
+    "addTreatment": "Добавить процедуру",
+    "finalize": "Завершить консультацию",
+    "generateProposal": "Создать предложение",
+    "back": "Назад",
+    "cancel": "Отменить",
+    "add": "Добавить",
+    "finalizing": "Завершение...",
+    "generating": "Создание...",
+    "adding": "Добавление..."
+  },
+  "modals": {
+    "addTreatmentTitle": "Добавить процедуру",
+    "treatmentIdLabel": "ID процедуры *",
+    "treatmentIdPlaceholder": "Введите UUID процедуры",
+    "quantityLabel": "Количество *",
+    "unitPriceLabel": "Цена за единицу (опционально)",
+    "unitPricePlaceholder": "Оставьте пустым для цены по умолчанию",
+    "notesLabel": "Примечания (опционально)",
+    "notesPlaceholder": "Дополнительные примечания об этой процедуре",
+    "finalizeTitle": "Завершить консультацию",
+    "finalizeWarning": "Вы уверены, что хотите завершить эту консультацию?",
+    "finalizeDescription": "После завершения консультация станет неизменяемой. Вы не сможете добавлять или удалять процедуры.",
+    "finalizeIrreversible": "Это действие необратимо.",
+    "confirmFinalize": "Да, завершить консультацию"
+  },
+  "empty": {
+    "noTreatments": "Процедуры ещё не добавлены"
+  },
+  "messages": {
+    "proposalGenerated": "Предложение успешно создано. ID:",
+    "mustAddTreatments": "Добавьте хотя бы одну процедуру перед завершением консультации"
+  },
+  "errors": {
+    "loadingFailed": "Ошибка загрузки консультации",
+    "notFound": "Консультация не найдена",
+    "addingTreatmentFailed": "Не удалось добавить процедуру",
+    "finalizingFailed": "Не удалось завершить консультацию",
+    "generatingProposalFailed": "Не удалось создать предложение"
+  },
+  "loading": {
+    "encounter": "Загрузка консультации..."
+  }
+}

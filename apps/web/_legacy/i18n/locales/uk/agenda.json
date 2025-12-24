@@ -1,0 +1,49 @@
+{
+  "title": "Розклад",
+  "filters": {
+    "date": "Дата",
+    "status": "Статус",
+    "allStatuses": "Всі статуси"
+  },
+  "appointment": {
+    "status": {
+      "scheduled": "Заплановано",
+      "confirmed": "Підтверджено",
+      "checked_in": "Прибув",
+      "completed": "Завершено",
+      "cancelled": "Скасовано",
+      "no_show": "Не з'явився"
+    },
+    "type": {
+      "medical_consult": "Мед. консультація",
+      "cosmetic_consult": "Косметол. консультація",
+      "follow_up": "Повторний прийом",
+      "aesthetic_procedure": "Естетична процедура"
+    }
+  },
+  "table": {
+    "time": "Час",
+    "patient": "Пацієнт",
+    "practitioner": "Спеціаліст",
+    "type": "Тип",
+    "status": "Статус",
+    "actions": "Дії"
+  },
+  "actions": {
+    "confirm": "Підтвердити",
+    "checkIn": "Відмітити прибуття",
+    "complete": "Завершити",
+    "cancel": "Скасувати"
+  },
+  "empty": {
+    "noAppointments": "Немає записів на",
+    "noResults": "Записи не знайдено"
+  },
+  "summary": {
+    "totalAppointments": "Всього записів"
+  },
+  "errors": {
+    "loadingFailed": "Помилка завантаження записів",
+    "updateFailed": "Помилка оновлення статусу"
+  }
+}

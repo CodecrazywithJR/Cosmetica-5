@@ -304,6 +304,137 @@ GET /api/v1/appointments/ # → 200 OK
 
 ---
 
+## 🏛️ Legal and Fiscal Rules – Deferred by Design
+
+### Context
+
+The clinic is located in **France** and will need to issue legal invoices compliant with French regulations in the future. However, fiscal logic is **explicitly deferred** to avoid blocking current development.
+
+### What IS Implemented (2025-12-22)
+
+✅ **Legal Entity Master Data** (`apps.legal.models.LegalEntity`):
+- Legal identification (raison sociale, nom commercial)
+- Address fields (required for future invoices)
+- French business identifiers (SIREN, SIRET, VAT number) as nullable fields
+- Operational settings (currency EUR, timezone Europe/Paris)
+- Relationship: `Sale.legal_entity` (ForeignKey, required)
+
+**Purpose**: Single source of truth for "who issues the document"
+
+### What is EXPLICITLY Not Implemented
+
+❌ **Fiscal Calculation Rules**:
+- TVA/VAT rates (20%, 10%, 5.5%, 0%)
+- Tax exemptions for medical services (Article 261-4 CGI)
+- Fiscal rate management by product/service type
+
+❌ **Invoice Numbering Rules**:
+- Sequential chronological numbering
+- Gap detection and validation
+- Fiscal year reset logic
+
+❌ **Legal Invoice Generation**:
+- PDF templates with legally required fields
+- Invoice line items with TVA breakdown
+- Total HT, TVA, TTC calculation
+- Archiving for 10 years
+
+❌ **French Compliance**:
+- Electronic invoicing (Chorus Pro integration)
+- Fiscal declarations (TVA, annual reports)
+- Professional status validation
+- Medical exemption eligibility checks
+
+### Design Decision
+
+**Rationale**: Separate "legal fact" (who issues) from "fiscal behavior" (how to calculate taxes).
+
+**Benefits**:
+1. **No Blocking**: Clinical and sales domains can advance without waiting for complex fiscal implementation
+2. **Clean Architecture**: Legal entity data model separated from fiscal calculation engine
+3. **Flexibility**: Can implement French fiscal rules when accountant requirements are clarified
+4. **Prevent Refactoring**: Sale → LegalEntity relationship established now (avoids touching 1000+ sales later)
+
+### When Fiscal Rules WILL Be Implemented
+
+**Phase 2: Fiscal Logic** (future work, estimated 2-3 weeks):
+- Create `apps.fiscal` module
+- Implement `TaxRate` model with date-based rates
+- Implement `TaxExemption` model with medical service rules
+- Build `TaxCalculator` service with unit tests
+- **Prerequisite**: Accountant meeting to clarify exemptions
+
+**Phase 3: Legal Invoicing** (future work, estimated 3-4 weeks):
+- Create `apps.invoicing` module
+- Implement `InvoiceSequence` with gap detection
+- Implement `Invoice` model with legally required fields
+- Build PDF generator with approved template
+- **Prerequisite**: Phase 2 complete + template design approval
+
+### Documentation References
+
+- **ADR-002**: `docs/decisions/ADR-002-legal-entity-minimal.md` (full architectural decision)
+- **LEGAL_READINESS.md**: Implementation guide explaining what IS and IS NOT ready
+- **STABILITY.md**: `docs/STABILITY.md` (Legal Layer section)
+- **PROJECT_DECISIONS.md**: `docs/PROJECT_DECISIONS.md` (Currency Strategy, Data Immutability)
+
+### Business Rule Summary
+
+**Current State**:
+- Every sale MUST reference a legal entity (enforced at DB level)
+- Legal entity data can be managed via Django Admin
+- NO fiscal calculations performed (intentional)
+
+**Future State** (when Phase 2/3 implemented):
+- Sales will generate legal invoices with TVA breakdown
+- Invoice numbers will be sequential and chronological
+- Medical services MAY be exempt from TVA (based on accountant input)
+- Invoices will be archived for 10 years (French legal requirement)
+
+---
+
+## 💰 Currency and Financial Data Integrity
+
+### Currency Snapshot Pattern
+
+**Implementation**: All financial models (Proposal, Sale, Refund) include a `currency` field that captures the currency at transaction time.
+
+**Why Snapshot Instead of Foreign Key?**
+
+1. **Immutability**: Historical records must preserve currency at time of transaction
+2. **Audit Trail**: Cannot be changed retroactively by changing legal entity configuration
+3. **Data Independence**: Future currency changes don't cascade to past transactions
+4. **Legal Compliance**: Financial records must be tamper-proof
+
+**Example**:
+```python
+class Sale(models.Model):
+    legal_entity = models.ForeignKey(LegalEntity, on_delete=models.PROTECT)
+    currency = models.CharField(max_length=3, default='EUR')  # Snapshot
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    def save(self, *args, **kwargs):
+        if not self.currency:
+            self.currency = self.legal_entity.currency  # Capture at creation time
+        super().save(*args, **kwargs)
+```
+
+**Current Implementation**:
+- ✅ Currency field exists in Proposal, Sale, Refund models
+- ✅ Default currency: EUR (system operates in France)
+- ✅ Currency is immutable after record creation
+- ✅ All financial calculations use Decimal for precision
+- ❌ Multi-currency NOT supported (single-currency system: EUR only)
+
+**Future Considerations** (NOT implemented):
+- If multi-currency is activated, exchange rate would be stored alongside currency
+- Base currency conversion would be required for aggregated reporting
+- Currency validation would be added to API serializers
+
+**See**: `docs/PROJECT_DECISIONS.md` - Currency Strategy for full architectural decision and rationale
+
+---
+
 **¡Implementación Completa! 🎉**
 
 El backend ahora garantiza todas las reglas de negocio de Capa 1 sin depender del frontend.

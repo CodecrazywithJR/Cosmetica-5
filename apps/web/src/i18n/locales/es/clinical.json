@@ -1,0 +1,86 @@
+{
+  "encounter": {
+    "title": "Detalles de la consulta",
+    "status": {
+      "draft": "Borrador",
+      "finalized": "Finalizado",
+      "cancelled": "Cancelado"
+    },
+    "type": {
+      "medical_consult": "Consulta médica",
+      "cosmetic_consult": "Consulta cosmética",
+      "follow_up": "Seguimiento",
+      "aesthetic_procedure": "Procedimiento estético"
+    }
+  },
+  "sections": {
+    "patientInfo": "Información del paciente",
+    "encounterInfo": "Información de la consulta",
+    "treatments": "Tratamientos"
+  },
+  "patientLabels": {
+    "name": "Nombre",
+    "email": "Email",
+    "phone": "Teléfono",
+    "dateOfBirth": "Fecha de nacimiento"
+  },
+  "encounterLabels": {
+    "practitioner": "Profesional",
+    "type": "Tipo",
+    "date": "Fecha",
+    "status": "Estado",
+    "chiefComplaint": "Motivo principal",
+    "assessment": "Evaluación",
+    "plan": "Plan de tratamiento"
+  },
+  "treatmentLabels": {
+    "treatment": "Tratamiento",
+    "quantity": "Cantidad",
+    "unitPrice": "Precio unitario",
+    "total": "Total",
+    "notes": "Notas"
+  },
+  "actions": {
+    "addTreatment": "Agregar tratamiento",
+    "finalize": "Finalizar consulta",
+    "generateProposal": "Generar propuesta",
+    "back": "Atrás",
+    "cancel": "Cancelar",
+    "add": "Agregar",
+    "finalizing": "Finalizando...",
+    "generating": "Generando...",
+    "adding": "Agregando..."
+  },
+  "modals": {
+    "addTreatmentTitle": "Agregar tratamiento",
+    "treatmentIdLabel": "ID del tratamiento *",
+    "treatmentIdPlaceholder": "Ingrese el UUID del tratamiento",
+    "quantityLabel": "Cantidad *",
+    "unitPriceLabel": "Precio unitario (opcional)",
+    "unitPricePlaceholder": "Dejar vacío para precio predeterminado",
+    "notesLabel": "Notas (opcional)",
+    "notesPlaceholder": "Notas adicionales sobre este tratamiento",
+    "finalizeTitle": "Finalizar consulta",
+    "finalizeWarning": "¿Está seguro de que desea finalizar esta consulta?",
+    "finalizeDescription": "Una vez finalizada, la consulta será inmutable. No podrá agregar ni eliminar tratamientos.",
+    "finalizeIrreversible": "Esta acción es irreversible.",
+    "confirmFinalize": "Sí, finalizar consulta"
+  },
+  "empty": {
+    "noTreatments": "Aún no se han agregado tratamientos"
+  },
+  "messages": {
+    "proposalGenerated": "Propuesta generada exitosamente. ID:",
+    "mustAddTreatments": "Agregue al menos un tratamiento antes de finalizar la consulta"
+  },
+  "errors": {
+    "loadingFailed": "Error al cargar la consulta",
+    "notFound": "Consulta no encontrada",
+    "addingTreatmentFailed": "No se pudo agregar el tratamiento",
+    "finalizingFailed": "No se pudo finalizar la consulta",
+    "generatingProposalFailed": "No se pudo generar la propuesta"
+  },
+  "loading": {
+    "encounter": "Cargando consulta..."
+  }
+}

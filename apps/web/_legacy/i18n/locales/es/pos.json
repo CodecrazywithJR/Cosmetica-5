@@ -1,0 +1,73 @@
+{
+  "title": "Propuestas",
+  "filters": {
+    "status": "Estado",
+    "allStatuses": "Todos los estados"
+  },
+  "proposal": {
+    "status": {
+      "draft": "Borrador",
+      "converted": "Convertido",
+      "cancelled": "Cancelado"
+    }
+  },
+  "sale": {
+    "status": {
+      "draft": "Borrador",
+      "paid": "Pagado",
+      "refunded": "Reembolsado"
+    }
+  },
+  "table": {
+    "date": "Fecha",
+    "patient": "Paciente",
+    "practitioner": "Profesional",
+    "items": "Artículos",
+    "total": "Total",
+    "status": "Estado",
+    "actions": "Acciones"
+  },
+  "labels": {
+    "quantity": "Cantidad",
+    "unitPrice": "Precio unitario",
+    "subtotal": "Subtotal",
+    "lineTotal": "Total de línea",
+    "totalAmount": "Monto total",
+    "currency": "Moneda",
+    "items_one": "{{count}} artículo",
+    "items_other": "{{count}} artículos"
+  },
+  "actions": {
+    "createSale": "Crear venta",
+    "viewSale": "Ver venta",
+    "cancel": "Cancelar",
+    "back": "Atrás",
+    "converting": "Convirtiendo...",
+    "cancelling": "Cancelando..."
+  },
+  "modals": {
+    "convertTitle": "Convertir propuesta en venta",
+    "convertDescription": "Esta acción creará un registro de venta oficial basado en esta propuesta.",
+    "legalEntityLabel": "ID de entidad legal *",
+    "legalEntityPlaceholder": "Ingrese el UUID de la entidad legal",
+    "legalEntityHelp": "Este es el UUID de la entidad legal que emitirá la venta",
+    "cancelTitle": "Cancelar propuesta",
+    "cancelDescription": "Indique el motivo de la cancelación de esta propuesta. Esta acción es irreversible.",
+    "cancellationReasonLabel": "Motivo de cancelación *",
+    "cancellationReasonPlaceholder": "Explique por qué se cancela esta propuesta",
+    "confirmCancel": "Cancelar propuesta"
+  },
+  "empty": {
+    "noProposals": "No se encontraron propuestas",
+    "noResults": "No hay resultados para el filtro seleccionado"
+  },
+  "summary": {
+    "totalProposals": "Total de propuestas"
+  },
+  "errors": {
+    "loadingFailed": "Error al cargar propuestas",
+    "convertFailed": "No se pudo convertir la propuesta",
+    "cancelFailed": "No se pudo cancelar la propuesta",
+    "requiredField": "Este campo es obligatorio"
+  }
+}

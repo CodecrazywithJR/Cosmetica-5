@@ -7,10 +7,10 @@ from datetime import datetime, timedelta
 from django.db import connection
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .serializers import SystemDiagnosticsSerializer
+from .serializers import SystemDiagnosticsSerializer, UserProfileSerializer
 
 try:
     import redis
@@ -347,3 +347,49 @@ class DiagnosticsView(APIView):
         # For now, return empty list
         # In future: integrate with logging backend (e.g., Sentry, CloudWatch)
         return []
+
+
+class CurrentUserView(APIView):
+    """
+    Current authenticated user profile endpoint.
+    
+    GET /api/auth/me/ - Returns profile of the authenticated user.
+    
+    This endpoint is the contract between backend authentication and frontend UI:
+    - Frontend calls this after successful JWT login to get user details
+    - Returns user ID, email, active status, and roles array
+    - Frontend uses roles to determine UI permissions (which screens to show)
+    
+    Security:
+    - Requires valid JWT access token (IsAuthenticated)
+    - Backend remains the authorization authority (frontend only improves UX)
+    - No sensitive data is exposed (no password hash, no PII beyond email)
+    
+    Response format:
+    {
+        "id": "uuid",
+        "email": "user@example.com",
+        "is_active": true,
+        "roles": ["admin", "practitioner"]
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Return current user profile with roles."""
+        user = request.user
+        
+        # Get user roles from UserRole relationship
+        roles = list(user.user_roles.values_list('role__name', flat=True))
+        
+        # Prepare profile data
+        profile_data = {
+            'id': user.id,
+            'email': user.email,
+            'is_active': user.is_active,
+            'roles': roles,
+        }
+        
+        # Serialize and return
+        serializer = UserProfileSerializer(profile_data)
+        return Response(serializer.data, status=status.HTTP_200_OK)

@@ -1,0 +1,49 @@
+{
+  "title": "Agenda",
+  "filters": {
+    "date": "Fecha",
+    "status": "Estado",
+    "allStatuses": "Todos los estados"
+  },
+  "appointment": {
+    "status": {
+      "scheduled": "Programado",
+      "confirmed": "Confirmado",
+      "checked_in": "Llegó",
+      "completed": "Completado",
+      "cancelled": "Cancelado",
+      "no_show": "No se presentó"
+    },
+    "type": {
+      "medical_consult": "Consulta médica",
+      "cosmetic_consult": "Consulta cosmética",
+      "follow_up": "Seguimiento",
+      "aesthetic_procedure": "Procedimiento estético"
+    }
+  },
+  "table": {
+    "time": "Hora",
+    "patient": "Paciente",
+    "practitioner": "Profesional",
+    "type": "Tipo",
+    "status": "Estado",
+    "actions": "Acciones"
+  },
+  "actions": {
+    "confirm": "Confirmar",
+    "checkIn": "Marcar llegada",
+    "complete": "Completar",
+    "cancel": "Cancelar"
+  },
+  "empty": {
+    "noAppointments": "No hay citas para",
+    "noResults": "No se encontraron citas"
+  },
+  "summary": {
+    "totalAppointments": "Total de citas"
+  },
+  "errors": {
+    "loadingFailed": "Error al cargar citas",
+    "updateFailed": "Error al actualizar estado"
+  }
+}

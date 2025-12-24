@@ -1,169 +1,226 @@
+/**
+ * Agenda Page
+ * Main calendar/list view of appointments (FIRST SCREEN)
+ * Fully internationalized with next-intl
+ * 
+ * This is the reference module for UX patterns across the ERP.
+ * See docs/UX_PATTERNS.md for replication guidelines.
+ */
+
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
-import { checkBackendHealth, getPatients, type Patient } from '@/lib/api';
+import AppLayout from '@/components/layout/app-layout';
+import { DataState } from '@/components/data-state';
+import { useAppointments, useUpdateAppointmentStatus } from '@/lib/hooks/use-appointments';
+import { useState, useMemo } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
+import { Appointment } from '@/lib/types';
+import { ENABLE_MOCK_DATA, getMockAppointments } from '@/lib/mock/agenda-mock';
 
-export default function DashboardPage() {
-  const t = useTranslations();
-  const [healthStatus, setHealthStatus] = useState<any>(null);
-  const [healthLoading, setHealthLoading] = useState(true);
-  const [healthError, setHealthError] = useState<string | null>(null);
-  
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [patientsLoading, setPatientsLoading] = useState(false);
-  const [patientsError, setPatientsError] = useState<string | null>(null);
+export default function AgendaPage() {
+  const t = useTranslations('agenda');
+  const tCommon = useTranslations('common');
+  const locale = useLocale();
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
+  const [statusFilter, setStatusFilter] = useState<string>('');
 
-  // Check backend health on mount
-  useEffect(() => {
-    async function checkHealth() {
-      try {
-        setHealthLoading(true);
-        const status = await checkBackendHealth();
-        setHealthStatus(status);
-        setHealthError(null);
-      } catch (error: any) {
-        setHealthError(error.message || 'Connection failed');
-        setHealthStatus(null);
-      } finally {
-        setHealthLoading(false);
-      }
+  const { data, isLoading, error } = useAppointments({
+    date: selectedDate,
+    status: statusFilter || undefined,
+  });
+
+  const updateStatus = useUpdateAppointmentStatus();
+
+  // DEV-ONLY: Use mock data when backend returns empty array
+  // This allows visual verification of the layout without real data
+  // TODO: Remove this when backend provides real data
+  const appointments = useMemo(() => {
+    if (error || isLoading) return data?.results || [];
+    const realData = data?.results || [];
+    if (realData.length === 0 && ENABLE_MOCK_DATA) {
+      return getMockAppointments(selectedDate);
     }
-    checkHealth();
-  }, []);
+    return realData;
+  }, [data, error, isLoading, selectedDate]);
 
-  // Load patients if backend is healthy
-  useEffect(() => {
-    async function loadPatients() {
-      if (!healthStatus || healthStatus.status !== 'ok') return;
-      
-      try {
-        setPatientsLoading(true);
-        const data = await getPatients({ page: 1 });
-        setPatients(data.results || []);
-        setPatientsError(null);
-      } catch (error: any) {
-        setPatientsError(error.message || 'Failed to load patients');
-      } finally {
-        setPatientsLoading(false);
-      }
-    }
-    loadPatients();
-  }, [healthStatus]);
+  const isEmpty = appointments.length === 0;
+
+  const handleStatusChange = (id: string, status: Appointment['status']) => {
+    updateStatus.mutate({ id, status });
+  };
+
+  // Date formatter using current language
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
+    [locale]
+  );
+
+  // Time formatter using current language
+  const timeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    [locale]
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">
-            {t('app.title')}
-          </h1>
-          <p className="text-gray-600">{t('app.subtitle')}</p>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Backend Health Status */}
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Backend Connection Status</h2>
-          
-          {healthLoading && (
-            <div className="flex items-center text-blue-600">
-              <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              {t('health.checking')}
-            </div>
-          )}
-
-          {healthError && (
-            <div className="bg-red-50 border border-red-200 rounded p-4">
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-                <span className="text-red-700 font-medium">{t('health.disconnected')}</span>
-              </div>
-              <p className="text-red-600 text-sm mt-2">{healthError}</p>
-            </div>
-          )}
-
-          {healthStatus && (
-            <div className="bg-green-50 border border-green-200 rounded p-4">
-              <div className="flex items-center mb-3">
-                <svg className="h-5 w-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <span className="text-green-700 font-medium">{t('health.connected')}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-600">API Status:</span>
-                  <span className="ml-2 font-semibold text-green-700">{healthStatus.status}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">{t('health.database')}:</span>
-                  <span className="ml-2 font-semibold text-green-700">{healthStatus.database}</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">{t('health.redis')}:</span>
-                  <span className="ml-2 font-semibold text-green-700">{healthStatus.redis}</span>
-                </div>
-              </div>
-            </div>
-          )}
+    <AppLayout>
+      <div>
+        {/* Page Header */}
+        <div className="page-header">
+          <h1>{t('title')}</h1>
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="form-group"
+              style={{ marginBottom: 0, width: 'auto', padding: '8px 12px' }}
+              aria-label={t('filters.date')}
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid var(--gray-300)',
+                borderRadius: '6px',
+              }}
+              aria-label={t('filters.status')}
+            >
+              <option value="">{t('filters.allStatuses')}</option>
+              <option value="scheduled">{t('appointment.status.scheduled')}</option>
+              <option value="confirmed">{t('appointment.status.confirmed')}</option>
+              <option value="checked_in">{t('appointment.status.checked_in')}</option>
+              <option value="completed">{t('appointment.status.completed')}</option>
+              <option value="cancelled">{t('appointment.status.cancelled')}</option>
+              <option value="no_show">{t('appointment.status.no_show')}</option>
+            </select>
+          </div>
         </div>
 
-        {/* Patients List */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">{t('patients.list')}</h2>
-          
-          {patientsLoading && (
-            <div className="text-gray-600">{t('common.loading')}</div>
-          )}
-
-          {patientsError && (
-            <div className="bg-red-50 border border-red-200 rounded p-4 text-red-700">
-              {patientsError}
-            </div>
-          )}
-
-          {patients.length === 0 && !patientsLoading && !patientsError && (
-            <div className="text-gray-500 text-center py-8">
-              {t('patients.no_patients')}
-            </div>
-          )}
-
-          {patients.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Age</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+        {/* Data State Management */}
+        <DataState
+          isLoading={isLoading}
+          error={error}
+          isEmpty={isEmpty}
+          emptyMessage={t('emptyState.title')}
+          emptyDescription={t('emptyState.description')}
+          emptyAction={{
+            label: t('emptyState.action'),
+            onClick: undefined, // No functionality yet - will be implemented later
+          }}
+          loadingMessage={tCommon('loading')}
+          errorTitle={t('errors.title')}
+          errorDescription={t('errors.description')}
+        >
+          {/* Success State - Data Table */}
+          <div className="card">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>{t('table.time')}</th>
+                  <th>{t('table.patient')}</th>
+                  <th>{t('table.practitioner')}</th>
+                  <th>{t('table.type')}</th>
+                  <th>{t('table.status')}</th>
+                  <th>{t('table.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {appointments.map((apt) => (
+                  <tr key={apt.id}>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>
+                        {timeFormatter.format(new Date(apt.scheduled_start))}
+                      </div>
+                      {apt.scheduled_end && (
+                        <div style={{ fontSize: '12px', color: 'var(--gray-600)' }}>
+                          {timeFormatter.format(new Date(apt.scheduled_end))}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{apt.patient.full_name}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--gray-600)' }}>
+                        {apt.patient.email || apt.patient.phone || '—'}
+                      </div>
+                    </td>
+                    <td>{apt.practitioner?.display_name || '—'}</td>
+                    <td>
+                      <span style={{ fontSize: '13px', color: 'var(--gray-700)' }}>
+                        {apt.source}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge badge-${apt.status}`}>
+                        {t(`appointment.status.${apt.status}`)}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="flex gap-2">
+                        {apt.status === 'scheduled' && (
+                          <button
+                            onClick={() => handleStatusChange(apt.id, 'confirmed')}
+                            className="btn-secondary btn-sm"
+                            disabled={updateStatus.isPending}
+                          >
+                            {t('actions.confirm')}
+                          </button>
+                        )}
+                        {apt.status === 'confirmed' && (
+                          <button
+                            onClick={() => handleStatusChange(apt.id, 'checked_in')}
+                            className="btn-primary btn-sm"
+                            disabled={updateStatus.isPending}
+                          >
+                            {t('actions.checkIn')}
+                          </button>
+                        )}
+                        {apt.status === 'checked_in' && (
+                          <button
+                            onClick={() => handleStatusChange(apt.id, 'completed')}
+                            className="btn-primary btn-sm"
+                            disabled={updateStatus.isPending}
+                          >
+                            {t('actions.complete')}
+                          </button>
+                        )}
+                        {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
+                          <button
+                            onClick={() => handleStatusChange(apt.id, 'cancelled')}
+                            className="btn-secondary btn-sm"
+                            disabled={updateStatus.isPending}
+                            style={{ color: 'var(--error)' }}
+                          >
+                            {t('actions.cancel')}
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {patients.map((patient) => (
-                    <tr key={patient.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{patient.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{patient.full_name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{patient.age}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{patient.phone}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{patient.email}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary Footer */}
+          {appointments.length > 0 && (
+            <div style={{ marginTop: '16px', fontSize: '14px', color: 'var(--gray-600)' }}>
+              {t('summary.totalAppointments')}: {appointments.length}
             </div>
           )}
-        </div>
-      </main>
-    </div>
+        </DataState>
+      </div>
+    </AppLayout>
   );
 }

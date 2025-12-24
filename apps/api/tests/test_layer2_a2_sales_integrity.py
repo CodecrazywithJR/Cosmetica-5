@@ -19,7 +19,7 @@ from django.core.exceptions import ValidationError
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 from apps.sales.models import Sale, SaleLine, SaleStatusChoices
-from apps.patients.models import Patient
+from apps.clinical.models import Patient
 from apps.clinical.models import Appointment
 from django.contrib.auth import get_user_model
 

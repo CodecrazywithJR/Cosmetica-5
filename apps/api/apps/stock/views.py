@@ -25,6 +25,7 @@ from .services import (
     InsufficientStockError,
     ExpiredBatchError,
 )
+from .permissions import IsClinicalOpsOrAdmin
 
 
 class StockLocationViewSet(viewsets.ModelViewSet):
@@ -32,7 +33,7 @@ class StockLocationViewSet(viewsets.ModelViewSet):
     
     queryset = StockLocation.objects.all()
     serializer_class = StockLocationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsClinicalOpsOrAdmin]
     filterset_fields = ['is_active', 'location_type']
     search_fields = ['name', 'code']
     ordering = ['name']
@@ -43,7 +44,7 @@ class StockBatchViewSet(viewsets.ModelViewSet):
     
     queryset = StockBatch.objects.select_related('product').all()
     serializer_class = StockBatchSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsClinicalOpsOrAdmin]
     filterset_fields = ['product']
     search_fields = ['batch_number', 'product__sku', 'product__name']
     ordering = ['expiry_date', 'batch_number']
@@ -96,7 +97,7 @@ class StockMoveViewSet(viewsets.ModelViewSet):
         'product', 'location', 'batch'
     ).all()
     serializer_class = StockMoveSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsClinicalOpsOrAdmin]
     filterset_fields = ['product', 'location', 'batch', 'move_type']
     search_fields = ['product__sku', 'product__name', 'reason']
     ordering = ['-created_at']
@@ -170,7 +171,7 @@ class StockOnHandViewSet(viewsets.ReadOnlyModelViewSet):
         'product', 'location', 'batch'
     ).all()
     serializer_class = StockOnHandSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsClinicalOpsOrAdmin]
     filterset_fields = ['product', 'location', 'batch']
     search_fields = ['product__sku', 'product__name', 'batch__batch_number']
     ordering = ['product', 'location', 'batch']

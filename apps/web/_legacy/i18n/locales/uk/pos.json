@@ -1,0 +1,75 @@
+{
+  "title": "Пропозиції",
+  "filters": {
+    "status": "Статус",
+    "allStatuses": "Всі статуси"
+  },
+  "proposal": {
+    "status": {
+      "draft": "Чернетка",
+      "converted": "Перетворено",
+      "cancelled": "Скасовано"
+    }
+  },
+  "sale": {
+    "status": {
+      "draft": "Чернетка",
+      "paid": "Оплачено",
+      "refunded": "Повернуто"
+    }
+  },
+  "table": {
+    "date": "Дата",
+    "patient": "Пацієнт",
+    "practitioner": "Спеціаліст",
+    "items": "Елементи",
+    "total": "Разом",
+    "status": "Статус",
+    "actions": "Дії"
+  },
+  "labels": {
+    "quantity": "Кількість",
+    "unitPrice": "Ціна за од.",
+    "subtotal": "Проміжний підсумок",
+    "lineTotal": "Разом по рядку",
+    "totalAmount": "Загальна сума",
+    "currency": "Валюта",
+    "items_one": "{{count}} елемент",
+    "items_few": "{{count}} елементи",
+    "items_many": "{{count}} елементів",
+    "items_other": "{{count}} елементів"
+  },
+  "actions": {
+    "createSale": "Створити продаж",
+    "viewSale": "Переглянути продаж",
+    "cancel": "Скасувати",
+    "back": "Назад",
+    "converting": "Перетворення...",
+    "cancelling": "Скасування..."
+  },
+  "modals": {
+    "convertTitle": "Перетворити пропозицію на продаж",
+    "convertDescription": "Ця дія створить офіційний запис про продаж на основі цієї пропозиції.",
+    "legalEntityLabel": "ID юридичної особи *",
+    "legalEntityPlaceholder": "Введіть UUID юридичної особи",
+    "legalEntityHelp": "Це UUID юридичної особи, яка виставить продаж",
+    "cancelTitle": "Скасувати пропозицію",
+    "cancelDescription": "Вкажіть причину скасування цієї пропозиції. Ця дія незворотна.",
+    "cancellationReasonLabel": "Причина скасування *",
+    "cancellationReasonPlaceholder": "Поясніть, чому ця пропозиція скасовується",
+    "confirmCancel": "Скасувати пропозицію"
+  },
+  "empty": {
+    "noProposals": "Пропозиції не знайдені",
+    "noResults": "Немає результатів для вибраного фільтра"
+  },
+  "summary": {
+    "totalProposals": "Всього пропозицій"
+  },
+  "errors": {
+    "loadingFailed": "Помилка завантаження пропозицій",
+    "convertFailed": "Не вдалося перетворити пропозицію",
+    "cancelFailed": "Не вдалося скасувати пропозицію",
+    "requiredField": "Це поле обов'язкове для заповнення"
+  }
+}

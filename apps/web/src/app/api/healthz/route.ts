@@ -3,7 +3,7 @@
  * Checks backend connectivity.
  */
 import { NextResponse } from 'next/server';
-import { checkBackendHealth } from '@/lib/api';
+import { checkBackendHealth } from '@/lib/api-client';
 
 export async function GET() {
   try {

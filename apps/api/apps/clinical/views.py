@@ -3,6 +3,7 @@ Clinical viewsets for Patient and PatientGuardian.
 Based on API_CONTRACTS.md PAC section.
 """
 from rest_framework import viewsets, status
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, PermissionDenied
@@ -15,6 +16,9 @@ from apps.clinical.models import (
     Appointment,
     Consent,
     ClinicalPhoto,
+    Treatment,
+    EncounterTreatment,
+    ClinicalChargeProposal,
 )
 from apps.clinical.serializers import (
     PatientListSerializer,
@@ -23,11 +27,23 @@ from apps.clinical.serializers import (
     AppointmentListSerializer,
     AppointmentDetailSerializer,
     AppointmentWriteSerializer,
+    EncounterListSerializer,
+    EncounterDetailSerializer,
+    EncounterWriteSerializer,
+    TreatmentSerializer,
+)
+from apps.clinical.serializers_proposals import (
+    ClinicalChargeProposalListSerializer,
+    ClinicalChargeProposalDetailSerializer,
+    CreateSaleFromProposalSerializer,
 )
 from apps.clinical.permissions import (
     PatientPermission,
     GuardianPermission,
     AppointmentPermission,
+    TreatmentPermission,
+    EncounterPermission,
+    ClinicalChargeProposalPermission,
 )
 
 
@@ -1071,3 +1087,483 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     },
                     status=status.HTTP_200_OK
                 )
+
+
+# Patient Merge Views
+
+from apps.clinical.permissions import IsClinicalOpsOrAdmin
+from apps.clinical.services import merge_patients, get_merge_candidates, PatientMergeError
+from apps.clinical.serializers import (
+    MergeCandidateSerializer,
+    PatientMergeRequestSerializer,
+    PatientMergeResponseSerializer
+)
+
+
+class PatientMergeCandidatesView(APIView):
+    """
+    GET /api/v1/clinical/patients/{id}/merge-candidates
+    
+    Find potential duplicate patients for merging.
+    """
+    permission_classes = [IsClinicalOpsOrAdmin]
+    
+    def get(self, request, pk):
+        try:
+            patient = Patient.objects.get(id=pk, is_deleted=False)
+        except Patient.DoesNotExist:
+            return Response(
+                {'error': 'Patient not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        limit = int(request.query_params.get('limit', 20))
+        limit = min(max(limit, 1), 100)  # Clamp between 1-100
+        
+        candidates = get_merge_candidates(patient, limit=limit)
+        serializer = MergeCandidateSerializer(candidates, many=True)
+        
+        return Response(serializer.data)
+
+
+class PatientMergeView(APIView):
+    """
+    POST /api/v1/clinical/patients/merge
+    
+    Merge source patient into target patient.
+    
+    Body:
+    {
+        "source_patient_id": "...",
+        "target_patient_id": "...",
+        "strategy": "manual|phone_exact|email_exact|name_trgm",
+        "notes": "optional",
+        "evidence": {...}
+    }
+    """
+    permission_classes = [IsClinicalOpsOrAdmin]
+    
+    def post(self, request):
+        serializer = PatientMergeRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        data = serializer.validated_data
+        
+        try:
+            target_patient = merge_patients(
+                source_id=data['source_patient_id'],
+                target_id=data['target_patient_id'],
+                merged_by=request.user,
+                strategy=data.get('strategy', 'manual'),
+                notes=data.get('notes'),
+                evidence=data.get('evidence')
+            )
+            
+            # Get relations summary
+            from apps.clinical.services import _count_patient_relations
+            source_patient = Patient.objects.get(id=data['source_patient_id'])
+            moved_relations = _count_patient_relations(target_patient)
+            
+            # Get merge log
+            merge_log = target_patient.merge_target_logs.latest('merged_at')
+            
+            response_data = {
+                'target_patient_id': target_patient.id,
+                'moved_relations_summary': moved_relations,
+                'merge_log_id': merge_log.id
+            }
+            
+            response_serializer = PatientMergeResponseSerializer(response_data)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+            
+        except Patient.DoesNotExist:
+            return Response(
+                {'error': 'Source or target patient not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except PatientMergeError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(
+                "Unexpected error during patient merge",
+                exc_info=True,
+                extra={'user_id': str(request.user.id) if request.user else None}
+            )
+            return Response(
+                {'error': 'An unexpected error occurred during merge'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ============================================================================
+# Clinical Core v1: Encounter and Treatment ViewSets
+# ============================================================================
+
+class TreatmentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Treatment catalog.
+    
+    Endpoints:
+    - GET /api/v1/treatments/ - List all treatments (filtered by is_active)
+    - GET /api/v1/treatments/{id}/ - Get treatment detail
+    - POST /api/v1/treatments/ - Create treatment (Admin only)
+    - PATCH /api/v1/treatments/{id}/ - Update treatment (Admin only)
+    - DELETE /api/v1/treatments/{id}/ - Soft delete treatment (Admin only)
+    
+    Query parameters:
+    - ?include_inactive=true - Include inactive treatments (default: false)
+    - ?q=search_term - Search by name
+    """
+    queryset = Treatment.objects.all()
+    serializer_class = TreatmentSerializer
+    permission_classes = [TreatmentPermission]
+    
+    def get_queryset(self):
+        """Filter by is_active and search."""
+        queryset = Treatment.objects.all()
+        
+        # Filter by is_active (default: only active)
+        include_inactive = self.request.query_params.get('include_inactive', 'false').lower() == 'true'
+        if not include_inactive:
+            queryset = queryset.filter(is_active=True)
+        
+        # Search by name
+        q = self.request.query_params.get('q')
+        if q:
+            queryset = queryset.filter(name__icontains=q)
+        
+        return queryset.order_by('name')
+
+
+class EncounterViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Encounter (clinical visits).
+    
+    Endpoints:
+    - GET /api/v1/encounters/ - List encounters
+    - GET /api/v1/encounters/{id}/ - Get encounter detail
+    - POST /api/v1/encounters/ - Create encounter
+    - PATCH /api/v1/encounters/{id}/ - Update encounter
+    - DELETE /api/v1/encounters/{id}/ - Soft delete encounter
+    
+    Query parameters:
+    - ?patient_id=... - Filter by patient
+    - ?practitioner_id=... - Filter by practitioner
+    - ?status=draft|finalized|cancelled - Filter by status
+    - ?date_from=YYYY-MM-DD - Filter by occurred_at >= date_from
+    - ?date_to=YYYY-MM-DD - Filter by occurred_at <= date_to
+    """
+    permission_classes = [EncounterPermission]
+    
+    def get_queryset(self):
+        """Filter by patient, practitioner, status, date range."""
+        queryset = Encounter.objects.select_related('patient', 'practitioner', 'location')
+        queryset = queryset.prefetch_related('encounter_treatments__treatment')
+        queryset = queryset.filter(is_deleted=False)
+        
+        # Filter by patient
+        patient_id = self.request.query_params.get('patient_id')
+        if patient_id:
+            queryset = queryset.filter(patient_id=patient_id)
+        
+        # Filter by practitioner
+        practitioner_id = self.request.query_params.get('practitioner_id')
+        if practitioner_id:
+            queryset = queryset.filter(practitioner_id=practitioner_id)
+        
+        # Filter by status
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        
+        # Filter by date range
+        date_from = self.request.query_params.get('date_from')
+        if date_from:
+            queryset = queryset.filter(occurred_at__date__gte=date_from)
+        
+        date_to = self.request.query_params.get('date_to')
+        if date_to:
+            queryset = queryset.filter(occurred_at__date__lte=date_to)
+        
+        return queryset.order_by('-occurred_at')
+    
+    def get_serializer_class(self):
+        """Use different serializers for list/detail/write."""
+        if self.action == 'list':
+            return EncounterListSerializer
+        elif self.action == 'retrieve':
+            return EncounterDetailSerializer
+        else:  # create, update, partial_update
+            return EncounterWriteSerializer
+    
+    @action(detail=True, methods=['post'], url_path='generate-proposal')
+    def generate_proposal(self, request, pk=None):
+        """
+        POST /api/v1/clinical/encounters/{id}/generate-proposal/
+        
+        Generate a ClinicalChargeProposal from a finalized encounter.
+        
+        This is the EXPLICIT step before creating a Sale.
+        
+        Body:
+        {
+            "notes": "optional internal notes"
+        }
+        
+        Returns:
+        {
+            "proposal_id": "uuid",
+            "message": "Success message",
+            "total_amount": "Decimal",
+            "line_count": int
+        }
+        
+        Business Rules:
+        - Encounter must be FINALIZED
+        - One proposal per encounter (idempotency)
+        - Requires at least one treatment in encounter
+        """
+        from apps.clinical.services import generate_charge_proposal_from_encounter
+        
+        encounter = self.get_object()
+        notes = request.data.get('notes', '')
+        
+        # Generate proposal (validation happens in service)
+        try:
+            proposal = generate_charge_proposal_from_encounter(
+                encounter=encounter,
+                created_by=request.user,
+                notes=notes
+            )
+            
+            return Response({
+                'proposal_id': str(proposal.id),
+                'message': f"Charge proposal generated from encounter {encounter.id}",
+                'total_amount': str(proposal.total_amount),
+                'line_count': proposal.lines.count(),
+                'status': proposal.status
+            }, status=status.HTTP_201_CREATED)
+            
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def add_treatment(self, request, pk=None):
+        """
+        POST /api/v1/encounters/{id}/add_treatment/
+        
+        Add a treatment to an existing encounter.
+        
+        Body:
+        {
+            "treatment_id": "...",
+            "quantity": 1,
+            "unit_price": 100.00,  # optional
+            "notes": "..."         # optional
+        }
+        """
+        encounter = self.get_object()
+        
+        # Validate encounter status
+        if encounter.status != 'draft':
+            return Response(
+                {'error': 'Solo se pueden agregar tratamientos a encuentros en estado draft'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate request data
+        treatment_id = request.data.get('treatment_id')
+        quantity = request.data.get('quantity', 1)
+        unit_price = request.data.get('unit_price')
+        notes = request.data.get('notes', '')
+        
+        if not treatment_id:
+            return Response(
+                {'error': 'treatment_id es obligatorio'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            treatment = Treatment.objects.get(id=treatment_id)
+            if not treatment.is_active:
+                return Response(
+                    {'error': f"El tratamiento '{treatment.name}' está inactivo"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Treatment.DoesNotExist:
+            return Response(
+                {'error': 'Tratamiento no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Create EncounterTreatment
+        try:
+            with transaction.atomic():
+                encounter_treatment = EncounterTreatment.objects.create(
+                    encounter=encounter,
+                    treatment=treatment,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    notes=notes
+                )
+            
+            from apps.clinical.serializers import EncounterTreatmentSerializer
+            serializer = EncounterTreatmentSerializer(encounter_treatment)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except IntegrityError:
+            return Response(
+                {'error': 'Este tratamiento ya existe en el encuentro'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+# ============================================================================
+# Clinical → Sales Integration ViewSet (Fase 3)
+# ============================================================================
+
+class ClinicalChargeProposalViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for ClinicalChargeProposal (Clinical → Sales Integration).
+    
+    Endpoints:
+    - GET /api/v1/clinical/proposals/             - List proposals (with filters)
+    - GET /api/v1/clinical/proposals/{id}/        - Detail with nested lines
+    - POST /api/v1/clinical/proposals/{id}/create_sale/ - Convert proposal to sale
+    
+    Permissions:
+    - ClinicalOps/Practitioner: Generate proposals (via Encounter viewset)
+    - Reception: View proposals + convert to sale
+    - Admin: Full access
+    - Accounting: Read-only
+    - Marketing: No access
+    
+    Query params:
+    - ?status=draft|converted|cancelled - Filter by status
+    - ?patient={patient_id} - Filter by patient
+    - ?encounter={encounter_id} - Filter by encounter
+    """
+    permission_classes = [ClinicalChargeProposalPermission]
+    
+    def get_queryset(self):
+        """
+        Return proposals with optional filters.
+        
+        Query params:
+        - status: Filter by proposal status
+        - patient: Filter by patient ID
+        - encounter: Filter by encounter ID
+        """
+        from apps.clinical.models import ClinicalChargeProposal
+        
+        queryset = ClinicalChargeProposal.objects.select_related(
+            'patient',
+            'practitioner',
+            'encounter',
+            'converted_to_sale',
+            'created_by'
+        ).prefetch_related('lines')
+        
+        # Filter by status
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        
+        # Filter by patient
+        patient_id = self.request.query_params.get('patient')
+        if patient_id:
+            queryset = queryset.filter(patient_id=patient_id)
+        
+        # Filter by encounter
+        encounter_id = self.request.query_params.get('encounter')
+        if encounter_id:
+            queryset = queryset.filter(encounter_id=encounter_id)
+        
+        return queryset.order_by('-created_at')
+    
+    def get_serializer_class(self):
+        """Use different serializers for list vs detail."""
+        from apps.clinical.serializers_proposals import (
+            ClinicalChargeProposalListSerializer,
+            ClinicalChargeProposalDetailSerializer,
+            CreateSaleFromProposalSerializer
+        )
+        
+        if self.action == 'list':
+            return ClinicalChargeProposalListSerializer
+        elif self.action == 'create_sale':
+            return CreateSaleFromProposalSerializer
+        return ClinicalChargeProposalDetailSerializer
+    
+    @action(detail=True, methods=['post'], url_path='create-sale')
+    def create_sale(self, request, pk=None):
+        """
+        Convert proposal to Sale (draft status).
+        
+        POST /api/v1/clinical/proposals/{id}/create-sale/
+        
+        Body:
+        {
+            "legal_entity_id": "uuid",
+            "notes": "optional notes"
+        }
+        
+        Returns:
+        {
+            "sale_id": "uuid",
+            "message": "Success message"
+        }
+        """
+        from apps.clinical.services import create_sale_from_proposal
+        from apps.legal.models import LegalEntity
+        
+        proposal = self.get_object()
+        
+        # Validate input
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        legal_entity_id = serializer.validated_data['legal_entity_id']
+        notes = serializer.validated_data.get('notes', '')
+        
+        # Get legal entity
+        try:
+            legal_entity = LegalEntity.objects.get(id=legal_entity_id)
+        except LegalEntity.DoesNotExist:
+            return Response(
+                {'error': f"Legal entity {legal_entity_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Create sale from proposal
+        try:
+            sale = create_sale_from_proposal(
+                proposal=proposal,
+                created_by=request.user,
+                legal_entity=legal_entity,
+                notes=notes
+            )
+            
+            return Response({
+                'sale_id': str(sale.id),
+                'message': f"Proposal {proposal.id} converted to sale {sale.id}",
+                'sale_status': sale.status,
+                'sale_total': str(sale.total)
+            }, status=status.HTTP_201_CREATED)
+            
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )

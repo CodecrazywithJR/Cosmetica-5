@@ -116,7 +116,7 @@ class StockMoveSerializer(serializers.ModelSerializer):
             'is_inbound', 'is_outbound',
             'created_at', 'created_by'
         ]
-        read_only_fields = ['id', 'created_at', 'is_inbound', 'is_outbound']
+        read_only_fields = ['id', 'created_at', 'created_by', 'is_inbound', 'is_outbound']
     
     def validate(self, attrs):
         """Validate stock move business rules."""

@@ -10,8 +10,13 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from apps.core.observability.health import HealthzView, ReadyzView
 
 urlpatterns = [
+    # Health checks (no auth required)
+    path('healthz', HealthzView.as_view(), name='healthz'),
+    path('readyz', ReadyzView.as_view(), name='readyz'),
+    
     # Admin
     path('admin/', admin.site.urls),
     
@@ -20,14 +25,17 @@ urlpatterns = [
     
     # Private API (authentication required)
     path('api/', include('apps.core.urls')),  # Core API (healthz, auth)
-    path('api/patients/', include('apps.patients.urls')),
+    path('api/v1/', include('apps.authz.urls')),  # Authz API (practitioners)
+    path('api/v1/clinical/', include('apps.clinical.urls')),  # Clinical API (patients, appointments, encounters, treatments)
+    path('api/v1/clinical/', include('apps.encounters.api.urls_media')),  # Clinical Media API
     path('api/encounters/', include('apps.encounters.urls')),
     path('api/photos/', include('apps.photos.urls')),
     path('api/products/', include('apps.products.urls')),
     path('api/stock/', include('apps.stock.urls')),
     path('api/sales/', include('apps.sales.urls')),
+    path('api/v1/pos/', include('apps.pos.urls')),  # POS with fuzzy patient search
     path('api/integrations/', include('apps.integrations.urls')),
-    path('api/social/', include('apps.social.urls')),  # Social media
+    # path('api/social/', include('apps.social.urls')),  # Social media - DISABLED: AUTH_USER_MODEL issue
     
     # API Schema
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

@@ -4,12 +4,15 @@
     "subtitle": "Registros de Pacientes y POS Cosmética"
   },
   "nav": {
-    "dashboard": "Panel de Control",
+    "agenda": "Agenda",
     "patients": "Pacientes",
     "encounters": "Consultas",
-    "photos": "Fotos",
-    "products": "Productos",
-    "sales": "Ventas"
+    "proposals": "Propuestas",
+    "sales": "Ventas",
+    "admin": "Administración",
+    "actions": {
+      "logout": "Cerrar Sesión"
+    }
   },
   "common": {
     "loading": "Cargando...",
@@ -20,7 +23,9 @@
     "delete": "Eliminar",
     "edit": "Editar",
     "search": "Buscar",
-    "filter": "Filtrar"
+    "filter": "Filtrar",
+    "languageLabel": "Idioma",
+    "user": "Usuario"
   },
   "health": {
     "checking": "Verificando conexión con backend...",
@@ -37,5 +42,56 @@
     "new": "Nuevo Paciente",
     "search_placeholder": "Buscar por nombre, teléfono o email",
     "no_patients": "No se encontraron pacientes"
+  },
+  "agenda": {
+    "title": "Agenda",
+    "filters": {
+      "date": "Fecha",
+      "status": "Estado",
+      "allStatuses": "Todos los Estados"
+    },
+    "table": {
+      "time": "Hora",
+      "patient": "Paciente",
+      "practitioner": "Profesional",
+      "type": "Origen",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "appointment": {
+      "type": {
+        "consultation": "Consulta",
+        "follow_up": "Seguimiento",
+        "procedure": "Procedimiento"
+      },
+      "status": {
+        "scheduled": "Programado",
+        "confirmed": "Confirmado",
+        "checked_in": "Registrado",
+        "in_progress": "En Progreso",
+        "completed": "Completado",
+        "cancelled": "Cancelado",
+        "no_show": "No Asistió"
+      }
+    },
+    "actions": {
+      "confirm": "Confirmar",
+      "checkIn": "Registrar",
+      "complete": "Completar",
+      "cancel": "Cancelar"
+    },
+    "errors": {
+      "title": "No se pudo cargar la agenda",
+      "description": "Estamos teniendo problemas para conectar con el servidor. Por favor, verifica tu conexión a internet e intenta nuevamente.",
+      "loadingFailed": "Error al cargar citas"
+    },
+    "emptyState": {
+      "title": "No hay citas para este día",
+      "description": "No hay citas programadas para la fecha seleccionada. Las citas aparecerán aquí cuando sean creadas.",
+      "action": "Crear Nueva Cita"
+    },
+    "summary": {
+      "totalAppointments": "Total de citas"
+    }
   }
 }

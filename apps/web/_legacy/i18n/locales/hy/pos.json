@@ -1,0 +1,73 @@
+{
+  "title": "Առաջարկություններ",
+  "filters": {
+    "status": "Կարգավիճակ",
+    "allStatuses": "Բոլոր կարգավիճակները"
+  },
+  "proposal": {
+    "status": {
+      "draft": "Սևագիր",
+      "converted": "Փոխարկված",
+      "cancelled": "Չեղարկված"
+    }
+  },
+  "sale": {
+    "status": {
+      "draft": "Սևագիր",
+      "paid": "Վճարված",
+      "refunded": "Վերադարձված"
+    }
+  },
+  "table": {
+    "date": "Ամսաթիվ",
+    "patient": "Հիվանդ",
+    "practitioner": "Մասնագետ",
+    "items": "Տարրեր",
+    "total": "Ընդամենը",
+    "status": "Կարգավիճակ",
+    "actions": "Գործողություններ"
+  },
+  "labels": {
+    "quantity": "Քանակ",
+    "unitPrice": "Միավորի գինը",
+    "subtotal": "Միջանկյալ ընդամենը",
+    "lineTotal": "Տողի ընդամենը",
+    "totalAmount": "Ընդհանուր գումար",
+    "currency": "Արժույթ",
+    "items_one": "{{count}} տարր",
+    "items_other": "{{count}} տարրեր"
+  },
+  "actions": {
+    "createSale": "Ստեղծել վաճառք",
+    "viewSale": "Դիտել վաճառքը",
+    "cancel": "Չեղարկել",
+    "back": "Հետ",
+    "converting": "Փոխարկում...",
+    "cancelling": "Չեղարկում..."
+  },
+  "modals": {
+    "convertTitle": "Փոխարկել առաջարկությունը վաճառքի",
+    "convertDescription": "Այս գործողությունը կստեղծի պաշտոնական վաճառքի գրառում այս առաջարկության հիման վրա։",
+    "legalEntityLabel": "Իրավաբանական անձի ID *",
+    "legalEntityPlaceholder": "Մուտքագրեք իրավաբանական անձի UUID",
+    "legalEntityHelp": "Սա այն իրավաբանական անձի UUID-ն է, որը կարտադրի վաճառքը",
+    "cancelTitle": "Չեղարկել առաջարկությունը",
+    "cancelDescription": "Նշեք այս առաջարկության չեղարկման պատճառը։ Այս գործողությունը անդառնալի է։",
+    "cancellationReasonLabel": "Չեղարկման պատճառ *",
+    "cancellationReasonPlaceholder": "Բացատրեք, թե ինչու է այս առաջարկությունը չեղարկվում",
+    "confirmCancel": "Չեղարկել առաջարկությունը"
+  },
+  "empty": {
+    "noProposals": "Առաջարկություններ չեն գտնվել",
+    "noResults": "Ընտրված ֆիլտրի համար արդյունքներ չկան"
+  },
+  "summary": {
+    "totalProposals": "Ընդամենը առաջարկություններ"
+  },
+  "errors": {
+    "loadingFailed": "Առաջարկությունների բեռնման սխալ",
+    "convertFailed": "Չհաջողվեց փոխարկել առաջարկությունը",
+    "cancelFailed": "Չհաջողվեց չեղարկել առաջարկությունը",
+    "requiredField": "Այս դաշտը պարտադիր է"
+  }
+}

@@ -156,7 +156,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('patients', '__first__'),
+        # ('patients', '__first__'),  # REMOVED: patients app unified into clinical
         ('clinical', '0005_fix_clinicalphoto_index_name'),
     ]
 
@@ -180,7 +180,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
                 ('paid_at', models.DateTimeField(blank=True, null=True, verbose_name='Paid At')),
                 ('appointment', models.ForeignKey(blank=True, help_text='Optional appointment this sale is associated with', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='sales', to='clinical.appointment', verbose_name='Appointment')),
-                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='sales', to='patients.patient', verbose_name='Patient')),
+                ('patient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='sales', to='clinical.patient', verbose_name='Patient')),
             ],
             options={
                 'verbose_name': 'Sale',

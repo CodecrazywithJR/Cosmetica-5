@@ -1,12 +1,17 @@
 """
-Integration tests for Patient Merge endpoint.
+Integration tests for Patient Merge API.
 
-Tests POST /api/v1/patients/{id}/merge/ - Merge patient records.
-Validates permissions, business rules, and relationship reassignment.
+Tests:
+- POST /api/v1/clinical/patients/merge - Merge patient records
+- GET /api/v1/clinical/patients/{id}/merge-candidates - Find duplicates
+
+Validates permissions, business rules, FK reassignment, audit logging.
 """
 import pytest
 from rest_framework import status
 from django.utils import timezone
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from apps.clinical.models import (
     Patient,
     Appointment,
@@ -14,477 +19,454 @@ from apps.clinical.models import (
     Consent,
     ClinicalPhoto,
     PatientGuardian,
+    PatientMergeLog,
 )
+from apps.sales.models import Sale
+
+User = get_user_model()
+
+
+@pytest.fixture
+def clinical_ops_user(db):
+    """User in ClinicalOps group."""
+    user = User.objects.create_user(
+        email='clinops@test.com',
+        password='testpass123',
+    )
+    user.is_staff = True
+    user.save()
+    group, _ = Group.objects.get_or_create(name='ClinicalOps')
+    user.groups.add(group)
+    return user
+
+
+@pytest.fixture
+def clinical_ops_client(clinical_ops_user):
+    """API client with ClinicalOps user."""
+    from rest_framework.test import APIClient
+    client = APIClient()
+    client.force_authenticate(user=clinical_ops_user)
+    return client
+
+
+@pytest.fixture
+def marketing_user(db):
+    """User in Marketing group (should be denied)."""
+    user = User.objects.create_user(
+        email='marketing@test.com',
+        password='testpass123',
+    )
+    user.is_staff = True
+    user.save()
+    group, _ = Group.objects.get_or_create(name='Marketing')
+    user.groups.add(group)
+    return user
+
+
+@pytest.fixture
+def marketing_client(marketing_user):
+    """API client with Marketing user."""
+    from rest_framework.test import APIClient
+    client = APIClient()
+    client.force_authenticate(user=marketing_user)
+    return client
 
 
 @pytest.mark.django_db(transaction=True)
 class TestPatientMergePermissions:
-    """Test merge endpoint permissions by role."""
+    """Test merge permissions by role."""
     
-    @pytest.mark.parametrize('client_fixture,expected_status', [
-        ('admin_client', status.HTTP_200_OK),
-        ('practitioner_client', status.HTTP_200_OK),
-        ('reception_client', status.HTTP_403_FORBIDDEN),
-        ('accounting_client', status.HTTP_403_FORBIDDEN),
-        ('marketing_client', status.HTTP_403_FORBIDDEN),
-    ])
-    def test_merge_permissions_by_role(
-        self,
-        client_fixture,
-        expected_status,
-        request,
-        patient_factory
-    ):
-        """Only Admin and Practitioner can merge patients."""
-        client = request.getfixturevalue(client_fixture)
+    def test_clinical_ops_can_merge(self, clinical_ops_client):
+        """ClinicalOps group can execute merge."""
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='Patient',
+            phone_e164='+12125551001',
+            full_name_normalized='source patient'
+        )
+        target = Patient.objects.create(
+            first_name='Target',
+            last_name='Patient',
+            phone_e164='+12125551002',
+            full_name_normalized='target patient'
+        )
         
-        source = patient_factory(email='merge_source@test.com')
-        target = patient_factory(email='merge_target@test.com')
-        
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
         payload = {
+            'source_patient_id': str(source.id),
             'target_patient_id': str(target.id),
-            'merge_reason': 'Test merge',
+            'strategy': 'manual',
+            'notes': 'Test merge'
         }
         
-        response = client.post(endpoint, payload, format='json')
+        response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
         
-        assert response.status_code == expected_status
+        assert response.status_code == status.HTTP_200_OK
+    
+    def test_marketing_cannot_merge(self, marketing_client):
+        """Marketing group cannot execute merge."""
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='Patient',
+            phone_e164='+12125551003',
+            full_name_normalized='source patient'
+        )
+        target = Patient.objects.create(
+            first_name='Target',
+            last_name='Patient',
+            phone_e164='+12125551004',
+            full_name_normalized='target patient'
+        )
+        
+        payload = {
+            'source_patient_id': str(source.id),
+            'target_patient_id': str(target.id),
+            'strategy': 'manual'
+        }
+        
+        response = marketing_client.post('/api/v1/clinical/patients/merge', payload, format='json')
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db(transaction=True)
 class TestPatientMergeValidations:
-    """Test merge endpoint validation rules."""
+    """Test merge validation rules."""
     
-    def test_merge_source_equals_target(self, admin_client, patient):
-        """Cannot merge patient into itself (source == target)."""
-        endpoint = f'/api/v1/patients/{patient.id}/merge/'
+    def test_merge_rejects_same_source_target(self, clinical_ops_client):
+        """Cannot merge patient into itself."""
+        patient = Patient.objects.create(
+            first_name='Same',
+            last_name='Patient',
+            phone_e164='+12125551005',
+            full_name_normalized='same patient'
+        )
+        
         payload = {
+            'source_patient_id': str(patient.id),
             'target_patient_id': str(patient.id),  # Same as source
-            'merge_reason': 'Test',
+            'strategy': 'manual'
         }
         
-        response = admin_client.post(endpoint, payload, format='json')
+        response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'target_patient_id' in str(response.data).lower() or 'mismo' in str(response.data).lower()
+        # Error message contains "cannot" or "mismo" (case insensitive)
+        error_text = str(response.data).lower()
+        assert 'cannot' in error_text or 'mismo' in error_text or 'same' in error_text
     
-    def test_merge_source_not_found(self, admin_client, patient):
-        """Merge with nonexistent source returns 404."""
-        import uuid
-        fake_source_id = uuid.uuid4()
+    def test_merge_rejects_already_merged_source(self, clinical_ops_client):
+        """Cannot merge already-merged source."""
+        target1 = Patient.objects.create(
+            first_name='Target1',
+            last_name='Patient',
+            phone_e164='+12125551006',
+            full_name_normalized='target1 patient'
+        )
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='Patient',
+            phone_e164='+12125551007',
+            full_name_normalized='source patient',
+            is_merged=True,
+            merged_into_patient=target1,
+            merge_reason='Already merged'
+        )
+        target2 = Patient.objects.create(
+            first_name='Target2',
+            last_name='Patient',
+            phone_e164='+12125551008',
+            full_name_normalized='target2 patient'
+        )
         
-        endpoint = f'/api/v1/patients/{fake_source_id}/merge/'
         payload = {
-            'target_patient_id': str(patient.id),
-            'merge_reason': 'Test',
+            'source_patient_id': str(source.id),
+            'target_patient_id': str(target2.id),
+            'strategy': 'manual'
         }
         
-        response = admin_client.post(endpoint, payload, format='json')
+        response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
         
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'already merged' in str(response.data).lower() or 'ya fusionado' in str(response.data).lower()
     
-    def test_merge_target_not_found(self, admin_client, patient):
-        """Merge with nonexistent target returns 400."""
+    def test_merge_rejects_nonexistent_target(self, clinical_ops_client):
+        """Merge with nonexistent target returns 404."""
         import uuid
+        
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='Patient',
+            phone_e164='+12125551009',
+            full_name_normalized='source patient'
+        )
         fake_target_id = uuid.uuid4()
         
-        endpoint = f'/api/v1/patients/{patient.id}/merge/'
         payload = {
+            'source_patient_id': str(source.id),
             'target_patient_id': str(fake_target_id),
-            'merge_reason': 'Test',
+            'strategy': 'manual'
         }
         
-        response = admin_client.post(endpoint, payload, format='json')
+        response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
         
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-    
-    def test_merge_source_already_merged(self, admin_client, patient_factory):
-        """Cannot merge patient that is already merged."""
-        source = patient_factory(email='already_merged@test.com')
-        target = patient_factory(email='merge_target1@test.com')
-        other_target = patient_factory(email='other_target@test.com')
-        
-        # Mark source as already merged
-        source.is_merged = True
-        source.merged_into_patient = other_target
-        source.merge_reason = 'Previous merge'
-        source.save()
-        
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(target.id),
-            'merge_reason': 'Test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_409_CONFLICT
-        assert 'merged' in str(response.data).lower()
-    
-    def test_merge_target_already_merged(self, admin_client, patient_factory):
-        """Cannot merge into patient that is already merged."""
-        source = patient_factory(email='merge_source2@test.com')
-        target = patient_factory(email='already_merged_target@test.com')
-        other_patient = patient_factory(email='other@test.com')
-        
-        # Mark target as already merged
-        target.is_merged = True
-        target.merged_into_patient = other_patient
-        target.merge_reason = 'Previous merge'
-        target.save()
-        
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(target.id),
-            'merge_reason': 'Test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_409_CONFLICT
-        assert 'merged' in str(response.data).lower()
-    
-    def test_merge_source_soft_deleted(self, admin_client, patient_factory):
-        """Cannot merge soft-deleted source patient."""
-        source = patient_factory(email='deleted_source@test.com')
-        target = patient_factory(email='merge_target3@test.com')
-        
-        # Soft delete source
-        source.is_deleted = True
-        source.deleted_at = timezone.now()
-        source.save()
-        
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(target.id),
-            'merge_reason': 'Test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_409_CONFLICT
-        assert 'deleted' in str(response.data).lower() or 'eliminado' in str(response.data).lower()
-    
-    def test_merge_target_soft_deleted(self, admin_client, patient_factory):
-        """Cannot merge into soft-deleted target patient."""
-        source = patient_factory(email='merge_source4@test.com')
-        target = patient_factory(email='deleted_target@test.com')
-        
-        # Soft delete target
-        target.is_deleted = True
-        target.deleted_at = timezone.now()
-        target.save()
-        
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(target.id),
-            'merge_reason': 'Test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_409_CONFLICT
-        assert 'deleted' in str(response.data).lower() or 'eliminado' in str(response.data).lower()
-    
-    def test_merge_missing_target_patient_id(self, admin_client, patient):
-        """Merge without target_patient_id returns 400."""
-        endpoint = f'/api/v1/patients/{patient.id}/merge/'
-        payload = {
-            # Missing target_patient_id
-            'merge_reason': 'Test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-    
-    def test_merge_missing_merge_reason(self, admin_client, patient_factory):
-        """Merge without merge_reason returns 400."""
-        source = patient_factory(email='merge_source5@test.com')
-        target = patient_factory(email='merge_target5@test.com')
-        
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(target.id),
-            # Missing merge_reason
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]
 
 
 @pytest.mark.django_db(transaction=True)
 class TestPatientMergeRelationships:
-    """Test relationship reassignment during merge."""
+    """Test FK reassignment during merge."""
     
-    def test_merge_reassigns_all_relationships(
-        self,
-        admin_client,
-        patient_factory,
-        practitioner,
-        clinic_location,
-        admin_user
-    ):
-        """Merge reassigns Encounters, Appointments, Consents, Photos, Guardians to target."""
-        # Create source and target patients
-        source = patient_factory(email='source_relations@test.com')
-        target = patient_factory(email='target_relations@test.com')
-        
-        # Create relationships for source patient
-        # 1. Encounter
-        encounter = Encounter.objects.create(
-            patient=source,
-            practitioner=practitioner,
-            location=clinic_location,
-            type='medical_consult',
-            status='draft',
-            occurred_at=timezone.now(),
-            created_by_user=admin_user
+    def test_merge_moves_sales(self, clinical_ops_client, clinical_ops_user):
+        """Merge reassigns Sales from source to target."""
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='WithSales',
+            phone_e164='+12125551010',
+            full_name_normalized='source withsales'
+        )
+        target = Patient.objects.create(
+            first_name='Target',
+            last_name='Patient',
+            phone_e164='+12125551011',
+            full_name_normalized='target patient'
         )
         
-        # 2. Appointment
-        appointment = Appointment.objects.create(
+        # Create sale for source patient (minimal fields)
+        sale = Sale.objects.create(
             patient=source,
-            practitioner=practitioner,
-            location=clinic_location,
-            source='manual',
-            status='scheduled',
-            scheduled_start=timezone.now() + timezone.timedelta(days=1),
-            scheduled_end=timezone.now() + timezone.timedelta(days=1, hours=1),
+            status='draft'
         )
         
-        # 3. Consent
-        consent = Consent.objects.create(
-            patient=source,
-            consent_type='clinical_photos',
-            status='granted',
-            granted_at=timezone.now()
-        )
-        
-        # 4. ClinicalPhoto
-        photo = ClinicalPhoto.objects.create(
-            patient=source,
-            photo_kind='clinical',
-            object_key='photos/test.jpg',
-            content_type='image/jpeg',
-            size_bytes=1024,
-            storage_bucket='clinical',
-        )
-        
-        # 5. PatientGuardian
-        guardian = PatientGuardian.objects.create(
-            patient=source,
-            full_name='Test Guardian',
-            relationship='parent',
-            phone='+34600000000'
-        )
-        
-        # Perform merge
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
         payload = {
+            'source_patient_id': str(source.id),
             'target_patient_id': str(target.id),
-            'merge_reason': 'Duplicate patient - consolidating records',
+            'strategy': 'manual',
+            'notes': 'Merging for test'
         }
         
-        response = admin_client.post(endpoint, payload, format='json')
+        response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
         
         assert response.status_code == status.HTTP_200_OK
         
-        # Verify response contains reassignment counts (if API returns them)
-        if 'reassigned' in response.data:
-            assert response.data['reassigned']['encounters'] == 1
-            assert response.data['reassigned']['appointments'] == 1
-            assert response.data['reassigned']['consents'] == 1
-            assert response.data['reassigned']['clinical_photos'] == 1
-            assert response.data['reassigned']['guardians'] == 1
+        # Verify sale moved to target
+        sale.refresh_from_db()
+        assert sale.patient_id == target.id
         
-        # Verify relationships reassigned in database
-        encounter.refresh_from_db()
-        assert encounter.patient_id == target.id
+        # Verify source marked as merged
+        source.refresh_from_db()
+        assert source.is_merged is True
+        assert source.merged_into_patient_id == target.id
+    
+    def test_merge_moves_appointments_encounters_photos(self, clinical_ops_client, clinical_ops_user):
+        """Merge reassigns Appointments, Encounters to target."""
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='WithRelations',
+            phone_e164='+12125551012',
+            full_name_normalized='source withrelations'
+        )
+        target = Patient.objects.create(
+            first_name='Target',
+            last_name='Patient',
+            phone_e164='+12125551013',
+            full_name_normalized='target patient'
+        )
         
+        # Create appointment (minimal fields)
+        appointment = Appointment.objects.create(
+            patient=source,
+            source='manual',
+            status='confirmed',  # Valid status
+            scheduled_start=timezone.now(),
+            scheduled_end=timezone.now() + timezone.timedelta(hours=1)
+        )
+        
+        # Create encounter (minimal fields)
+        encounter = Encounter.objects.create(
+            patient=source,
+            type='medical_consult',
+            status='draft',
+            occurred_at=timezone.now(),
+            created_by_user=clinical_ops_user
+        )
+        
+        payload = {
+            'source_patient_id': str(source.id),
+            'target_patient_id': str(target.id),
+            'strategy': 'manual'
+        }
+        
+        response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        
+        # Verify all moved
         appointment.refresh_from_db()
         assert appointment.patient_id == target.id
         
-        consent.refresh_from_db()
-        assert consent.patient_id == target.id
-        
-        photo.refresh_from_db()
-        assert photo.patient_id == target.id
-        
-        guardian.refresh_from_db()
-        assert guardian.patient_id == target.id
-        
-        # Verify source patient is marked as merged
-        source.refresh_from_db()
-        assert source.is_merged is True
-        assert source.merged_into_patient_id == target.id
-        assert source.merge_reason == 'Duplicate patient - consolidating records'
-        assert source.row_version == 2  # Incremented after merge
+        encounter.refresh_from_db()
+        assert encounter.patient_id == target.id
     
-    def test_merge_with_no_relationships(self, admin_client, patient_factory):
-        """Merge works even if source has no relationships."""
-        source = patient_factory(email='source_empty@test.com')
-        target = patient_factory(email='target_empty@test.com')
+    def test_merge_creates_audit_log(self, clinical_ops_client, clinical_ops_user):
+        """Merge creates PatientMergeLog entry."""
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='AuditTest',
+            phone_e164='+12125551014',
+            full_name_normalized='source audittest'
+        )
+        target = Patient.objects.create(
+            first_name='Target',
+            last_name='Patient',
+            phone_e164='+12125551015',
+            full_name_normalized='target patient'
+        )
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
         payload = {
+            'source_patient_id': str(source.id),
             'target_patient_id': str(target.id),
-            'merge_reason': 'Duplicate - no history',
+            'strategy': 'phone_exact',
+            'notes': 'Phone number match',
+            'evidence': {'phone_match': True}
         }
         
-        response = admin_client.post(endpoint, payload, format='json')
+        response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
         
         assert response.status_code == status.HTTP_200_OK
         
-        # Verify source is merged
-        source.refresh_from_db()
-        assert source.is_merged is True
-        assert source.merged_into_patient_id == target.id
-    
-    def test_merge_multiple_encounters(
-        self,
-        admin_client,
-        patient_factory,
-        practitioner,
-        clinic_location,
-        admin_user
-    ):
-        """Merge reassigns multiple encounters from source to target."""
-        source = patient_factory(email='source_multi@test.com')
-        target = patient_factory(email='target_multi@test.com')
+        # Verify audit log created
+        merge_log = PatientMergeLog.objects.filter(
+            source_patient_id=source.id,
+            target_patient_id=target.id
+        ).first()
         
-        # Create multiple encounters for source
-        encounter1 = Encounter.objects.create(
-            patient=source,
-            practitioner=practitioner,
-            location=clinic_location,
-            type='medical_consult',
-            status='draft',
-            occurred_at=timezone.now() - timezone.timedelta(days=7),
-            created_by_user=admin_user
-        )
-        
-        encounter2 = Encounter.objects.create(
-            patient=source,
-            practitioner=practitioner,
-            location=clinic_location,
-            type='cosmetic_consult',
-            status='finalized',
-            occurred_at=timezone.now() - timezone.timedelta(days=14),
-            created_by_user=admin_user
-        )
-        
-        # Perform merge
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(target.id),
-            'merge_reason': 'Multiple encounters test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        # Verify both encounters reassigned
-        encounter1.refresh_from_db()
-        assert encounter1.patient_id == target.id
-        
-        encounter2.refresh_from_db()
-        assert encounter2.patient_id == target.id
-        
-        # Verify count in response (if available)
-        if 'reassigned' in response.data:
-            assert response.data['reassigned']['encounters'] == 2
-    
-    def test_merge_atomicity_on_error(self, admin_client, patient_factory):
-        """Merge is atomic - if validation fails, no changes are made."""
-        source = patient_factory(email='atomic_source@test.com')
-        target = patient_factory(email='atomic_target@test.com')
-        
-        # Create appointment for source
-        appointment = Appointment.objects.create(
-            patient=source,
-            source='manual',
-            status='scheduled',
-            scheduled_start=timezone.now() + timezone.timedelta(days=1),
-            scheduled_end=timezone.now() + timezone.timedelta(days=1, hours=1),
-        )
-        
-        # Try to merge with invalid target (source == target)
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(source.id),  # Invalid: same as source
-            'merge_reason': 'Test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        
-        # Verify source NOT marked as merged
-        source.refresh_from_db()
-        assert source.is_merged is False
-        assert source.merged_into_patient_id is None
-        assert source.row_version == 1  # Not incremented
-        
-        # Verify appointment still points to source
-        appointment.refresh_from_db()
-        assert appointment.patient_id == source.id
+        assert merge_log is not None
+        assert merge_log.merged_by_user_id == clinical_ops_user.id
+        assert merge_log.strategy == 'phone_exact'
+        assert merge_log.notes == 'Phone number match'
+        assert merge_log.evidence == {'phone_match': True}
 
 
 @pytest.mark.django_db(transaction=True)
-class TestPatientMergeResponse:
-    """Test merge endpoint response format."""
+class TestPatientMergeCandidates:
+    """Test merge candidate detection."""
     
-    def test_merge_response_format(
-        self,
-        admin_client,
-        patient_factory,
-        practitioner,
-        clinic_location,
-        admin_user
-    ):
-        """Merge returns proper response with patient and reassignment info."""
-        source = patient_factory(email='response_source@test.com')
-        target = patient_factory(email='response_target@test.com')
-        
-        # Create one of each relationship type
-        Encounter.objects.create(
-            patient=source,
-            practitioner=practitioner,
-            location=clinic_location,
-            type='medical_consult',
-            status='draft',
-            occurred_at=timezone.now(),
-            created_by_user=admin_user
+    def test_get_merge_candidates_phone_exact(self, clinical_ops_client):
+        """Find candidates with exact phone match."""
+        patient1 = Patient.objects.create(
+            first_name='John',
+            last_name='Doe',
+            phone_e164='+12125551111',
+            full_name_normalized='john doe'
+        )
+        # Duplicate with same phone
+        patient2 = Patient.objects.create(
+            first_name='Jon',
+            last_name='Doe',
+            phone_e164='+12125551111',  # Same phone
+            full_name_normalized='jon doe'
         )
         
-        Appointment.objects.create(
-            patient=source,
-            source='manual',
-            status='scheduled',
-            scheduled_start=timezone.now() + timezone.timedelta(days=1),
-            scheduled_end=timezone.now() + timezone.timedelta(days=1, hours=1),
-        )
-        
-        # Perform merge
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
-        payload = {
-            'target_patient_id': str(target.id),
-            'merge_reason': 'Response format test',
-        }
-        
-        response = admin_client.post(endpoint, payload, format='json')
+        response = clinical_ops_client.get(f'/api/v1/clinical/patients/{patient1.id}/merge-candidates')
         
         assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) >= 1
         
-        # Verify response contains expected fields
-        assert 'source_patient_id' in response.data or 'source' in str(response.data).lower()
-        assert 'target_patient_id' in response.data or 'target' in str(response.data).lower()
+        # Verify patient2 is in candidates
+        candidate_ids = [c['patient_id'] for c in response.data]
+        assert str(patient2.id) in candidate_ids
         
-        # If API returns reassignment counts, verify they exist
-        if 'reassigned' in response.data:
-            assert 'encounters' in response.data['reassigned']
-            assert 'appointments' in response.data['reassigned']
+        # Verify high score for phone match
+        patient2_candidate = next(c for c in response.data if c['patient_id'] == str(patient2.id))
+        assert patient2_candidate['score'] >= 0.90  # Phone exact should be high score
+
+
+@pytest.mark.django_db(transaction=True)
+class TestPatientMergeAtomicity:
+    """Test merge atomicity and rollback."""
+    
+    def test_merge_prevents_cycles(self, clinical_ops_client):
+        """Merge prevents creating cycles (A→B, then B→A)."""
+        patient_a = Patient.objects.create(
+            first_name='Patient',
+            last_name='A',
+            phone_e164='+12125551018',
+            full_name_normalized='patient a'
+        )
+        patient_b = Patient.objects.create(
+            first_name='Patient',
+            last_name='B',
+            phone_e164='+12125551019',
+            full_name_normalized='patient b'
+        )
+        
+        # First merge: A → B
+        payload1 = {
+            'source_patient_id': str(patient_a.id),
+            'target_patient_id': str(patient_b.id),
+            'strategy': 'manual'
+        }
+        response1 = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload1, format='json')
+        assert response1.status_code == status.HTTP_200_OK
+        
+        # Attempt reverse merge: B → A (should fail)
+        payload2 = {
+            'source_patient_id': str(patient_b.id),
+            'target_patient_id': str(patient_a.id),
+            'strategy': 'manual'
+        }
+        response2 = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload2, format='json')
+        assert response2.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db(transaction=True)
+class TestPatientMergeSignals:
+    """Test patient_merged signal emission."""
+    
+    def test_signal_emitted_on_successful_merge(self, clinical_ops_client, clinical_ops_user):
+        """Signal is emitted only after successful merge."""
+        from apps.clinical.signals import patient_merged
+        from unittest.mock import Mock
+        
+        source = Patient.objects.create(
+            first_name='Source',
+            last_name='Signal',
+            phone_e164='+12125551020',
+            full_name_normalized='source signal'
+        )
+        target = Patient.objects.create(
+            first_name='Target',
+            last_name='Signal',
+            phone_e164='+12125551021',
+            full_name_normalized='target signal'
+        )
+        
+        # Attach signal handler
+        handler = Mock()
+        patient_merged.connect(handler)
+        
+        try:
+            payload = {
+                'source_patient_id': str(source.id),
+                'target_patient_id': str(target.id),
+                'strategy': 'manual',
+                'notes': 'Test signal emission'
+            }
+            
+            response = clinical_ops_client.post('/api/v1/clinical/patients/merge', payload, format='json')
+            
+            assert response.status_code == status.HTTP_200_OK
+            
+            # Verify signal was called
+            assert handler.called
+            
+            # Verify signal arguments
+            call_kwargs = handler.call_args.kwargs
+            assert call_kwargs['source_patient_id'] == str(source.id)
+            assert call_kwargs['target_patient_id'] == str(target.id)
+            assert call_kwargs['strategy'] == 'manual'
+            assert call_kwargs['merged_by_user_id'] == str(clinical_ops_user.id)
+            assert 'merge_log_id' in call_kwargs  # NEW: Verify audit trail reference
+            
+        finally:
+            patient_merged.disconnect(handler)

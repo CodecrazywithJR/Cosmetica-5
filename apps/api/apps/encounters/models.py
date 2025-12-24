@@ -4,6 +4,11 @@ Encounter models - Patient visits and consultations.
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+# Import ClinicalMedia for unified access
+from .models_media import ClinicalMedia
+
+__all__ = ['Encounter', 'ClinicalMedia']
+
 
 class Encounter(models.Model):
     """
@@ -26,10 +31,19 @@ class Encounter(models.Model):
     
     # Relationships
     patient = models.ForeignKey(
-        'patients.Patient',
+        'clinical.Patient',
         on_delete=models.CASCADE,
-        related_name='encounters',
+        related_name='legacy_encounters',
         verbose_name=_('Patient')
+    )
+    practitioner = models.ForeignKey(
+        'authz.User',
+        on_delete=models.PROTECT,
+        related_name='encounters',
+        verbose_name=_('Practitioner'),
+        help_text=_('Practitioner responsible for this encounter'),
+        null=True,  # Allow null for backward compatibility
+        blank=True
     )
     
     # Visit details

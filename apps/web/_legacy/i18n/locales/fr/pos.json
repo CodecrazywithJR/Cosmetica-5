@@ -1,0 +1,73 @@
+{
+  "title": "Propositions",
+  "filters": {
+    "status": "Statut",
+    "allStatuses": "Tous les statuts"
+  },
+  "proposal": {
+    "status": {
+      "draft": "Brouillon",
+      "converted": "Converti",
+      "cancelled": "Annulé"
+    }
+  },
+  "sale": {
+    "status": {
+      "draft": "Brouillon",
+      "paid": "Payé",
+      "refunded": "Remboursé"
+    }
+  },
+  "table": {
+    "date": "Date",
+    "patient": "Patient",
+    "practitioner": "Praticien",
+    "items": "Articles",
+    "total": "Total",
+    "status": "Statut",
+    "actions": "Actions"
+  },
+  "labels": {
+    "quantity": "Quantité",
+    "unitPrice": "Prix unitaire",
+    "subtotal": "Sous-total",
+    "lineTotal": "Total de ligne",
+    "totalAmount": "Montant total",
+    "currency": "Devise",
+    "items_one": "{{count}} article",
+    "items_other": "{{count}} articles"
+  },
+  "actions": {
+    "createSale": "Créer une vente",
+    "viewSale": "Voir la vente",
+    "cancel": "Annuler",
+    "back": "Retour",
+    "converting": "Conversion...",
+    "cancelling": "Annulation..."
+  },
+  "modals": {
+    "convertTitle": "Convertir la proposition en vente",
+    "convertDescription": "Cette action créera un enregistrement de vente officiel basé sur cette proposition.",
+    "legalEntityLabel": "ID de l'entité légale *",
+    "legalEntityPlaceholder": "Entrez l'UUID de l'entité légale",
+    "legalEntityHelp": "Il s'agit de l'UUID de l'entité légale qui émettra la vente",
+    "cancelTitle": "Annuler la proposition",
+    "cancelDescription": "Indiquez la raison de l'annulation de cette proposition. Cette action est irréversible.",
+    "cancellationReasonLabel": "Raison de l'annulation *",
+    "cancellationReasonPlaceholder": "Expliquez pourquoi cette proposition est annulée",
+    "confirmCancel": "Annuler la proposition"
+  },
+  "empty": {
+    "noProposals": "Aucune proposition trouvée",
+    "noResults": "Aucun résultat pour le filtre sélectionné"
+  },
+  "summary": {
+    "totalProposals": "Total des propositions"
+  },
+  "errors": {
+    "loadingFailed": "Erreur de chargement des propositions",
+    "convertFailed": "Impossible de convertir la proposition",
+    "cancelFailed": "Impossible d'annuler la proposition",
+    "requiredField": "Ce champ est obligatoire"
+  }
+}

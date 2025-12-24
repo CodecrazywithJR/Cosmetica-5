@@ -1,0 +1,55 @@
+{
+  "app": {
+    "name": "Cosmetica 5"
+  },
+  "nav": {
+    "agenda": "Agenda",
+    "proposals": "Propuestas",
+    "clinical": "Clínica",
+    "patients": "Pacientes",
+    "encounters": "Consultas",
+    "pos": "POS",
+    "sales": "Ventas",
+    "admin": "Administración"
+  },
+  "actions": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "create": "Crear",
+    "close": "Cerrar",
+    "login": "Iniciar sesión",
+    "logout": "Cerrar sesión",
+    "confirm": "Confirmar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "back": "Volver"
+  },
+  "status": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "scheduled": "Programado",
+    "confirmed": "Confirmado",
+    "cancelled": "Cancelado",
+    "completed": "Completado"
+  },
+  "errors": {
+    "generic": "Ha ocurrido un error. Por favor, inténtelo de nuevo.",
+    "network": "Error de red",
+    "unauthorized": "No autorizado",
+    "notFound": "No encontrado"
+  },
+  "language": {
+    "label": "Idioma",
+    "ru": "Русский",
+    "uk": "Українська",
+    "hy": "Հայերեն",
+    "fr": "Français",
+    "es": "Español"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Contraseña",
+    "login": "Iniciar sesión"
+  }
+}
