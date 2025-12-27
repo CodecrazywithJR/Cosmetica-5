@@ -5,6 +5,7 @@
   },
   "nav": {
     "agenda": "Agenda",
+    "schedule": "Nueva Cita",
     "patients": "Pacientes",
     "encounters": "Consultas",
     "proposals": "Propuestas",
@@ -45,10 +46,14 @@
   },
   "agenda": {
     "title": "Agenda",
+    "description": "Gestiona citas y horario diario",
     "filters": {
       "date": "Fecha",
       "status": "Estado",
-      "allStatuses": "Todos los Estados"
+      "allStatuses": "Todos los Estados",
+      "previousDay": "Día anterior",
+      "nextDay": "Día siguiente",
+      "today": "Hoy"
     },
     "table": {
       "time": "Hora",
@@ -75,6 +80,7 @@
       }
     },
     "actions": {
+      "newAppointment": "Nueva Cita",
       "confirm": "Confirmar",
       "checkIn": "Registrar",
       "complete": "Completar",
@@ -93,5 +99,16 @@
     "summary": {
       "totalAppointments": "Total de citas"
     }
+  },
+  "calendly": {
+    "notConfigured": {
+      "title": "Calendly no está configurado",
+      "description": "Añade tu URL de Calendly en tu perfil para poder agendar citas.",
+      "action": "Ir a configuración"
+    }
+  },
+  "schedule": {
+    "title": "Agendar Cita",
+    "description": "Selecciona una fecha y hora para tu cita"
   }
 }

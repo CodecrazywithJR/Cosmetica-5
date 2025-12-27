@@ -5,6 +5,7 @@
   },
   "nav": {
     "agenda": "Agenda",
+    "schedule": "Nouveau Rendez-vous",
     "patients": "Patients",
     "encounters": "Consultations",
     "proposals": "Propositions",
@@ -45,20 +46,48 @@
   },
   "agenda": {
     "title": "Agenda",
+    "description": "Gérer les rendez-vous et l'emploi du temps quotidien",
     "filters": {
       "date": "Date",
       "status": "Statut",
-      "allStatuses": "Tous les statuts"
+      "allStatuses": "Tous les statuts",
+      "previousDay": "Jour précédent",
+      "nextDay": "Jour suivant",
+      "today": "Aujourd'hui"
+    },
+    "table": {
+      "time": "Heure",
+      "patient": "Patient",
+      "practitioner": "Praticien",
+      "type": "Source",
+      "status": "Statut",
+      "actions": "Actions"
     },
     "appointment": {
+      "type": {
+        "consultation": "Consultation",
+        "follow_up": "Suivi",
+        "procedure": "Procédure"
+      },
       "status": {
         "scheduled": "Programmé",
         "confirmed": "Confirmé",
+        "checked_in": "Enregistré",
         "in_progress": "En Cours",
         "completed": "Terminé",
         "cancelled": "Annulé",
         "no_show": "Absent"
       }
+    },
+    "actions": {
+      "newAppointment": "Nouveau Rendez-vous",
+      "confirm": "Confirmer",
+      "checkIn": "Enregistrer",
+      "complete": "Terminer",
+      "cancel": "Annuler"
+    },
+    "summary": {
+      "totalAppointments": "Total des rendez-vous"
     },
     "errors": {
       "title": "Impossible de charger l'agenda",
@@ -70,5 +99,16 @@
       "description": "Il n'y a pas de rendez-vous programmés pour la date sélectionnée. Les rendez-vous apparaîtront ici lorsqu'ils seront créés.",
       "action": "Créer un Nouveau Rendez-vous"
     }
+  },
+  "calendly": {
+    "notConfigured": {
+      "title": "Calendly n'est pas configuré",
+      "description": "Ajoutez votre URL Calendly dans votre profil pour activer la prise de rendez-vous.",
+      "action": "Aller aux paramètres"
+    }
+  },
+  "schedule": {
+    "title": "Prendre Rendez-vous",
+    "description": "Sélectionnez une date et une heure pour votre rendez-vous"
   }
 }

@@ -549,31 +549,21 @@ from django.conf import settings
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def calendly_webhook(request):
-    # Verify signature
-    signature = request.headers.get('X-Calendly-Signature', '')
-    payload = request.body
-    
-    expected_signature = hmac.new(
-        settings.CALENDLY_WEBHOOK_SECRET.encode(),
-        payload,
-        hashlib.sha256
-    ).hexdigest()
-    
-    if not hmac.compare_digest(signature, expected_signature):
-        return Response(
-            {'error': 'Invalid signature'},
-            status=status.HTTP_401_UNAUTHORIZED
-        )
-    
-    # Process webhook
+    # ✅ FIXED: Signature verification implemented
+    # Header: Calendly-Webhook-Signature
+    # Format: t=<timestamp>,v1=<signature>
+    # See: apps/integrations/views.py
     ...
 ```
 
-**Verification Required:**
-- Check if signature verification is implemented elsewhere
-- Check Calendly documentation for signature header name
+**Status:** ✅ **FIXED** - Signature verification implemented with:
+- Correct header: `Calendly-Webhook-Signature`
+- Format parsing: `t=<timestamp>,v1=<signature>`
+- Timestamp validation (5-minute window)
+- Constant-time comparison
+- Comprehensive test coverage
 
-**Priority:** MEDIUM (if webhook is used) / LOW (if webhook is disabled)
+**Priority:** ~~MEDIUM~~ → **COMPLETED**
 
 ---
 

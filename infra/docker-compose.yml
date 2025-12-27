@@ -1,7 +1,19 @@
 version: '3.9'
 
 # ============================================================================
-# EMR Dermatology + POS Cosmetics - Docker Compose Configuration
+# ⚠️  DEPRECATED - DO NOT USE
+# ============================================================================
+# This file is OBSOLETE and kept only for reference.
+# 
+# Use instead:
+#   - docker-compose.dev.yml for development
+#   - docker-compose.prod.yml for production local
+#
+# See RUN.md for instructions
+# ============================================================================
+
+# ============================================================================
+# EMR Dermatology + POS Cosmetics - Docker Compose Configuration (OLD)
 # ============================================================================
 # All services use FIXED PORTS - see docs/PORTS.md
 # Health checks are mandatory for stability

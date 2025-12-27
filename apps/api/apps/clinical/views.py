@@ -2,6 +2,7 @@
 Clinical viewsets for Patient and PatientGuardian.
 Based on API_CONTRACTS.md PAC section.
 """
+import logging
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -9,6 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from django.db.models import Q
 from django.db import transaction, IntegrityError
+from apps.authz.models import RoleChoices
 from apps.clinical.models import (
     Patient,
     PatientGuardian,
@@ -46,7 +48,7 @@ from apps.clinical.permissions import (
     ClinicalChargeProposalPermission,
 )
 
-
+logger = logging.getLogger(__name__)
 class PatientViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Patient endpoints.
@@ -72,7 +74,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         user_roles = set(
             self.request.user.user_roles.values_list('role__name', flat=True)
         )
-        is_admin = 'Admin' in user_roles
+        is_admin = RoleChoices.ADMIN in user_roles
         
         # Handle include_deleted parameter
         include_deleted = self.request.query_params.get('include_deleted', 'false').lower() == 'true'
@@ -237,7 +239,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         user_roles = set(
             request.user.user_roles.values_list('role__name', flat=True)
         )
-        if not (user_roles & {'Admin', 'Practitioner'}):
+        if not (user_roles & {RoleChoices.ADMIN, RoleChoices.PRACTITIONER}):
             raise PermissionDenied("Solo Admin y Practitioner pueden ejecutar merge de pacientes")
         
         # Validate request data
@@ -505,7 +507,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         user_roles = set(
             self.request.user.user_roles.values_list('role__name', flat=True)
         )
-        is_admin = 'Admin' in user_roles
+        is_admin = RoleChoices.ADMIN in user_roles
         
         # Handle include_deleted (Admin only)
         include_deleted = self.request.query_params.get('include_deleted', 'false').lower() == 'true'
@@ -622,7 +624,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         user_roles = set(
             request.user.user_roles.values_list('role__name', flat=True)
         )
-        if 'Admin' not in user_roles:
+        if RoleChoices.ADMIN not in user_roles:
             raise PermissionDenied(
                 "Solo Admin puede eliminar citas"
             )
@@ -698,6 +700,154 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
     
+
+def _process_calendly_sync(sync_data, created_by_user=None):
+    """
+    Internal function: Process Calendly sync (shared by webhook and manual endpoint).
+    
+    This function contains the core logic for creating/updating appointments from Calendly.
+    It's called by both:
+    - AppointmentViewSet.calendly_sync() (manual endpoint)
+    - calendly_webhook() (automatic webhook)
+    
+    Args:
+        sync_data (dict): Appointment data with keys:
+            - external_id (str, required): Calendly event ID
+            - scheduled_start (datetime, required): Start time (timezone-aware)
+            - scheduled_end (datetime, required): End time (timezone-aware)
+            - patient_email (str, optional): Patient email for lookup
+            - patient_phone (str, optional): Patient phone for lookup
+            - patient_first_name (str, optional): Patient first name
+            - patient_last_name (str, optional): Patient last name
+            - practitioner_id (UUID, optional): Practitioner ID
+            - location_id (UUID, optional): Location ID
+            - status (str, optional): Appointment status (default: 'scheduled')
+            - notes (str, optional): Appointment notes
+        created_by_user (User, optional): User who triggered the sync (None for webhook)
+    
+    Returns:
+        tuple: (appointment: Appointment, created: bool)
+    
+    Raises:
+        ValueError: If validation fails
+        IntegrityError: If database constraint fails (unlikely due to get_or_create)
+    """
+    from django.db import transaction
+    from django.db import IntegrityError
+    
+    # Extract and validate required fields
+    external_id = sync_data.get('external_id')
+    scheduled_start = sync_data.get('scheduled_start')
+    scheduled_end = sync_data.get('scheduled_end')
+    
+    if not external_id:
+        raise ValueError('external_id es obligatorio')
+    
+    if not scheduled_start or not scheduled_end:
+        raise ValueError('scheduled_start y scheduled_end son obligatorios')
+    
+    # Validate datetime types and timezone awareness
+    from django.utils.timezone import is_aware
+    from django.conf import settings
+    
+    if settings.USE_TZ:
+        if not is_aware(scheduled_start) or not is_aware(scheduled_end):
+            raise ValueError('scheduled_start y scheduled_end deben incluir timezone')
+    
+    if scheduled_end <= scheduled_start:
+        raise ValueError('scheduled_end debe ser posterior a scheduled_start')
+    
+    # Extract patient data
+    patient_email = sync_data.get('patient_email')
+    patient_phone = sync_data.get('patient_phone')
+    patient_first_name = sync_data.get('patient_first_name', '')
+    patient_last_name = sync_data.get('patient_last_name', '')
+    
+    # CRITICAL: Wrap in atomic transaction to prevent race conditions
+    with transaction.atomic():
+        # Find or create patient
+        patient = None
+        
+        # Try to find by email first (priority)
+        if patient_email:
+            patient = Patient.objects.filter(
+                email=patient_email,
+                is_deleted=False
+            ).first()
+        
+        # If not found by email, try phone_e164
+        if not patient and patient_phone:
+            # Normalize phone to E.164 if needed (basic normalization)
+            phone_e164 = patient_phone.strip()
+            if not phone_e164.startswith('+'):
+                phone_e164 = f'+{phone_e164}'
+            
+            patient = Patient.objects.filter(
+                phone_e164=phone_e164,
+                is_deleted=False
+            ).first()
+        
+        # Create minimal patient if not found
+        if not patient:
+            full_name_normalized = f"{patient_first_name} {patient_last_name}".strip().lower()
+            
+            patient = Patient.objects.create(
+                first_name=patient_first_name or 'Calendly',
+                last_name=patient_last_name or 'Patient',
+                full_name_normalized=full_name_normalized or 'calendly patient',
+                email=patient_email or None,
+                phone=patient_phone or None,
+                phone_e164=phone_e164 if patient_phone else None,
+                identity_confidence='low',
+                created_by_user=created_by_user
+            )
+        
+        # CRITICAL: Use get_or_create pattern to prevent race conditions on external_id
+        try:
+            appointment, created = Appointment.objects.get_or_create(
+                external_id=external_id,
+                defaults={
+                    'patient': patient,
+                    'source': 'calendly',
+                    'scheduled_start': scheduled_start,
+                    'scheduled_end': scheduled_end,
+                    'status': sync_data.get('status', 'scheduled'),
+                    'practitioner_id': sync_data.get('practitioner_id'),
+                    'location_id': sync_data.get('location_id'),
+                    'notes': sync_data.get('notes'),
+                }
+            )
+        except IntegrityError:
+            # DEFENSIVE: Race condition detected - fetch existing record
+            appointment = Appointment.objects.get(external_id=external_id)
+            created = False
+        
+        if not created:
+            # Update existing appointment
+            appointment.patient = patient
+            appointment.scheduled_start = scheduled_start
+            appointment.scheduled_end = scheduled_end
+            
+            # Update optional fields if provided
+            if 'practitioner_id' in sync_data:
+                appointment.practitioner_id = sync_data['practitioner_id']
+            if 'location_id' in sync_data:
+                appointment.location_id = sync_data['location_id']
+            if 'status' in sync_data:
+                appointment.status = sync_data['status']
+            if 'notes' in sync_data:
+                appointment.notes = sync_data['notes']
+            
+            appointment.save()
+        
+        return appointment, created
+
+
+class AppointmentViewSet(viewsets.ModelViewSet):
+    """Appointment API ViewSet."""
+    
+    # ... (resto del código del ViewSet)
+    
     @action(detail=False, methods=['post'], url_path='calendly/sync')
     def calendly_sync(self, request):
         """
@@ -727,26 +877,12 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         from django.conf import settings
         from django.utils.dateparse import parse_datetime
         
-        # Validate required fields
-        external_id = request.data.get('external_id')
+        # Parse and validate datetime fields
         scheduled_start_raw = request.data.get('scheduled_start')
         scheduled_end_raw = request.data.get('scheduled_end')
         
-        if not external_id:
-            return Response(
-                {'error': 'external_id es obligatorio'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if not scheduled_start_raw or not scheduled_end_raw:
-            return Response(
-                {'error': 'scheduled_start y scheduled_end son obligatorios'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Parse and validate datetime fields
+        # Parse datetimes if they are strings
         try:
-            # Parse datetimes (DRF already parses them, but we validate explicitly)
             if isinstance(scheduled_start_raw, str):
                 scheduled_start = parse_datetime(scheduled_start_raw)
                 if not scheduled_start:
@@ -766,133 +902,33 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # DEFENSIVE: Validate timezone-aware datetimes if USE_TZ=True
-        if settings.USE_TZ:
-            from django.utils.timezone import is_aware
-            if not is_aware(scheduled_start) or not is_aware(scheduled_end):
-                return Response(
-                    {'error': 'scheduled_start y scheduled_end deben incluir timezone'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        # Build sync_data dict
+        sync_data = {
+            'external_id': request.data.get('external_id'),
+            'scheduled_start': scheduled_start,
+            'scheduled_end': scheduled_end,
+            'patient_email': request.data.get('patient_email'),
+            'patient_phone': request.data.get('patient_phone'),
+            'patient_first_name': request.data.get('patient_first_name', ''),
+            'patient_last_name': request.data.get('patient_last_name', ''),
+            'practitioner_id': request.data.get('practitioner_id'),
+            'location_id': request.data.get('location_id'),
+            'status': request.data.get('status', 'scheduled'),
+            'notes': request.data.get('notes'),
+        }
         
-        # DEFENSIVE: Validate scheduled_end > scheduled_start (prevent negative/zero duration)
-        if scheduled_end <= scheduled_start:
-            return Response(
-                {'error': 'scheduled_end debe ser posterior a scheduled_start'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Extract patient data
-        patient_email = request.data.get('patient_email')
-        patient_phone = request.data.get('patient_phone')
-        patient_first_name = request.data.get('patient_first_name', '')
-        patient_last_name = request.data.get('patient_last_name', '')
-        
-        # CRITICAL: Wrap in atomic transaction to prevent race conditions on external_id
-        # Without atomic + get_or_create pattern, concurrent requests with same external_id
-        # could both pass the "if not appointment" check and cause IntegrityError on unique constraint.
-        with transaction.atomic():
-            # Find or create patient
-            patient = None
-            
-            # DEFENSIVE: Patient lookup by email (priority) vs phone_e164 (fallback).
-            # RISK: If email→Patient A and phone→Patient B, we use Patient A (email priority).
-            # This could be ambiguous if Calendly data is inconsistent.
-            # DECISION: Email priority is intentional behavior, deferred to product requirements.
-            
-            # Try to find by email first (priority)
-            if patient_email:
-                patient = Patient.objects.filter(
-                    email=patient_email,
-                    is_deleted=False
-                ).first()
-            
-            # If not found by email, try phone_e164
-            if not patient and patient_phone:
-                # Normalize phone to E.164 if needed (basic normalization)
-                phone_e164 = patient_phone.strip()
-                if not phone_e164.startswith('+'):
-                    phone_e164 = f'+{phone_e164}'
-                
-                patient = Patient.objects.filter(
-                    phone_e164=phone_e164,
-                    is_deleted=False
-                ).first()
-            
-            # Create minimal patient if not found
-            if not patient:
-                full_name_normalized = f"{patient_first_name} {patient_last_name}".strip().lower()
-                
-                patient = Patient.objects.create(
-                    first_name=patient_first_name or 'Calendly',
-                    last_name=patient_last_name or 'Patient',
-                    full_name_normalized=full_name_normalized or 'calendly patient',
-                    email=patient_email or None,
-                    phone=patient_phone or None,
-                    phone_e164=phone_e164 if patient_phone else None,
-                    identity_confidence='low',
-                    created_by_user=request.user
-                )
-            
-            # CRITICAL: Use get_or_create pattern to prevent race conditions on external_id.
-            # DEFENSIVE: In extremely rare cases, concurrent requests may both try to create
-            # the same external_id simultaneously. If get_or_create raises IntegrityError,
-            # we retry with a simple get() to fetch the record created by the concurrent request.
-            # This ensures guaranteed idempotency even under high concurrency.
-            try:
-                appointment, created = Appointment.objects.get_or_create(
-                    external_id=external_id,
-                    defaults={
-                        'patient': patient,
-                        'source': 'calendly',
-                        'scheduled_start': scheduled_start,
-                        'scheduled_end': scheduled_end,
-                        'status': request.data.get('status', 'scheduled'),
-                        'practitioner_id': request.data.get('practitioner_id'),
-                        'location_id': request.data.get('location_id'),
-                        'notes': request.data.get('notes'),
-                    }
-                )
-            except IntegrityError:
-                # DEFENSIVE: Race condition detected - another request created this external_id
-                # between our check and create. Fetch the existing record and treat as update.
-                appointment = Appointment.objects.get(external_id=external_id)
-                created = False
-            
-            if not created:
-                # Update existing appointment
-                
-                # DEFENSIVE: Allow patient change on update.
-                # RISK: This can break clinical traceability if appointment is linked to an encounter
-                # (appointment→encounter→patient mismatch). Changing patient may orphan clinical data.
-                # DECISION: Intentional behavior for now, deferred to clinical/product requirements.
-                appointment.patient = patient
-                
-                appointment.scheduled_start = scheduled_start
-                appointment.scheduled_end = scheduled_end
-                
-                # Update optional fields if provided
-                if 'practitioner_id' in request.data:
-                    appointment.practitioner_id = request.data['practitioner_id']
-                if 'location_id' in request.data:
-                    appointment.location_id = request.data['location_id']
-                if 'status' in request.data:
-                    appointment.status = request.data['status']
-                if 'notes' in request.data:
-                    appointment.notes = request.data['notes']
-                
-                # DEFENSIVE: Updating appointment even if is_deleted=True.
-                # RISK: This "resurrects" soft-deleted appointments without explicit undelete logic,
-                # which may bypass audit trails or business rules around deletion.
-                # DECISION: Intentional behavior for now (Calendly sync has priority over soft-delete),
-                # deferred to product requirements on whether to block or log this scenario.
-                
-                appointment.save()
-            
+        # Call shared sync logic
+        try:
+            appointment, created = _process_calendly_sync(sync_data, created_by_user=request.user)
             serializer = AppointmentDetailSerializer(appointment)
             return Response(
                 serializer.data,
                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            )
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
             )
     
     @action(detail=True, methods=['post'], url_path='link-encounter')
@@ -932,7 +968,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         user_roles = set(
             request.user.user_roles.values_list('role__name', flat=True)
         )
-        allowed_roles = {'Admin', 'Practitioner', 'Reception'}
+        allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER, RoleChoices.RECEPTION}
         
         if not (user_roles & allowed_roles):
             raise PermissionDenied(

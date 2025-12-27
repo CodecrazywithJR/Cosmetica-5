@@ -5,6 +5,7 @@ Based on API_CONTRACTS.md permission matrix.
 BUSINESS RULE: Reception role cannot access clinical data (diagnoses, notes, clinical photos, encounters).
 """
 from rest_framework import permissions
+from apps.authz.models import RoleChoices
 
 
 class IsClinicalStaff(permissions.BasePermission):
@@ -31,7 +32,7 @@ class IsClinicalStaff(permissions.BasePermission):
         )
         
         # BUSINESS RULE: Only Admin and Practitioner can access clinical data
-        allowed_roles = {'Admin', 'Practitioner'}
+        allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER}
         return bool(user_roles & allowed_roles)
 
 
@@ -56,25 +57,25 @@ class PatientPermission(permissions.BasePermission):
         )
         
         # Marketing has NO access
-        if 'Marketing' in user_roles:
+        if RoleChoices.MARKETING in user_roles:
             return False
         
         # Safe methods (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             # Admin, Practitioner, Reception, Accounting can read
-            allowed_roles = {'Admin', 'Practitioner', 'Reception', 'Accounting'}
+            allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER, RoleChoices.RECEPTION, RoleChoices.ACCOUNTING}
             return bool(user_roles & allowed_roles)
         
         # Create/Update (POST, PATCH, PUT)
         if request.method in ['POST', 'PATCH', 'PUT']:
             # Admin, Practitioner, Reception can write
-            allowed_roles = {'Admin', 'Practitioner', 'Reception'}
+            allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER, RoleChoices.RECEPTION}
             return bool(user_roles & allowed_roles)
         
         # Delete (soft-delete)
         if request.method == 'DELETE':
             # Only Admin can delete
-            return 'Admin' in user_roles
+            return RoleChoices.ADMIN in user_roles
         
         return False
     
@@ -104,11 +105,11 @@ class GuardianPermission(permissions.BasePermission):
         )
         
         # Marketing and Accounting have NO access
-        if user_roles & {'Marketing', 'Accounting'}:
+        if user_roles & {RoleChoices.MARKETING, RoleChoices.ACCOUNTING}:
             return False
         
         # Admin, Practitioner, Reception have full access
-        allowed_roles = {'Admin', 'Practitioner', 'Reception'}
+        allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER, RoleChoices.RECEPTION}
         return bool(user_roles & allowed_roles)
 
 
@@ -133,25 +134,25 @@ class AppointmentPermission(permissions.BasePermission):
         )
         
         # Marketing has NO access
-        if 'Marketing' in user_roles:
+        if RoleChoices.MARKETING in user_roles:
             return False
         
         # Safe methods (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             # Admin, Practitioner, Reception, Accounting can read
-            allowed_roles = {'Admin', 'Practitioner', 'Reception', 'Accounting'}
+            allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER, RoleChoices.RECEPTION, RoleChoices.ACCOUNTING}
             return bool(user_roles & allowed_roles)
         
         # Create/Update (POST, PATCH, PUT)
         if request.method in ['POST', 'PATCH', 'PUT']:
             # Admin, Practitioner, Reception can write
-            allowed_roles = {'Admin', 'Practitioner', 'Reception'}
+            allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER, RoleChoices.RECEPTION}
             return bool(user_roles & allowed_roles)
         
         # Delete
         if request.method == 'DELETE':
             # Only Admin can delete
-            return 'Admin' in user_roles
+            return RoleChoices.ADMIN in user_roles
         
         return False
     
@@ -231,18 +232,19 @@ class TreatmentPermission(permissions.BasePermission):
         )
         
         # Accounting and Marketing have NO access
-        if user_roles & {'Accounting', 'Marketing'}:
+        if user_roles & {RoleChoices.ACCOUNTING, RoleChoices.MARKETING}:
             return False
         
         # Safe methods (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             # Admin, ClinicalOps, Practitioner, Reception can read
-            allowed_roles = {'Admin', 'ClinicalOps', 'Practitioner', 'Reception'}
+            # Note: ClinicalOps is not in RoleChoices (legacy), using string literal
+            allowed_roles = {RoleChoices.ADMIN, 'ClinicalOps', RoleChoices.PRACTITIONER, RoleChoices.RECEPTION}
             return bool(user_roles & allowed_roles)
         
         # Create/Update/Delete (POST, PATCH, PUT, DELETE)
         # Only Admin and ClinicalOps can write
-        allowed_roles = {'Admin', 'ClinicalOps'}
+        allowed_roles = {RoleChoices.ADMIN, 'ClinicalOps'}
         return bool(user_roles & allowed_roles)
     
     def has_object_permission(self, request, view, obj):
@@ -277,18 +279,18 @@ class EncounterPermission(permissions.BasePermission):
         )
         
         # Reception, Marketing have NO access (business rule)
-        if user_roles & {'Reception', 'Marketing'}:
+        if user_roles & {RoleChoices.RECEPTION, RoleChoices.MARKETING}:
             return False
         
         # Safe methods (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             # Admin, ClinicalOps, Practitioner, Accounting can read
-            allowed_roles = {'Admin', 'ClinicalOps', 'Practitioner', 'Accounting'}
+            allowed_roles = {RoleChoices.ADMIN, 'ClinicalOps', RoleChoices.PRACTITIONER, RoleChoices.ACCOUNTING}
             return bool(user_roles & allowed_roles)
         
         # Create/Update/Delete (POST, PATCH, PUT, DELETE)
         # Only Admin, ClinicalOps, Practitioner can write
-        allowed_roles = {'Admin', 'ClinicalOps', 'Practitioner'}
+        allowed_roles = {RoleChoices.ADMIN, 'ClinicalOps', RoleChoices.PRACTITIONER}
         return bool(user_roles & allowed_roles)
     
     def has_object_permission(self, request, view, obj):
@@ -330,24 +332,24 @@ class ClinicalChargeProposalPermission(permissions.BasePermission):
         )
         
         # Marketing has NO access
-        if 'Marketing' in user_roles:
+        if RoleChoices.MARKETING in user_roles:
             return False
         
         # Safe methods (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             # Admin, ClinicalOps, Practitioner, Reception, Accounting can read
-            allowed_roles = {'Admin', 'ClinicalOps', 'Practitioner', 'Reception', 'Accounting'}
+            allowed_roles = {RoleChoices.ADMIN, 'ClinicalOps', RoleChoices.PRACTITIONER, RoleChoices.RECEPTION, RoleChoices.ACCOUNTING}
             return bool(user_roles & allowed_roles)
         
         # POST to create-sale action
         # Reception, Admin, ClinicalOps can convert proposals to sales
         if view.action == 'create_sale':
-            allowed_roles = {'Admin', 'ClinicalOps', 'Reception'}
+            allowed_roles = {RoleChoices.ADMIN, 'ClinicalOps', RoleChoices.RECEPTION}
             return bool(user_roles & allowed_roles)
         
         # Other write operations (cancel, etc.)
         # Only Admin and ClinicalOps
-        allowed_roles = {'Admin', 'ClinicalOps'}
+        allowed_roles = {RoleChoices.ADMIN, 'ClinicalOps'}
         return bool(user_roles & allowed_roles)
     
     def has_object_permission(self, request, view, obj):
@@ -365,11 +367,11 @@ class ClinicalChargeProposalPermission(permissions.BasePermission):
         )
         
         # Admin, ClinicalOps, Reception, Accounting can see all proposals
-        if user_roles & {'Admin', 'ClinicalOps', 'Reception', 'Accounting'}:
+        if user_roles & {RoleChoices.ADMIN, 'ClinicalOps', RoleChoices.RECEPTION, RoleChoices.ACCOUNTING}:
             return self.has_permission(request, view)
         
         # Practitioner can only see their own proposals
-        if 'Practitioner' in user_roles:
+        if RoleChoices.PRACTITIONER in user_roles:
             # Check if user is the practitioner for this proposal
             return obj.practitioner == request.user
         

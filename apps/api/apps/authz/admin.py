@@ -5,13 +5,14 @@ from .models import User, Role, UserRole, Practitioner
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ['email', 'is_active', 'is_staff', 'is_superuser', 'created_at']
+    list_display = ['email', 'first_name', 'last_name', 'is_active', 'is_staff', 'is_superuser', 'created_at']
     list_filter = ['is_active', 'is_staff', 'is_superuser']
-    search_fields = ['email']  # Required for autocomplete_fields
+    search_fields = ['email', 'first_name', 'last_name']  # Required for autocomplete_fields
     readonly_fields = ['id', 'created_at', 'updated_at', 'last_login']
     
     fieldsets = (
         (None, {'fields': ('id', 'email', 'password')}),
+        ('Personal Info', {'fields': ('first_name', 'last_name')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
     )
@@ -19,7 +20,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'password1', 'password2', 'is_active', 'is_staff'),
+            'fields': ('email', 'password1', 'password2', 'first_name', 'last_name', 'is_active', 'is_staff'),
         }),
     )
     

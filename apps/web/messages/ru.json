@@ -5,6 +5,7 @@
   },
   "nav": {
     "agenda": "Расписание",
+    "schedule": "Новая Встреча",
     "patients": "Пациенты",
     "encounters": "Посещения",
     "proposals": "Предложения",
@@ -45,20 +46,48 @@
   },
   "agenda": {
     "title": "Расписание",
+    "description": "Управляйте встречами и ежедневным расписанием",
     "filters": {
       "date": "Дата",
       "status": "Статус",
-      "allStatuses": "Все Статусы"
+      "allStatuses": "Все Статусы",
+      "previousDay": "Предыдущий день",
+      "nextDay": "Следующий день",
+      "today": "Сегодня"
+    },
+    "table": {
+      "time": "Время",
+      "patient": "Пациент",
+      "practitioner": "Врач",
+      "type": "Источник",
+      "status": "Статус",
+      "actions": "Действия"
     },
     "appointment": {
+      "type": {
+        "consultation": "Консультация",
+        "follow_up": "Повторный приём",
+        "procedure": "Процедура"
+      },
       "status": {
         "scheduled": "Запланировано",
         "confirmed": "Подтверждено",
+        "checked_in": "Зарегистрировано",
         "in_progress": "В Процессе",
         "completed": "Завершено",
         "cancelled": "Отменено",
         "no_show": "Не Явился"
       }
+    },
+    "actions": {
+      "newAppointment": "Новая Встреча",
+      "confirm": "Подтвердить",
+      "checkIn": "Зарегистрировать",
+      "complete": "Завершить",
+      "cancel": "Отменить"
+    },
+    "summary": {
+      "totalAppointments": "Всего встреч"
     },
     "errors": {
       "title": "Не удалось загрузить расписание",
@@ -70,5 +99,14 @@
       "description": "На выбранную дату нет запланированных встреч. Встречи будут отображаться здесь после создания.",
       "action": "Создать Новую Встречу"
     }
-  }
+  },
+  "calendly": {
+    "notConfigured": {
+      "title": "Calendly не настроен",
+      "description": "Добавьте свой URL Calendly в вашем профиле, чтобы включить запись на приём.",
+      "action": "Перейти к настройкам"
+    }  },
+  "schedule": {
+    "title": "Записаться на приём",
+    "description": "Выберите дату и время для вашего приёма"  }
 }

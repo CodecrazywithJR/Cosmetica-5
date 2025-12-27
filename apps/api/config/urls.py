@@ -28,7 +28,7 @@ urlpatterns = [
     path('api/v1/', include('apps.authz.urls')),  # Authz API (practitioners)
     path('api/v1/clinical/', include('apps.clinical.urls')),  # Clinical API (patients, appointments, encounters, treatments)
     path('api/v1/clinical/', include('apps.encounters.api.urls_media')),  # Clinical Media API
-    path('api/encounters/', include('apps.encounters.urls')),
+    # path('api/encounters/', include('apps.encounters.urls')),  # DEPRECATED - Use /api/v1/clinical/encounters/ instead
     path('api/photos/', include('apps.photos.urls')),
     path('api/products/', include('apps.products.urls')),
     path('api/stock/', include('apps.stock.urls')),

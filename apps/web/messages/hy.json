@@ -5,6 +5,7 @@
   },
   "nav": {
     "agenda": "Օրակարգ",
+    "schedule": "Նոր Հանդիպում",
     "patients": "Հիվանդներ",
     "encounters": "Այցելություններ",
     "proposals": "Առաջարկներ",
@@ -45,20 +46,48 @@
   },
   "agenda": {
     "title": "Օրակարգ",
+    "description": "Կառավարեք հանդիպումները և օրական ծրագիրը",
     "filters": {
       "date": "Ամսաթիվ",
       "status": "Կարգավիճակ",
-      "allStatuses": "Բոլոր Կարգավիճակները"
+      "allStatuses": "Բոլոր Կարգավիճակները",
+      "previousDay": "Նախորդ օր",
+      "nextDay": "Հաջորդ օր",
+      "today": "Այսօր"
+    },
+    "table": {
+      "time": "Жամ",
+      "patient": "Հիվանդ",
+      "practitioner": "Բժիշկ",
+      "type": "Աղբյուր",
+      "status": "Կարգավիճակ",
+      "actions": "Գործողություններ"
     },
     "appointment": {
+      "type": {
+        "consultation": "Խորհրդատվություն",
+        "follow_up": "Հետագա այց",
+        "procedure": "Պրոցեդուրա"
+      },
       "status": {
         "scheduled": "Նախատեսված",
         "confirmed": "Հաստատված",
+        "checked_in": "Գրանցված",
         "in_progress": "Ընթացքում",
         "completed": "Ավարտված",
         "cancelled": "Չեղարկված",
         "no_show": "Չներկայացավ"
       }
+    },
+    "actions": {
+      "newAppointment": "Նոր Հանդիպում",
+      "confirm": "Հաստատել",
+      "checkIn": "Գրանցել",
+      "complete": "Ավարտել",
+      "cancel": "Չեղարկել"
+    },
+    "summary": {
+      "totalAppointments": "Հանդիպումների թիվը"
     },
     "errors": {
       "title": "Չհաջողվեց բեռնել օրակարգը",
@@ -70,5 +99,14 @@
       "description": "Ընտրված ամսաթվի համար նախատեսված հանդիպումներ չկան: Հանդիպումները կհայտնվեն այստեղ, երբ ստեղծվեն:",
       "action": "Ստեղծել Նոր Հանդիպում"
     }
-  }
+  },
+  "calendly": {
+    "notConfigured": {
+      "title": "Calendly-ն կարգավորված չէ",
+      "description": "Ավելացրեք ձեր Calendly URL-ը ձեր պրոֆիլում, որպեսզի միացնեք զրույցների նշանակումը:",
+      "action": "Անցնել կարգավորումներ"
+    }  },
+  "schedule": {
+    "title": "Նշանակել հանդիպում",
+    "description": "Ընտրեք ամսաթիվը և ժամը ձեր հանդիպման համար"  }
 }

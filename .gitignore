@@ -41,9 +41,12 @@ staticfiles/
 .DS_Store
 
 # Environment variables
-.env
+.env                # Legacy file (no longer used)
 .env.local
 .env.*.local
+.env.prod          # Production config with sensitive passwords - NEVER commit
+# Note: .env.dev is safe to commit (development defaults)
+# Note: .env.example is for reference and should be committed
 
 # Testing
 .coverage

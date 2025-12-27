@@ -386,9 +386,15 @@ class CurrentUserView(APIView):
         profile_data = {
             'id': user.id,
             'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
             'is_active': user.is_active,
             'roles': roles,
         }
+        
+        # FASE 4.0: Include Calendly URL if user is a practitioner
+        if hasattr(user, 'practitioner'):
+            profile_data['practitioner_calendly_url'] = user.practitioner.calendly_url
         
         # Serialize and return
         serializer = UserProfileSerializer(profile_data)

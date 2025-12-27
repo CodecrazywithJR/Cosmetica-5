@@ -1,5 +1,26 @@
 """
 Encounter models - Patient visits and consultations.
+
+⚠️ DEPRECATION NOTICE ⚠️
+Date: 2025-12-25
+Status: DEPRECATED - DO NOT USE
+
+The Encounter model in this module is LEGACY and has been replaced by:
+- apps.clinical.models.Encounter (modern, production model)
+
+Reasons for deprecation:
+1. Incorrect FK to User (should be Practitioner)
+2. Not linked with Appointment model
+3. Lacks proper clinical workflow integration
+4. Legacy endpoint /api/encounters/ not used by frontend
+
+Migration Path:
+- ✅ Use apps.clinical.models.Encounter for all new code
+- ✅ Use /api/v1/clinical/encounters/ endpoint
+- ❌ DO NOT import from apps.encounters.models.Encounter
+
+Note: ClinicalMedia in this module is ACTIVE and should continue to be used.
+Import from apps.encounters.models_media.ClinicalMedia or via this module's __all__.
 """
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -7,11 +28,15 @@ from django.utils.translation import gettext_lazy as _
 # Import ClinicalMedia for unified access
 from .models_media import ClinicalMedia
 
-__all__ = ['Encounter', 'ClinicalMedia']
+__all__ = ['Encounter', 'ClinicalMedia']  # Encounter kept for backward compatibility only
 
 
 class Encounter(models.Model):
     """
+    ⚠️ DEPRECATED - DO NOT USE ⚠️
+    
+    This is a LEGACY Encounter model. Use apps.clinical.models.Encounter instead.
+    
     Encounter/Visit model - represents a patient visit or consultation.
     """
     ENCOUNTER_TYPE_CHOICES = [

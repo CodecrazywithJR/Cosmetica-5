@@ -238,6 +238,16 @@ MINIO_DOCUMENTS_BUCKET = os.environ.get('MINIO_DOCUMENTS_BUCKET', 'documents')
 # Legacy variable for backward compatibility
 MINIO_BUCKET_NAME = MINIO_CLINICAL_BUCKET
 
+# ==============================================================================
+# CALENDLY INTEGRATION (FASE 4.0)
+# ==============================================================================
+# Default Calendly URL when practitioner.calendly_url is null
+# Override via environment variable: CALENDLY_DEFAULT_URL
+CALENDLY_DEFAULT_URL = os.environ.get(
+    'CALENDLY_DEFAULT_URL',
+    'https://calendly.com/app/scheduling/meeting_types/user/me?pane=event_type_editor&paneState=ZGVmYXVsdE9wZW5LZXk9YXZhaWxhYmlsaXR5JmlkPTE4OTg2OTAzMSZ0eXBlPVN0YW5kYXJkRXZlbnRUeXBlJm93bmVyVHlwZT1Vc2VyJm93bmVySWQ9NDU3MzYwNTUma2luZD1zb2xv'
+)
+
 # Configure Django storage backends
 if not DEBUG:
     # In production, use MinIO for static and media

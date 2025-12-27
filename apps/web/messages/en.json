@@ -5,6 +5,7 @@
   },
   "nav": {
     "agenda": "Agenda",
+    "schedule": "New Appointment",
     "patients": "Patients",
     "encounters": "Encounters",
     "proposals": "Proposals",
@@ -45,10 +46,14 @@
   },
   "agenda": {
     "title": "Agenda",
+    "description": "Manage appointments and daily schedule",
     "filters": {
       "date": "Date",
       "status": "Status",
-      "allStatuses": "All Statuses"
+      "allStatuses": "All Statuses",
+      "previousDay": "Previous day",
+      "nextDay": "Next day",
+      "today": "Today"
     },
     "table": {
       "time": "Time",
@@ -75,6 +80,7 @@
       }
     },
     "actions": {
+      "newAppointment": "New Appointment",
       "confirm": "Confirm",
       "checkIn": "Check In",
       "complete": "Complete",
@@ -93,5 +99,16 @@
     "summary": {
       "totalAppointments": "Total appointments"
     }
+  },
+  "calendly": {
+    "notConfigured": {
+      "title": "Calendly not configured",
+      "description": "Add your Calendly URL in your profile to enable appointment scheduling.",
+      "action": "Go to settings"
+    }
+  },
+  "schedule": {
+    "title": "Schedule Appointment",
+    "description": "Select a date and time for your appointment"
   }
 }

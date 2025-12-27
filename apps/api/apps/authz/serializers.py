@@ -26,6 +26,7 @@ class PractitionerListSerializer(serializers.ModelSerializer):
             'role_type',
             'role_type_display',
             'specialty',
+            'calendly_url',
             'is_active',
             'created_at',
         ]
@@ -52,6 +53,7 @@ class PractitionerDetailSerializer(serializers.ModelSerializer):
             'role_type',
             'role_type_display',
             'specialty',
+            'calendly_url',
             'is_active',
             'created_at',
             'updated_at',
@@ -76,6 +78,7 @@ class PractitionerWriteSerializer(serializers.ModelSerializer):
             'display_name',
             'role_type',
             'specialty',
+            'calendly_url',
             'is_active',
         ]
         read_only_fields = ['id']
