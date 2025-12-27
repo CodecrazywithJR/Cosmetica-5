@@ -25,8 +25,16 @@
     "edit": "Редагувати",
     "search": "Пошук",
     "filter": "Фільтр",
+    "retry": "Повторити",
     "languageLabel": "Мова",
-    "user": "Користувач"
+    "user": "Користувач",
+    "actions": {
+      "cancel": "Скасувати",
+      "close": "Закрити",
+      "save": "Зберегти",
+      "saving": "Збереження...",
+      "retry": "Повторити"
+    }
   },
   "health": {
     "checking": "Перевірка підключення до сервера...",
@@ -108,5 +116,128 @@
     }  },
   "schedule": {
     "title": "Записатися на прийом",
-    "description": "Виберіть дату та час для вашого прийому"  }
+    "description": "Виберіть дату та час для вашого прийому"
+  },
+  "auth": {
+    "changePassword": {
+      "title": "Потрібна зміна пароля",
+      "description": "З міркувань безпеки ви повинні змінити пароль перед продовженням.",
+      "mandatoryWarning": "Ви повинні змінити пароль для доступу до системи.",
+      "currentPassword": "Поточний пароль",
+      "currentPasswordRequired": "Потрібен поточний пароль",
+      "newPassword": "Новий пароль",
+      "newPasswordRequired": "Потрібен новий пароль",
+      "confirmPassword": "Підтвердіть новий пароль",
+      "confirmPasswordRequired": "Будь ласка, підтвердіть новий пароль",
+      "passwordLength": "Пароль повинен містити від 8 до 16 символів",
+      "passwordMismatch": "Паролі не збігаються",
+      "submit": "Змінити пароль",
+      "logout": "Вийти замість цього",
+      "error": "Не вдалося змінити пароль. Будь ласка, спробуйте ще раз."
+    }
+  },
+  "users": {
+    "title": "Управління користувачами",
+    "list": {
+      "title": "Список користувачів"
+    },
+    "new": {
+      "title": "Новий користувач"
+    },
+    "edit": {
+      "title": "Редагувати користувача"
+    },
+    "search_placeholder": "Пошук за іменем або email",
+    "no_users": "Користувачів не знайдено",
+    "fields": {
+      "email": "Email",
+      "firstName": "Ім'я",
+      "lastName": "Прізвище",
+      "password": "Пароль",
+      "confirmPassword": "Підтвердіть пароль",
+      "roles": {
+        "label": "Ролі",
+        "admin": "Адміністратор",
+        "practitioner": "Практик",
+        "reception": "Реєстратура",
+        "marketing": "Маркетинг",
+        "accounting": "Бухгалтерія"
+      },
+      "isActive": "Активний",
+      "isPractitioner": "Практик",
+      "calendlyUrl": "URL Calendly",
+      "mustChangePassword": "Повинен змінити пароль"
+    },
+    "table": {
+      "name": "Ім'я",
+      "email": "Email",
+      "roles": "Ролі",
+      "status": "Статус",
+      "practitioner": "Практик",
+      "lastLogin": "Останній вхід",
+      "actions": "Дії"
+    },
+    "status": {
+      "active": "Активний",
+      "inactive": "Неактивний"
+    },
+    "actions": {
+      "create": "Створити користувача",
+      "save": "Зберегти",
+      "cancel": "Скасувати",
+      "edit": "Редагувати",
+      "resetPassword": "Скинути пароль",
+      "copyPassword": "Копіювати пароль"
+    },
+    "practitioner": {
+      "title": "Інформація про практика",
+      "createPractitioner": "Створити профіль практика",
+      "hasPractitioner": "Цей користувач має профіль практика",
+      "noPractitioner": "Немає профілю практика",
+      "displayName": "Відображуване ім'я",
+      "specialty": "Спеціальність",
+      "calendlyUrl": "URL Calendly",
+      "calendlyUrlWarning": "URL повинен починатися з https://calendly.com/",
+      "calendlySlugWarning": "URL повинен містити slug типу події"
+    },
+    "messages": {
+      "createSuccess": "Користувача успішно створено",
+      "updateSuccess": "Користувача успішно оновлено",
+      "createError": "Не вдалося створити користувача",
+      "updateError": "Не вдалося оновити користувача",
+      "loadError": "Не вдалося завантажити користувачів",
+      "userNotFound": "Користувача не знайдено",
+      "userCreated": "Користувача успішно створено",
+      "temporaryPassword": "Це тимчасовий пароль для нового користувача. Будь ласка, скопіюйте його зараз, оскільки він більше не буде показаний.",
+      "passwordWarning": "Користувач повинен буде змінити цей пароль при першому вході.",
+      "passwordCopied": "✓ Скопійовано!",
+      "passwordReset": "Пароль успішно скинуто",
+      "passwordResetInstructions": "Збережіть цей пароль зараз і передайте його захищеним каналом. Він більше не буде показаний.",
+      "passwordShareSecurely": "Передайте цей пароль користувачу безпечним способом.",
+      "confirmPasswordReset": "Ви впевнені, що хочете скинути пароль цього користувача?",
+      "resetPasswordError": "Не вдалося скинути пароль",
+      "lastAdminError": "Неможливо деактивувати або видалити роль адміністратора у останнього активного адміністратора",
+      "mustChangePasswordActive": "Цей користувач повинен змінити пароль при наступному вході"
+    },
+    "validation": {
+      "emailRequired": "Потрібен email",
+      "emailInvalid": "Неправильний email",
+      "firstNameRequired": "Потрібне ім'я",
+      "lastNameRequired": "Потрібне прізвище",
+      "passwordRequired": "Потрібен пароль",
+      "passwordLength": "Пароль повинен містити від 8 до 16 символів",
+      "confirmPasswordRequired": "Будь ласка, підтвердіть пароль",
+      "passwordMismatch": "Паролі не збігаються",
+      "rolesRequired": "Потрібна хоча б одна роль",
+      "displayNameRequired": "Потрібне відображуване ім'я",
+      "specialtyRequired": "Потрібна спеціальність",
+      "calendlyUrlFormat": "URL Calendly повинен починатися з https://calendly.com/",
+      "calendlyUrlSlug": "URL Calendly повинен містити slug типу події"
+    },
+    "unauthorized": {
+      "title": "Несанкціонований доступ",
+      "description": "У вас немає прав доступу до цього розділу. Тільки адміністратори можуть керувати користувачами.",
+      "action": "Перейти на головну"
+    }
+  }
 }

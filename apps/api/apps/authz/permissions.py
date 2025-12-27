@@ -1,8 +1,27 @@
 """
-Authz permissions for Practitioner endpoints.
+Authz permissions for Practitioner and User Administration endpoints.
 """
 from rest_framework import permissions
 from apps.authz.models import RoleChoices
+
+
+class IsAdmin(permissions.BasePermission):
+    """
+    Permission class that only allows Admin role users.
+    
+    Used for user administration endpoints.
+    """
+    
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Check if user has admin role
+        user_roles = set(
+            request.user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        return RoleChoices.ADMIN in user_roles
 
 
 class PractitionerPermission(permissions.BasePermission):

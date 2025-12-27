@@ -25,8 +25,16 @@
     "edit": "Modifier",
     "search": "Rechercher",
     "filter": "Filtrer",
+    "retry": "Réessayer",
     "languageLabel": "Langue",
-    "user": "Utilisateur"
+    "user": "Utilisateur",
+    "actions": {
+      "cancel": "Annuler",
+      "close": "Fermer",
+      "save": "Enregistrer",
+      "saving": "Enregistrement...",
+      "retry": "Réessayer"
+    }
   },
   "health": {
     "checking": "Vérification de la connexion backend...",
@@ -110,5 +118,126 @@
   "schedule": {
     "title": "Prendre Rendez-vous",
     "description": "Sélectionnez une date et une heure pour votre rendez-vous"
-  }
+  },
+  "auth": {
+    "changePassword": {
+      "title": "Changement de Mot de Passe Requis",
+      "description": "Pour des raisons de sécurité, vous devez changer votre mot de passe avant de continuer.",
+      "mandatoryWarning": "Vous devez changer votre mot de passe pour accéder au système.",
+      "currentPassword": "Mot de Passe Actuel",
+      "currentPasswordRequired": "Le mot de passe actuel est requis",
+      "newPassword": "Nouveau Mot de Passe",
+      "newPasswordRequired": "Le nouveau mot de passe est requis",
+      "confirmPassword": "Confirmer le Nouveau Mot de Passe",
+      "confirmPasswordRequired": "Veuillez confirmer votre nouveau mot de passe",
+      "passwordLength": "Le mot de passe doit contenir entre 8 et 16 caractères",
+      "passwordMismatch": "Les mots de passe ne correspondent pas",
+      "submit": "Changer le Mot de Passe",
+      "logout": "Se déconnecter plutôt",
+      "error": "Échec du changement de mot de passe. Veuillez réessayer."
+    }
+  },
+  "users": {
+    "title": "Gestion des Utilisateurs",
+    "list": {
+      "title": "Liste des Utilisateurs"
+    },
+    "new": {
+      "title": "Nouvel Utilisateur"
+    },
+    "edit": {
+      "title": "Modifier l'Utilisateur"
+    },
+    "search_placeholder": "Rechercher par nom ou email",
+    "no_users": "Aucun utilisateur trouvé",
+    "fields": {
+      "email": "Email",
+      "firstName": "Prénom",
+      "lastName": "Nom",
+      "password": "Mot de passe",
+      "confirmPassword": "Confirmer le mot de passe",
+      "roles": {
+        "label": "Rôles",
+        "admin": "Administrateur",
+        "practitioner": "Praticien",
+        "reception": "Réception",
+        "marketing": "Marketing",
+        "accounting": "Comptabilité"
+      },
+      "isActive": "Actif",
+      "isPractitioner": "Praticien",
+      "calendlyUrl": "URL Calendly",
+      "mustChangePassword": "Doit Changer le Mot de Passe"
+    },
+    "table": {
+      "name": "Nom",
+      "email": "Email",
+      "roles": "Rôles",
+      "status": "Statut",
+      "practitioner": "Praticien",
+      "lastLogin": "Dernière Connexion",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
+    "actions": {
+      "create": "Créer Utilisateur",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "edit": "Modifier",
+      "resetPassword": "Réinitialiser le Mot de Passe",
+      "copyPassword": "Copier le Mot de Passe"
+    },
+    "practitioner": {
+      "title": "Informations du Praticien",
+      "createPractitioner": "Créer un profil de praticien",
+      "hasPractitioner": "Cet utilisateur a un profil de praticien",
+      "noPractitioner": "Pas de profil de praticien",
+      "displayName": "Nom d'Affichage",
+      "specialty": "Spécialité",
+      "calendlyUrl": "URL Calendly",
+      "calendlyUrlWarning": "L'URL doit commencer par https://calendly.com/",
+      "calendlySlugWarning": "L'URL doit contenir un slug de type d'événement"
+    },
+    "messages": {
+      "createSuccess": "Utilisateur créé avec succès",
+      "updateSuccess": "Utilisateur mis à jour avec succès",
+      "createError": "Échec de la création de l'utilisateur",
+      "updateError": "Échec de la mise à jour de l'utilisateur",
+      "loadError": "Échec du chargement des utilisateurs",
+      "userNotFound": "Utilisateur non trouvé",
+      "userCreated": "Utilisateur Créé avec Succès",
+      "temporaryPassword": "Ceci est le mot de passe temporaire pour le nouvel utilisateur. Veuillez le copier maintenant, car il ne sera plus affiché.",
+      "passwordWarning": "L'utilisateur devra changer ce mot de passe lors de sa première connexion.",
+      "passwordCopied": "✓ Copié!",
+      "passwordReset": "Mot de Passe Réinitialisé avec Succès",
+      "passwordResetInstructions": "Enregistrez ce mot de passe maintenant et partagez-le via un canal sécurisé. Il ne sera plus affiché.",
+      "passwordShareSecurely": "Partagez ce mot de passe de manière sécurisée avec l'utilisateur.",
+      "confirmPasswordReset": "Êtes-vous sûr de vouloir réinitialiser le mot de passe de cet utilisateur?",
+      "resetPasswordError": "Échec de la réinitialisation du mot de passe",
+      "lastAdminError": "Impossible de désactiver ou de retirer le rôle d'administrateur du dernier administrateur actif",
+      "mustChangePasswordActive": "Cet utilisateur doit changer son mot de passe lors de sa prochaine connexion"
+    },
+    "validation": {
+      "emailRequired": "L'email est requis",
+      "emailInvalid": "L'email est invalide",
+      "firstNameRequired": "Le prénom est requis",
+      "lastNameRequired": "Le nom est requis",
+      "passwordRequired": "Le mot de passe est requis",
+      "passwordLength": "Le mot de passe doit contenir entre 8 et 16 caractères",
+      "confirmPasswordRequired": "Veuillez confirmer votre mot de passe",
+      "passwordMismatch": "Les mots de passe ne correspondent pas",
+      "rolesRequired": "Au moins un rôle est requis",
+      "displayNameRequired": "Le nom d'affichage est requis",
+      "specialtyRequired": "La spécialité est requise",
+      "calendlyUrlFormat": "L'URL Calendly doit commencer par https://calendly.com/",
+      "calendlyUrlSlug": "L'URL Calendly doit contenir un slug de type d'événement"
+    },
+    "unauthorized": {
+      "title": "Accès Non Autorisé",
+      "description": "Vous n'avez pas la permission d'accéder à cette section. Seuls les administrateurs peuvent gérer les utilisateurs.",
+      "action": "Aller à l'Accueil"
+    }  }
 }

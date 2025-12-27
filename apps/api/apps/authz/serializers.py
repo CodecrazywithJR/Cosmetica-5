@@ -1,8 +1,24 @@
 """
-Authz serializers for Practitioner.
+Authz serializers for Practitioner and User Administration.
 """
+import secrets
+import string
 from rest_framework import serializers
-from apps.authz.models import Practitioner, PractitionerRoleChoices
+from apps.authz.models import (
+    Practitioner, 
+    PractitionerRoleChoices,
+    User,
+    Role,
+    RoleChoices,
+    UserRole,
+    UserAuditLog,
+    UserAuditActionChoices
+)
+
+
+# ============================================================================
+# Practitioner Serializers
+# ============================================================================
 
 
 class PractitionerListSerializer(serializers.ModelSerializer):

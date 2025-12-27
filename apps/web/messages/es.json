@@ -25,8 +25,16 @@
     "edit": "Editar",
     "search": "Buscar",
     "filter": "Filtrar",
+    "retry": "Reintentar",
     "languageLabel": "Idioma",
-    "user": "Usuario"
+    "user": "Usuario",
+    "actions": {
+      "cancel": "Cancelar",
+      "close": "Cerrar",
+      "save": "Guardar",
+      "saving": "Guardando...",
+      "retry": "Reintentar"
+    }
   },
   "health": {
     "checking": "Verificando conexión con backend...",
@@ -110,5 +118,127 @@
   "schedule": {
     "title": "Agendar Cita",
     "description": "Selecciona una fecha y hora para tu cita"
+  },
+  "auth": {
+    "changePassword": {
+      "title": "Cambio de Contraseña Requerido",
+      "description": "Por razones de seguridad, debe cambiar su contraseña antes de continuar.",
+      "mandatoryWarning": "Debe cambiar su contraseña para acceder al sistema.",
+      "currentPassword": "Contraseña Actual",
+      "currentPasswordRequired": "La contraseña actual es requerida",
+      "newPassword": "Nueva Contraseña",
+      "newPasswordRequired": "La nueva contraseña es requerida",
+      "confirmPassword": "Confirmar Nueva Contraseña",
+      "confirmPasswordRequired": "Por favor confirme su nueva contraseña",
+      "passwordLength": "La contraseña debe tener entre 8 y 16 caracteres",
+      "passwordMismatch": "Las contraseñas no coinciden",
+      "submit": "Cambiar Contraseña",
+      "logout": "Cerrar sesión en su lugar",
+      "error": "Error al cambiar la contraseña. Por favor intente nuevamente."
+    }
+  },
+  "users": {
+    "title": "Gestión de Usuarios",
+    "list": {
+      "title": "Lista de Usuarios"
+    },
+    "new": {
+      "title": "Nuevo Usuario"
+    },
+    "edit": {
+      "title": "Editar Usuario"
+    },
+    "search_placeholder": "Buscar por nombre o email",
+    "no_users": "No se encontraron usuarios",
+    "fields": {
+      "email": "Email",
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "password": "Contraseña",
+      "confirmPassword": "Confirmar Contraseña",
+      "roles": {
+        "label": "Roles",
+        "admin": "Administrador",
+        "practitioner": "Profesional",
+        "reception": "Recepción",
+        "marketing": "Marketing",
+        "accounting": "Contabilidad"
+      },
+      "isActive": "Activo",
+      "isPractitioner": "Profesional",
+      "calendlyUrl": "URL de Calendly",
+      "mustChangePassword": "Debe Cambiar Contraseña"
+    },
+    "table": {
+      "name": "Nombre",
+      "email": "Email",
+      "roles": "Roles",
+      "status": "Estado",
+      "practitioner": "Profesional",
+      "lastLogin": "Último Acceso",
+      "actions": "Acciones"
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "actions": {
+      "create": "Crear Usuario",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "edit": "Editar",
+      "resetPassword": "Restablecer Contraseña",
+      "copyPassword": "Copiar Contraseña"
+    },
+    "practitioner": {
+      "title": "Información de Profesional",
+      "createPractitioner": "Crear perfil de profesional",
+      "hasPractitioner": "Este usuario tiene perfil de profesional",
+      "noPractitioner": "Sin perfil de profesional",
+      "displayName": "Nombre para Mostrar",
+      "specialty": "Especialidad",
+      "calendlyUrl": "URL de Calendly",
+      "calendlyUrlWarning": "La URL debe comenzar con https://calendly.com/",
+      "calendlySlugWarning": "La URL debe contener un slug de tipo de evento"
+    },
+    "messages": {
+      "createSuccess": "Usuario creado exitosamente",
+      "updateSuccess": "Usuario actualizado exitosamente",
+      "createError": "Error al crear usuario",
+      "updateError": "Error al actualizar usuario",
+      "loadError": "Error al cargar usuarios",
+      "userNotFound": "Usuario no encontrado",
+      "userCreated": "Usuario Creado Exitosamente",
+      "temporaryPassword": "Esta es la contraseña temporal para el nuevo usuario. Por favor cópiela ahora, ya que no se mostrará nuevamente.",
+      "passwordWarning": "El usuario deberá cambiar esta contraseña en su primer inicio de sesión.",
+      "passwordCopied": "✓ ¡Copiado!",
+      "passwordReset": "Contraseña Restablecida Exitosamente",
+      "passwordResetInstructions": "Guarde esta contraseña ahora y compártala por un canal seguro. No se volverá a mostrar.",
+      "passwordShareSecurely": "Comparta esta contraseña de forma segura con el usuario.",
+      "confirmPasswordReset": "¿Está seguro de que desea restablecer la contraseña de este usuario?",
+      "resetPasswordError": "Error al restablecer la contraseña",
+      "lastAdminError": "No se puede desactivar o quitar el rol de administrador del último administrador activo",
+      "mustChangePasswordActive": "Este usuario debe cambiar su contraseña en el próximo inicio de sesión"
+    },
+    "validation": {
+      "emailRequired": "El email es requerido",
+      "emailInvalid": "El email es inválido",
+      "firstNameRequired": "El nombre es requerido",
+      "lastNameRequired": "El apellido es requerido",
+      "passwordRequired": "La contraseña es requerida",
+      "passwordLength": "La contraseña debe tener entre 8 y 16 caracteres",
+      "confirmPasswordRequired": "Por favor confirme su contraseña",
+      "passwordMismatch": "Las contraseñas no coinciden",
+      "rolesRequired": "Se requiere al menos un rol",
+      "displayNameRequired": "El nombre para mostrar es requerido",
+      "specialtyRequired": "La especialidad es requerida",
+      "calendlyUrlFormat": "La URL de Calendly debe comenzar con https://calendly.com/",
+      "calendlyUrlSlug": "La URL de Calendly debe contener un slug de tipo de evento"
+    },
+    "unauthorized": {
+      "title": "Acceso No Autorizado",
+      "description": "No tienes permiso para acceder a esta sección. Solo los administradores pueden gestionar usuarios.",
+      "action": "Ir al Inicio"
+    }
   }
 }

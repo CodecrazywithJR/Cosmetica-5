@@ -13,7 +13,7 @@ import { useLocale } from 'next-intl';
 import { routes, type Locale } from '@/lib/routing';
 
 export default function LoginPage() {
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const router = useRouter();
   const locale = useLocale() as Locale;
   const [email, setEmail] = useState('');
@@ -22,6 +22,11 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   if (isAuthenticated) {
+    // Check if user needs to change password
+    if (user?.must_change_password) {
+      router.push(routes.mustChangePassword(locale));
+      return null;
+    }
     router.push(routes.agenda(locale));
     return null;
   }
@@ -35,9 +40,11 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      console.log('[Login] Success! Redirecting to:', `/${locale}`);
-      // Redirect after successful login
-      router.push(`/${locale}`);
+      console.log('[Login] Success! Checking must_change_password...');
+      
+      // Wait for user state to be updated
+      // The useEffect above will handle the redirect
+      
     } catch (err: any) {
       console.error('[Login] Error:', err);
       setError(err.message || 'Invalid credentials');

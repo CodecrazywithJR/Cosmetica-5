@@ -19,15 +19,22 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { user, logout, hasAnyRole } = useAuth();
+  const { user, logout, hasAnyRole, hasRole } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const t = useTranslations('nav');
+  const tUsers = useTranslations('users');
   const tCommon = useTranslations('common');
   const locale = useLocale() as Locale;
 
   if (!user) {
     router.push(routes.login(locale));
+    return null;
+  }
+
+  // Redirect to must-change-password if required (but allow access to that page itself)
+  if (user.must_change_password && !pathname.includes('/must-change-password')) {
+    router.push(routes.mustChangePassword(locale));
     return null;
   }
 
@@ -83,6 +90,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
       href: routes.admin(locale),
       icon: SettingsIcon,
       show: hasAnyRole([ROLES.ADMIN]),
+    },
+    {
+      name: tUsers('title'), // "User Management"
+      href: routes.users.list(locale),
+      icon: UsersShieldIcon,
+      show: hasRole(ROLES.ADMIN), // Only for ADMIN role
     },
   ];
 
@@ -254,6 +267,29 @@ function SettingsIcon({ className }: { className?: string }) {
         d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
       />
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function UsersShieldIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222"
+      />
     </svg>
   );
 }

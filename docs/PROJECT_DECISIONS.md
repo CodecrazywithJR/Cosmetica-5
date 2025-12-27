@@ -13001,3 +13001,491 @@ A:
 - React useEffect in SSR: https://react.dev/reference/react/useEffect#my-effect-runs-twice-when-the-component-mounts
 
 ---
+
+## 13. User Administration - Backend
+
+### DECISION: Administración de usuarios - Backend
+
+**Date**: 2025-12-27  
+**Status**: ✅ Implemented
+
+### Context
+
+Se requiere implementar endpoints de administración de usuarios para que usuarios con rol Admin puedan crear, editar y administrar usuarios del sistema, incluyendo reset de contraseñas y auditoría de acciones.
+
+### Detection of Administrator
+
+El sistema determina si un usuario es Administrador utilizando:
+- **Sistema de Roles**: El modelo `UserRole` relaciona usuarios con roles mediante `auth_user_role`
+- **Role Admin**: Se verifica que el usuario tenga el rol `RoleChoices.ADMIN` ('admin')
+- **Implementación**: 
+  ```python
+  user_roles = set(request.user.user_roles.values_list('role__name', flat=True))
+  return RoleChoices.ADMIN in user_roles
+  ```
+- **No se introducen nuevos roles ni flags** - Se reutiliza el sistema de roles existente
+
+### Campo must_change_password
+
+Se utiliza `must_change_password` para forzar el cambio de contraseña:
+- Se establece en `True` al crear usuarios y al resetear contraseñas
+- Se establece en `False` tras completar el cambio obligatorio
+- El campo se añadió al modelo `User` en `apps/authz/models.py`
+- Tipo: `BooleanField(default=False)`
+- Migración: `0006_add_must_change_password_and_audit.py`
+
+### Política de contraseñas
+
+Las contraseñas deben cumplir los siguientes requisitos:
+- **Longitud**: Mínimo 8, máximo 16 caracteres
+- **Generación automática**: Las contraseñas temporales se generan de forma segura usando `secrets` 
+- **Composición**: Mezcla de mayúsculas, minúsculas, dígitos y caracteres especiales
+- **Almacenamiento**: Siempre usando `user.set_password()` (hashing seguro)
+- Las contraseñas temporales solo se muestran una vez al crearlas/resetearlas
+
+### Reset de contraseña por Administrador
+
+El reset es manual por Administrador:
+- **Endpoint**: `POST /api/v1/users/{id}/reset-password/`
+- **Permiso**: Solo Admin
+- **Proceso**: 
+  1. Admin solicita reset
+  2. Sistema genera contraseña temporal segura
+  3. Se establece `must_change_password = True`
+  4. Se retorna la contraseña temporal (mostrada una sola vez)
+  5. Usuario debe cambiar en próximo login
+- **No se implementa recuperación por email** por decisión de diseño (seguridad)
+
+### Endpoints Implementados
+
+**CRUD de Usuarios**:
+- `GET /api/v1/users/` - Lista usuarios (con búsqueda y filtros)
+- `GET /api/v1/users/{id}/` - Detalle de usuario
+- `POST /api/v1/users/` - Crear usuario (genera contraseña temporal)
+- `PATCH /api/v1/users/{id}/` - Actualizar usuario
+
+**Gestión de Contraseñas**:
+- `POST /api/v1/users/{id}/reset-password/` - Admin resetea contraseña de usuario
+- `POST /api/v1/users/change-password/` - Usuario cambia su propia contraseña
+- `POST /api/v1/users/{id}/change-password/` - Admin cambia contraseña de usuario
+
+**Query Parameters** (lista):
+- `?q=search_term` - Búsqueda por email, nombre
+- `?is_active=true|false` - Filtrar por estado
+- `?role=admin|practitioner|...` - Filtrar por rol
+
+### Integración con Practitioner
+
+Los usuarios pueden tener un registro de `Practitioner` asociado:
+- Campo `calendly_url` disponible para practitioners
+- **Validación suave** en calendly_url:
+  - Advertencia si no empieza por `https://calendly.com/`
+  - Advertencia si no contiene slug
+  - **No bloquea el guardado** - solo muestra warnings
+- Se puede crear/actualizar practitioner junto con usuario usando `practitioner_data`
+
+### Auditoría
+
+Se implementó el modelo `UserAuditLog` para registrar acciones administrativas:
+- **Modelo**: `apps/authz/models.UserAuditLog`
+- **Tabla**: `user_audit_log`
+- **Campos**:
+  - `actor_user`: Admin que realizó la acción
+  - `target_user`: Usuario afectado
+  - `action`: Tipo de acción (create_user, update_user, reset_password, change_password, etc.)
+  - `created_at`: Timestamp de la acción
+  - `metadata`: JSON con cambios before/after, IP, etc.
+- **Acciones auditadas**:
+  - Creación de usuarios
+  - Edición de usuarios
+  - Reset de contraseña
+  - Cambio de contraseña
+  - Activación/desactivación de usuarios
+- **Basado en**: Patrón de `ClinicalAuditLog` existente
+
+### Seguridad
+
+**Protección del último Admin**:
+- No se permite desactivar el último administrador activo
+- No se permite quitar el rol Admin al último administrador
+- Validación en `UserUpdateSerializer.validate()`
+
+**Auto-modificación**:
+- Admin puede cambiar su propia contraseña (requiere contraseña actual)
+- Admin puede cambiar contraseñas de otros usuarios (sin requerir contraseña actual)
+
+**Registro de IP**:
+- Todas las acciones registran IP del cliente en metadata
+- Se captura de `HTTP_X_FORWARDED_FOR` o `REMOTE_ADDR`
+
+### Limitaciones
+
+**Invalidación de sesiones**:
+- Django no invalida automáticamente sesiones activas al cambiar contraseña
+- Las sesiones existentes permanecen válidas hasta expiración natural
+- Limitación documentada del sistema de autenticación actual
+- **Workaround posible**: Incrementar `password_changed_at` y validar en cada request
+
+**Notificaciones**:
+- No se implementan notificaciones por email de cambios de contraseña
+- El admin debe comunicar la contraseña temporal manualmente al usuario
+
+### Files Modified
+
+**Models**:
+- `apps/api/apps/authz/models.py`: Añadido `must_change_password`, `UserAuditLog`, `UserAuditActionChoices`
+
+**Serializers**:
+- `apps/api/apps/authz/serializers_users.py`: Nuevos serializers para CRUD y gestión de contraseñas
+
+**Views**:
+- `apps/api/apps/authz/views_users.py`: `UserAdminViewSet` con todos los endpoints
+
+**Permissions**:
+- `apps/api/apps/authz/permissions.py`: Nueva clase `IsAdmin`
+
+**URLs**:
+- `apps/api/apps/authz/urls.py`: Registrado `UserAdminViewSet` en router
+
+**Admin**:
+- `apps/api/apps/authz/admin.py`: Añadido `UserAuditLogAdmin`, actualizado `UserAdmin`
+
+**Migrations**:
+- `apps/api/apps/authz/migrations/0006_add_must_change_password_and_audit.py`
+
+### Testing Recommendations
+
+1. Verificar creación de usuario genera contraseña temporal
+2. Verificar `must_change_password = True` al crear/resetear
+3. Verificar cambio de contraseña pone `must_change_password = False`
+4. Verificar no se puede desactivar último admin
+5. Verificar auditoría registra todas las acciones
+6. Verificar validación de longitud de contraseña (8-16)
+7. Verificar filtros y búsqueda en lista de usuarios
+8. Verificar warnings (no errores) en calendly_url inválido
+
+---
+
+## 14. User Administration - Frontend
+
+### DECISION: Administración de usuarios - Frontend
+
+**Date**: 2025-12-27  
+**Status**: 🚧 Partially Implemented (Backend Complete, Frontend In Progress)
+
+### Context
+
+Implementación de la interfaz de administración de usuarios en el frontend Next.js/React, cumpliendo estrictamente con el sistema de internacionalización existente y protección por roles.
+
+### Acceso por rol
+
+La interfaz de Administración > Usuarios solo está disponible para usuarios que poseen el rol `ADMIN` en `user_roles`:
+
+**Implementación**:
+```typescript
+// En Sidebar (app-layout.tsx)
+{
+  name: tUsers('title'),
+  href: routes.users.list(locale),
+  icon: UsersShieldIcon,
+  show: hasRole(ROLES.ADMIN), // Sólo para rol ADMIN
+}
+
+// En página de usuarios
+const isAdmin = hasRole(ROLES.ADMIN);
+if (!isAdmin) {
+  return <Unauthorized />;
+}
+```
+
+**NO se utiliza**:
+- `is_staff`
+- `is_superuser`
+- Flags hardcodeados
+
+### Sidebar
+
+La opción "Gestión de Usuarios" se renderiza dinámicamente en la Sidebar según los roles del usuario autenticado:
+- **Ubicación**: Después de "Administración"
+- **Icono**: UsersShieldIcon (usuario con escudo)
+- **Condición**: `hasRole(ROLES.ADMIN)` - usa el mismo mecanismo que el backend
+- **Traducción**: `tUsers('title')` desde sistema i18n
+
+### Protección por URL
+
+Las rutas de administración están protegidas y muestran una pantalla 403 traducida si un usuario no autorizado accede directamente:
+
+**Rutas implementadas**:
+```typescript
+users: {
+  list: (locale) => `/${locale}/admin/users`,
+  create: (locale) => `/${locale}/admin/users/new`,
+  edit: (locale, id) => `/${locale}/admin/users/${id}/edit`,
+}
+```
+
+**Componente de Protección**:
+- `components/unauthorized.tsx` - Pantalla 403 completamente traducida
+- Muestra código de error, mensaje y botón de regreso
+- Usa traducciones de `users.unauthorized.*`
+
+### Internacionalización
+
+Todos los textos visibles utilizan el sistema de i18n existente:
+
+**Traducciones añadidas**:
+- `messages/en.json` - Inglés ✅
+- `messages/es.json` - Español ✅
+- `messages/fr.json` - Francés ✅
+- `messages/ru.json` - Ruso ⚠️ (pendiente completar)
+- `messages/uk.json` - Ucraniano ⚠️ (pendiente completar)
+- `messages/hy.json` - Armenio ⚠️ (pendiente completar)
+
+**Namespace**: `users`
+
+**Estructura de traducciones**:
+```json
+{
+  "users": {
+    "title": "...",
+    "list": "...",
+    "fields": { ... },
+    "table": { ... },
+    "actions": { ... },
+    "practitioner": { ... },
+    "messages": { ... },
+    "validation": { ... },
+    "unauthorized": { ... }
+  }
+}
+```
+
+### Componentes Implementados
+
+#### 1. Sidebar Update ✅
+**Archivo**: `components/layout/app-layout.tsx`
+- Añadido enlace "Gestión de Usuarios" solo para Admin
+- Nuevo icono `UsersShieldIcon`
+- Usa `hasRole(ROLES.ADMIN)` directamente (no `hasAnyRole`)
+- Traducción con `useTranslations('users')`
+
+#### 2. Unauthorized Component ✅
+**Archivo**: `components/unauthorized.tsx`
+- Pantalla 403 profesional
+- Completamente traducida
+- Botón de regreso al inicio
+- Diseño responsive
+
+#### 3. Users List Page ✅
+**Archivo**: `app/[locale]/admin/users/page.tsx`
+- Listado de usuarios con tabla
+- Búsqueda por nombre o email
+- Protección de acceso (verifica `hasRole(ROLES.ADMIN)`)
+- Muestra:
+  - Nombre completo
+  - Email
+  - Roles (como badges)
+  - Estado (activo/inactivo)
+  - Indicador de practitioner
+  - Indicador de "must_change_password"
+- Botón "Crear Usuario"
+- Botón "Editar" por cada usuario
+- Manejo de estados: loading, error, empty
+- Totalmente traducido
+
+#### 4. Routing Extensions ✅
+**Archivo**: `lib/routing.ts`
+- Añadidas rutas de usuarios:
+  - `users.list(locale)`
+  - `users.create(locale)`
+  - `users.edit(locale, id)`
+
+### Pendientes de Implementación
+
+**COMPLETADO**: Todos los componentes han sido implementados.
+
+### Componentes Implementados Recientemente
+
+#### 5. Formulario de Edición (✅ Complete)
+**Ruta**: `/admin/users/{id}/edit`
+
+**Funcionalidad**:
+- Carga datos del usuario desde GET `/api/v1/users/{id}/`
+- Protección Admin-only
+- Campos editables:
+  - Email (validación)
+  - Nombre y apellido
+  - Roles (multi-select)
+  - Estado activo/inactivo
+- Sección Practitioner:
+  - Se muestra si `is_practitioner === true`
+  - Permite editar calendly_url
+  - Validaciones suaves (warnings no bloqueantes)
+- Botón "Reset Password" en el header
+- Manejo especial de error "último admin activo"
+- PATCH a `/api/v1/users/{id}/`
+- Mensajes de éxito/error con i18n completo
+
+#### 6. Reset de Contraseña por Admin (✅ Complete)
+**Ubicación**: Botón en formulario de edición
+
+**Funcionalidad**:
+- Botón "Resetear contraseña" visible solo para Admin
+- Confirmación antes de ejecutar
+- Llamada a POST `/api/v1/users/{id}/reset-password/`
+- Modal con contraseña temporal mostrada UNA VEZ
+- Botón para copiar al portapapeles
+- Mensaje de seguridad para compartir por canal seguro
+- Todo traducido (en, es, fr, ru, uk, hy)
+
+#### 7. Flujo must_change_password (✅ Complete)
+**Ruta**: `/must-change-password`
+
+**Funcionalidad**:
+- Detección automática tras login
+- Si `user.must_change_password === true`:
+  - Redirección obligatoria a pantalla de cambio
+  - Bloqueo de acceso al resto del ERP (AppLayout)
+- Pantalla standalone fuera de AppLayout
+- Formularios:
+  - Contraseña actual
+  - Nueva contraseña (8-16 caracteres)
+  - Confirmar nueva contraseña
+- Validaciones frontend y backend
+- Llamada a POST `/api/v1/users/me/change-password/`
+- Al éxito: `must_change_password` pasa a `false` automáticamente
+- Redirección a home tras cambio exitoso
+- Opción de logout sin cambiar
+- Banner de advertencia visible
+- 100% traducido en 6 idiomas
+
+### Architecture Decisions
+
+**Protección de Rutas**:
+- Verificación en cada página usando `hasRole(ROLES.ADMIN)`
+- Si no autorizado: renderizar componente `<Unauthorized />`
+- No usar middleware Next.js (complejidad innecesaria)
+
+**Estado de Formularios**:
+- Usar `useState` para estado local
+- Validaciones en frontend + backend
+- Mensajes de error traducidos
+
+**Contraseñas Temporales**:
+- Mostrar UNA VEZ tras creación/reset
+- Implementar botón "Copiar" con `navigator.clipboard`
+- Mostrar confirmación visual tras copiar
+
+**Warnings de Calendly**:
+- No bloquear guardado
+- Mostrar warnings visuales (amarillo)
+- Usuario puede ignorar y guardar
+
+### Files Implemented
+
+**Frontend**:
+- ✅ `components/layout/app-layout.tsx` - Sidebar con enlace de usuarios + bloqueo must_change_password
+- ✅ `components/unauthorized.tsx` - Pantalla 403
+- ✅ `app/[locale]/admin/users/page.tsx` - Listado de usuarios
+- ✅ `app/[locale]/admin/users/new/page.tsx` - Creación de usuarios
+- ✅ `app/[locale]/admin/users/[id]/edit/page.tsx` - Edición de usuarios
+- ✅ `app/[locale]/must-change-password/page.tsx` - Cambio forzado de contraseña
+- ✅ `app/[locale]/login/page.tsx` - Actualizado para detectar must_change_password
+
+**Routing**:
+- ✅ `lib/routing.ts` - Rutas de usuarios y must-change-password añadidas
+- ✅ `lib/auth-context.tsx` - Campo must_change_password añadido a User interface
+
+**Translations**:
+- ✅ `messages/en.json` - Completo (users + auth.changePassword)
+- ✅ `messages/es.json` - Completo (users + auth.changePassword)
+- ✅ `messages/fr.json` - Completo (users + auth.changePassword)
+- ✅ `messages/ru.json` - Completo (users + auth.changePassword)
+- ✅ `messages/uk.json` - Completo (users + auth.changePassword)
+- ✅ `messages/hy.json` - Completo (users + auth.changePassword)
+
+### Testing Checklist
+
+- [x] Sidebar muestra opción solo para Admin
+- [x] Sidebar NO muestra opción para otros roles
+- [x] Acceso directo por URL muestra 403 si no Admin
+- [x] Lista de usuarios carga correctamente
+- [x] Búsqueda filtra usuarios
+- [x] Botón "Crear Usuario" navega correctamente
+- [x] Botón "Editar" navega correctamente
+- [x] Estados de loading y error funcionan
+- [x] Todas las traducciones funcionan (en, es, fr, ru, uk, hy)
+- [x] Cambio de idioma actualiza textos
+- [x] Formulario de creación valida campos
+- [x] Contraseña temporal se muestra UNA VEZ
+- [x] Botón copiar funciona
+- [x] Formulario de edición carga datos
+- [x] Sección practitioner se muestra condicionalmente
+- [x] Warnings de Calendly no bloquean guardado
+- [x] Error "último admin" se maneja correctamente
+- [x] Reset password muestra modal con contraseña temporal
+- [x] Flujo must_change_password bloquea acceso al ERP
+- [x] Cambio de contraseña valida longitud (8-16)
+- [x] Tras cambio exitoso, se redirige a home
+
+### Next Steps
+
+**COMPLETADO**: Todos los pasos planeados han sido implementados.
+
+**Implementación Final Incluye**:
+
+1. ✅ **Crear Formulario**:
+   - Validaciones frontend completas
+   - Conectado con API
+   - Manejo de respuesta con contraseña temporal
+   - Contraseña mostrada UNA VEZ con botón copiar
+
+2. ✅ **Editar Formulario**:
+   - Carga datos de usuario
+   - Sección practitioner condicional
+   - Validación suave de calendly_url
+   - Actualización con confirmación
+   - Botón reset password integrado
+
+3. ✅ **Completar Traducciones**:
+   - Sección `users` añadida a ru, uk, hy
+   - Sección `auth.changePassword` añadida a todos los idiomas
+
+4. ✅ **Flujo must_change_password**:
+   - Pantalla standalone de cambio forzado
+   - Bloqueo automático del ERP
+   - Detección tras login
+   - Validaciones 8-16 caracteres
+   - Redirección tras éxito
+
+5. ✅ **Testing E2E**:
+   - Flujo completo: crear → listar → editar
+   - Protección de rutas verificada
+   - Traducciones validadas en 6 idiomas
+   - Reset password funcional
+   - Must change password funcional
+
+### Known Limitations
+
+**Session Management**:
+- Al cambiar contraseña de otro usuario, su sesión no se invalida automáticamente
+- Usuario debe cerrar sesión y volver a entrar
+- Limitación del sistema de autenticación Django actual
+
+**Clipboard API**:
+- `navigator.clipboard` requiere HTTPS en producción
+- En desarrollo (localhost) funciona sin HTTPS
+
+**Practitioner Auto-creation**:
+- No se implementa creación automática de practitioner al asignar rol
+- Admin debe seleccionar explícitamente si crear practitioner
+
+---
+
+**Status Summary**:
+- ✅ Backend: 100% Complete
+- ✅ Frontend Core: 100% Complete (Sidebar, List, Protection, i18n)
+- ✅ Frontend Forms: 100% Complete (Create/Edit implemented)
+- ✅ Translations: 100% (6/6 languages complete)
+- ✅ Must Change Password Flow: 100% Complete
+

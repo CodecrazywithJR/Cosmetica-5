@@ -65,6 +65,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=150, blank=True, help_text='Last name of the user')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)  # Required for admin access
+    must_change_password = models.BooleanField(
+        default=False,
+        help_text='If true, user must change password on next login'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -154,6 +158,79 @@ class UserRole(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.role.name}"
 
+# ============================================================================
+# User Administration Audit Log
+# ============================================================================
+
+class UserAuditActionChoices(models.TextChoices):
+    """Actions that can be audited for user administration."""
+    CREATE_USER = 'create_user', 'Create User'
+    UPDATE_USER = 'update_user', 'Update User'
+    RESET_PASSWORD = 'reset_password', 'Reset Password'
+    CHANGE_PASSWORD = 'change_password', 'Change Password'
+    DEACTIVATE_USER = 'deactivate_user', 'Deactivate User'
+    ACTIVATE_USER = 'activate_user', 'Activate User'
+
+
+class UserAuditLog(models.Model):
+    """
+    Audit trail for user administration actions.
+    
+    Tracks administrative actions on users for security and compliance.
+    Based on the pattern from ClinicalAuditLog.
+    
+    Fields:
+    - id: UUID PK
+    - created_at: timestamp of action
+    - actor_user: admin who made the change
+    - target_user: user being modified
+    - action: create_user|update_user|reset_password|change_password
+    - metadata: JSON with before/after values, changed fields, IP, etc.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    actor_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='admin_actions',
+        help_text='Admin user who performed the action'
+    )
+    
+    target_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='audit_logs',
+        help_text='User who was affected by the action'
+    )
+    
+    action = models.CharField(
+        max_length=20,
+        choices=UserAuditActionChoices.choices
+    )
+    
+    metadata = models.JSONField(
+        default=dict,
+        help_text='Changed fields, before/after values, IP address, user agent, etc.'
+    )
+    
+    class Meta:
+        db_table = 'user_audit_log'
+        verbose_name = 'User Audit Log'
+        verbose_name_plural = 'User Audit Logs'
+        indexes = [
+            models.Index(fields=['created_at'], name='idx_user_audit_created'),
+            models.Index(fields=['actor_user'], name='idx_user_audit_actor'),
+            models.Index(fields=['target_user'], name='idx_user_audit_target'),
+            models.Index(fields=['action'], name='idx_user_audit_action'),
+        ]
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        actor = self.actor_user.email if self.actor_user else 'system'
+        target = self.target_user.email if self.target_user else 'unknown'
+        return f"{self.action} on {target} by {actor}"
 
 class Practitioner(models.Model):
     """

@@ -25,8 +25,16 @@
     "edit": "Խմբագրել",
     "search": "Որոնել",
     "filter": "Զտել",
+    "retry": "Կրկին փորձել",
     "languageLabel": "Լեզու",
-    "user": "Օգտվող"
+    "user": "Օգտատեր",
+    "actions": {
+      "cancel": "Չեղարկել",
+      "close": "Փակել",
+      "save": "Պահպանել",
+      "saving": "Պահպանվում է...",
+      "retry": "Կրկին փորձել"
+    }
   },
   "health": {
     "checking": "Ստուգվում է սերվերի կապը...",
@@ -108,5 +116,128 @@
     }  },
   "schedule": {
     "title": "Նշանակել հանդիպում",
-    "description": "Ընտրեք ամսաթիվը և ժամը ձեր հանդիպման համար"  }
+    "description": "Ընտրեք ամսաթիվը և ժամը ձեր հանդիպման համար"
+  },
+  "auth": {
+    "changePassword": {
+      "title": "Անհրաժեշտ է փոխել գաղտնաբառը",
+      "description": "Անվտանգության նկատառումներից ելնելով, դուք պետք է փոխեք ձեր գաղտնաբառը շարունակելուց առաջ:",
+      "mandatoryWarning": "Դուք պետք է փոխեք ձեր գաղտնաբառը համակարգ մուտք գործելու համար:",
+      "currentPassword": "Ընթացիկ գաղտնաբառ",
+      "currentPasswordRequired": "Ընթացիկ գաղտնաբառը պարտադիր է",
+      "newPassword": "Նոր գաղտնաբառ",
+      "newPasswordRequired": "Նոր գաղտնաբառը պարտադիր է",
+      "confirmPassword": "Հաստատեք նոր գաղտնաբառը",
+      "confirmPasswordRequired": "Խնդրում ենք հաստատել ձեր նոր գաղտնաբառը",
+      "passwordLength": "Գաղտնաբառը պետք է պարունակի 8-ից 16 նիշ",
+      "passwordMismatch": "Գաղտնաբառերը չեն համապատասխանում",
+      "submit": "Փոխել գաղտնաբառը",
+      "logout": "Դուրս գալ փոխարենը",
+      "error": "Չհաջողվեց փոխել գաղտնաբառը: Խնդրում ենք կրկին փորձել:"
+    }
+  },
+  "users": {
+    "title": "Օգտվողների կառավարում",
+    "list": {
+      "title": "Օգտվողների ցանկ"
+    },
+    "new": {
+      "title": "Նոր օգտվող"
+    },
+    "edit": {
+      "title": "Խմբագրել օգտվողին"
+    },
+    "search_placeholder": "Որոնել անունով կամ էլ. փոստով",
+    "no_users": "Օգտվողներ չեն գտնվել",
+    "fields": {
+      "email": "Էլ. փոստ",
+      "firstName": "Անուն",
+      "lastName": "Ազգանուն",
+      "password": "Գաղտնաբառ",
+      "confirmPassword": "Հաստատել գաղտնաբառը",
+      "roles": {
+        "label": "Դերեր",
+        "admin": "Ադմինիստրատոր",
+        "practitioner": "Պրակտիկ",
+        "reception": "Ընդունարան",
+        "marketing": "Մարքեթինգ",
+        "accounting": "Հաշվապահություն"
+      },
+      "isActive": "Ակտիվ",
+      "isPractitioner": "Պրակտիկ",
+      "calendlyUrl": "Calendly URL",
+      "mustChangePassword": "Պետք է փոխի գաղտնաբառը"
+    },
+    "table": {
+      "name": "Անուն",
+      "email": "Էլ. փոստ",
+      "roles": "Դերեր",
+      "status": "Կարգավիճակ",
+      "practitioner": "Պրակտիկ",
+      "lastLogin": "Վերջին մուտք",
+      "actions": "Գործողություններ"
+    },
+    "status": {
+      "active": "Ակտիվ",
+      "inactive": "Ոչ ակտիվ"
+    },
+    "actions": {
+      "create": "Ստեղծել օգտվող",
+      "save": "Պահպանել",
+      "cancel": "Չեղարկել",
+      "edit": "Խմբագրել",
+      "resetPassword": "Վերականգնել գաղտնաբառը",
+      "copyPassword": "Պատճենել գաղտնաբառը"
+    },
+    "practitioner": {
+      "title": "Պրակտիկի տեղեկություններ",
+      "createPractitioner": "Ստեղծել պրակտիկի պրոֆիլ",
+      "hasPractitioner": "Այս օգտվողն ունի պրակտիկի պրոֆիլ",
+      "noPractitioner": "Պրակտիկի պրոֆիլ չկա",
+      "displayName": "Ցուցադրվող անուն",
+      "specialty": "Մասնագիտություն",
+      "calendlyUrl": "Calendly URL",
+      "calendlyUrlWarning": "URL-ը պետք է սկսվի https://calendly.com/-ով",
+      "calendlySlugWarning": "URL-ը պետք է պարունակի իրադարձության տեսակի slug"
+    },
+    "messages": {
+      "createSuccess": "Օգտվողը հաջողությամբ ստեղծվել է",
+      "updateSuccess": "Օգտվողը հաջողությամբ թարմացվել է",
+      "createError": "Չհաջողվեց ստեղծել օգտվող",
+      "updateError": "Չհաջողվեց թարմացնել օգտվող",
+      "loadError": "Չհաջողվեց բեռնել օգտվողներին",
+      "userNotFound": "Օգտվողը չի գտնվել",
+      "userCreated": "Օգտվողը հաջողությամբ ստեղծվել է",
+      "temporaryPassword": "Սա նոր օգտվողի ժամանակավոր գաղտնաբառն է: Խնդրում ենք պատճենել այն հիմա, քանի որ այն այլևս չի ցուցադրվի:",
+      "passwordWarning": "Օգտվողը պետք է փոխի այս գաղտնաբառը իր առաջին մուտքի ժամանակ:",
+      "passwordCopied": "✓ Պատճենված է!",
+      "passwordReset": "Գաղտնաբառը հաջողությամբ վերականգնվել է",
+      "passwordResetInstructions": "Պահպանեք այս գաղտնաբառը հիմա և փոխանցեք այն անվտանգ ուղիով: Այն այլևս չի ցուցադրվի:",
+      "passwordShareSecurely": "Փոխանցեք այս գաղտնաբառը օգտվողին անվտանգ եղանակով:",
+      "confirmPasswordReset": "Վստա՞հ եք, որ ցանկանում եք վերականգնել այս օգտվողի գաղտնաբառը:",
+      "resetPasswordError": "Չհաջողվեց վերականգնել գաղտնաբառը",
+      "lastAdminError": "Անհնար է ապաակտիվացնել կամ հեռացնել ադմինիստրատորի դերը վերջին ակտիվ ադմինիստրատորից",
+      "mustChangePasswordActive": "Այս օգտվողը պետք է փոխի իր գաղտնաբառը հաջորդ մուտքի ժամանակ"
+    },
+    "validation": {
+      "emailRequired": "Էլ. փոստը պարտադիր է",
+      "emailInvalid": "Էլ. փոստը անվավեր է",
+      "firstNameRequired": "Անունը պարտադիր է",
+      "lastNameRequired": "Ազգանունը պարտադիր է",
+      "passwordRequired": "Գաղտնաբառը պարտադիր է",
+      "passwordLength": "Գաղտնաբառը պետք է պարունակի 8-ից 16 նիշ",
+      "confirmPasswordRequired": "Խնդրում ենք հաստատել գաղտնաբառը",
+      "passwordMismatch": "Գաղտնաբառերը չեն համապատասխանում",
+      "rolesRequired": "Առնվազն մեկ դեր է պահանջվում",
+      "displayNameRequired": "Ցուցադրվող անունը պարտադիր է",
+      "specialtyRequired": "Մասնագիտությունը պարտադիր է",
+      "calendlyUrlFormat": "Calendly URL-ը պետք է սկսվի https://calendly.com/-ով",
+      "calendlyUrlSlug": "Calendly URL-ը պետք է պարունակի իրադարձության տեսակի slug"
+    },
+    "unauthorized": {
+      "title": "Չթույլատրված մուտք",
+      "description": "Դուք չունեք մուտքի թույլտվություն այս բաժին: Միայն ադմինիստրատորները կարող են կառավարել օգտվողներին:",
+      "action": "Անցնել գլխավոր"
+    }
+  }
 }
