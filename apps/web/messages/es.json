@@ -157,9 +157,10 @@
       "password": "Contraseña",
       "confirmPassword": "Confirmar Contraseña",
       "roles": {
-        "label": "Roles",
+        "label": "Permisos de acceso",
+        "description": "Define a qué partes del sistema puede acceder este usuario.",
         "admin": "Administrador",
-        "practitioner": "Profesional",
+        "practitioner": "Profesional sanitario",
         "reception": "Recepción",
         "marketing": "Marketing",
         "accounting": "Contabilidad"
@@ -172,7 +173,7 @@
     "table": {
       "name": "Nombre",
       "email": "Email",
-      "roles": "Roles",
+      "roles": "Permisos",
       "status": "Estado",
       "practitioner": "Profesional",
       "lastLogin": "Último Acceso",

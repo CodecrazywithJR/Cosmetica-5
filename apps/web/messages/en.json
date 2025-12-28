@@ -157,9 +157,10 @@
       "password": "Password",
       "confirmPassword": "Confirm Password",
       "roles": {
-        "label": "Roles",
+        "label": "Access Permissions",
+        "description": "Define which parts of the system this user can access.",
         "admin": "Administrator",
-        "practitioner": "Practitioner",
+        "practitioner": "Healthcare Professional",
         "reception": "Reception",
         "marketing": "Marketing",
         "accounting": "Accounting"
@@ -172,7 +173,7 @@
     "table": {
       "name": "Name",
       "email": "Email",
-      "roles": "Roles",
+      "roles": "Permissions",
       "status": "Status",
       "practitioner": "Practitioner",
       "lastLogin": "Last Login",

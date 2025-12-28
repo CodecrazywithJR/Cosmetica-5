@@ -88,13 +88,9 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
     }
   };
 
-  const handleRoleToggle = (role: string) => {
-    setFormData((prev) => {
-      const newRoles = prev.roles.includes(role)
-        ? prev.roles.filter((r) => r !== role)
-        : [...prev.roles, role];
-      return { ...prev, roles: newRoles };
-    });
+  const handleRoleChange = (role: string) => {
+    // Single role selection: replace array with selected role
+    setFormData((prev) => ({ ...prev, roles: [role] }));
 
     // Clear role error
     if (errors.roles) {
@@ -189,13 +185,21 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
         is_active: formData.is_active,
       };
 
-      // Add practitioner data if checkbox is checked
-      if (formData.create_practitioner) {
-        payload.practitioner_data = {
-          display_name: formData.display_name.trim(),
-          specialty: formData.specialty.trim(),
-          calendly_url: formData.calendly_url.trim() || null,
-        };
+      // Add practitioner data if checkbox is checked OR if calendly_url has value
+      if (formData.create_practitioner || formData.calendly_url.trim()) {
+        const practitionerData: any = {};
+        if (formData.display_name.trim()) {
+          practitionerData.display_name = formData.display_name.trim();
+        }
+        if (formData.specialty.trim()) {
+          practitionerData.specialty = formData.specialty.trim();
+        }
+        if (formData.calendly_url.trim()) {
+          practitionerData.calendly_url = formData.calendly_url.trim();
+        }
+        if (Object.keys(practitionerData).length > 0) {
+          payload.practitioner_data = practitionerData;
+        }
       }
 
       const response = await apiClient.post<PasswordResponse>('/api/v1/users/', payload);
@@ -254,8 +258,8 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
     router.push(routes.users.list(locale as Locale));
   };
 
-  // Show practitioner section if PRACTITIONER role is selected OR if checkbox is checked
-  const showPractitionerSection = formData.roles.includes(ROLES.PRACTITIONER) || formData.create_practitioner;
+  // Show practitioner section if ADMIN or PRACTITIONER role is selected OR if checkbox is checked
+  const showPractitionerSection = formData.roles.includes(ROLES.ADMIN) || formData.roles.includes(ROLES.PRACTITIONER) || formData.create_practitioner;
 
   return (
     <AppLayout>
@@ -378,13 +382,16 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {t('fields.roles.label')} <span className="text-red-500">*</span>
             </label>
+            <p className="text-sm text-gray-600 mb-3">{t('fields.roles.description')}</p>
             <div className="space-y-2">
               {availableRoles.map((role) => (
                 <label key={role.value} className="flex items-center">
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="role"
+                    value={role.value}
                     checked={formData.roles.includes(role.value)}
-                    onChange={() => handleRoleToggle(role.value)}
+                    onChange={() => handleRoleChange(role.value)}
                     className="mr-2"
                     disabled={isSubmitting}
                   />

@@ -93,14 +93,8 @@ class UserDetailSerializer(serializers.ModelSerializer):
         read_only_fields = fields
     
     def get_roles(self, obj):
-        """Get user roles with display names."""
-        return [
-            {
-                'role_name': ur.role.name,
-                'role_display': ur.role.get_name_display()
-            }
-            for ur in obj.user_roles.select_related('role').all()
-        ]
+        """Get user roles as list of role names."""
+        return list(obj.user_roles.values_list('role__name', flat=True))
     
     def get_full_name(self, obj):
         """Get full name or email if names not set."""

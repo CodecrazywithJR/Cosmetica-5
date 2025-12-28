@@ -89,7 +89,7 @@ export default function EditUserPage() {
           last_name: user.last_name,
           roles: user.roles,
           is_active: user.is_active,
-          calendly_url: user.practitioner_data?.calendly_url || '',
+          calendly_url: (user.practitioner?.calendly_url || user.practitioner_data?.calendly_url) || '',
         });
       } catch (error: any) {
         if (error.response?.status === 404) {
@@ -130,13 +130,9 @@ export default function EditUserPage() {
     }
   };
 
-  const handleRoleToggle = (role: string) => {
-    setFormData((prev) => {
-      const newRoles = prev.roles.includes(role)
-        ? prev.roles.filter((r) => r !== role)
-        : [...prev.roles, role];
-      return { ...prev, roles: newRoles };
-    });
+  const handleRoleChange = (role: string) => {
+    // Single role selection: replace array with selected role
+    setFormData((prev) => ({ ...prev, roles: [role] }));
 
     // Clear role error
     if (errors.roles) {
@@ -177,7 +173,7 @@ export default function EditUserPage() {
     }
 
     // Calendly URL warnings (non-blocking)
-    if (userData?.is_practitioner && formData.calendly_url.trim()) {
+    if (formData.calendly_url.trim()) {
       const warnings: string[] = [];
       if (!formData.calendly_url.startsWith('https://calendly.com/')) {
         warnings.push(t('validation.calendlyUrlFormat'));
@@ -213,8 +209,8 @@ export default function EditUserPage() {
         is_active: formData.is_active,
       };
 
-      // Add practitioner data if user has practitioner
-      if (userData?.is_practitioner) {
+      // Add practitioner data to update or delete calendly_url
+      if (userData?.practitioner || userData?.practitioner_data || formData.calendly_url.trim()) {
         payload.practitioner_data = {
           calendly_url: formData.calendly_url.trim() || null,
         };
@@ -225,7 +221,18 @@ export default function EditUserPage() {
       
       // Reload user data to reflect changes
       const response = await apiClient.get<UserData>(`/api/v1/users/${id}/`);
-      setUserData(response.data);
+      const user = response.data;
+      setUserData(user);
+      
+      // Sync formData with reloaded data to reflect saved state in UI
+      setFormData({
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        roles: user.roles,
+        is_active: user.is_active,
+        calendly_url: (user.practitioner?.calendly_url || user.practitioner_data?.calendly_url) || '',
+      });
     } catch (error: any) {
       if (error.response?.data) {
         const apiErrors = error.response.data;
@@ -456,13 +463,16 @@ export default function EditUserPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {t('fields.roles.label')} <span className="text-red-500">*</span>
             </label>
+            <p className="text-sm text-gray-600 mb-3">{t('fields.roles.description')}</p>
             <div className="space-y-2">
               {availableRoles.map((role) => (
                 <label key={role.value} className="flex items-center">
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="role"
+                    value={role.value}
                     checked={formData.roles.includes(role.value)}
-                    onChange={() => handleRoleToggle(role.value)}
+                    onChange={() => handleRoleChange(role.value)}
                     className="mr-2"
                     disabled={isSubmitting}
                   />
@@ -497,46 +507,49 @@ export default function EditUserPage() {
           )}
 
           {/* Practitioner Section */}
-          {userData.is_practitioner && (
+          {(formData.roles.includes(ROLES.ADMIN) || 
+            formData.roles.includes(ROLES.PRACTITIONER) || 
+            userData.practitioner || 
+            userData.practitioner_data) && (
             <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <h3 className="text-lg font-semibold mb-4">{t('practitioner.title')}</h3>
 
-              {userData.practitioner_data ? (
-                <>
-                  <div className="mb-3 text-sm text-gray-600">
-                    <p><strong>{t('practitioner.displayName')}:</strong> {userData.practitioner_data.display_name}</p>
-                    <p><strong>{t('practitioner.specialty')}:</strong> {userData.practitioner_data.specialty}</p>
-                  </div>
-
-                  {/* Calendly URL */}
-                  <div className="mb-4">
-                    <label htmlFor="calendly_url" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t('practitioner.calendlyUrl')}
-                    </label>
-                    <input
-                      type="url"
-                      id="calendly_url"
-                      value={formData.calendly_url}
-                      onChange={(e) => handleInputChange('calendly_url', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      disabled={isSubmitting}
-                      placeholder="https://calendly.com/username/event"
-                    />
-                    {calendlyWarnings.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {calendlyWarnings.map((warning, index) => (
-                          <p key={index} className="text-sm text-yellow-600 flex items-start">
-                            <span className="mr-1">⚠️</span>
-                            <span>{warning}</span>
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-gray-600">{t('practitioner.noPractitioner')}</p>
+              {userData.practitioner_data && (
+                <div className="mb-3 text-sm text-gray-600">
+                  <p><strong>{t('practitioner.displayName')}:</strong> {userData.practitioner_data.display_name}</p>
+                  <p><strong>{t('practitioner.specialty')}:</strong> {userData.practitioner_data.specialty}</p>
+                </div>
               )}
+
+              {!userData.practitioner_data && (
+                <p className="text-sm text-gray-600 mb-3">{t('practitioner.noPractitioner')}</p>
+              )}
+
+              {/* Calendly URL */}
+              <div className="mb-4">
+                <label htmlFor="calendly_url" className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('practitioner.calendlyUrl')}
+                </label>
+                <input
+                  type="url"
+                  id="calendly_url"
+                  value={formData.calendly_url}
+                  onChange={(e) => handleInputChange('calendly_url', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  disabled={isSubmitting}
+                  placeholder="https://calendly.com/username/event"
+                />
+                {calendlyWarnings.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {calendlyWarnings.map((warning, index) => (
+                      <p key={index} className="text-sm text-yellow-600 flex items-start">
+                        <span className="mr-1">⚠️</span>
+                        <span>{warning}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
