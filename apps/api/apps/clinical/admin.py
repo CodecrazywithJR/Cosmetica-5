@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     ReferralSource, Patient, PatientGuardian, Encounter, Appointment,
-    Consent, ClinicalPhoto, EncounterPhoto, EncounterDocument
+    Consent, ClinicalPhoto, EncounterPhoto, EncounterDocument, PractitionerBlock
 )
 
 
@@ -162,3 +162,38 @@ class EncounterDocumentAdmin(admin.ModelAdmin):
     search_fields = ['encounter__patient__first_name', 'encounter__patient__last_name', 'document__title']
     autocomplete_fields = ['encounter', 'document']
 
+
+@admin.register(PractitionerBlock)
+class PractitionerBlockAdmin(admin.ModelAdmin):
+    list_display = ['practitioner', 'kind', 'title', 'start', 'end', 'is_deleted']
+    list_filter = ['kind', 'is_deleted']
+    search_fields = ['practitioner__user__first_name', 'practitioner__user__last_name', 'title']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'deleted_at']
+    autocomplete_fields = ['practitioner', 'created_by']
+    date_hierarchy = 'start'
+    
+    fieldsets = (
+        ('Block Info', {
+            'fields': ('id', 'practitioner', 'kind', 'title', 'notes')
+        }),
+        ('Schedule', {
+            'fields': ('start', 'end')
+        }),
+        ('Soft Delete', {
+            'fields': ('is_deleted', 'deleted_at')
+        }),
+        ('Audit', {
+            'fields': ('created_by', 'created_at', 'updated_at')
+        }),
+    )
+    
+    def save_model(self, request, obj, form, change):
+        """
+        Enforce full_clean() validation and set created_by if new.
+        
+        SECURITY: Prevents admin bypass of business rules (e.g., end > start constraint).
+        """
+        if not change:
+            obj.created_by = request.user
+        obj.full_clean()
+        super().save_model(request, obj, form, change)

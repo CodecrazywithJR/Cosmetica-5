@@ -12,6 +12,10 @@ from .views import (
     EncounterViewSet,
     TreatmentViewSet,
     ClinicalChargeProposalViewSet,
+    PractitionerCalendarView,
+    PractitionerAvailabilityView,
+    PractitionerBookingView,
+    PractitionerAvailabilityView,
 )
 
 router = DefaultRouter()
@@ -25,6 +29,15 @@ urlpatterns = [
     # Patient merge operations
     path('patients/<uuid:pk>/merge-candidates', PatientMergeCandidatesView.as_view(), name='patient-merge-candidates'),
     path('patients/merge', PatientMergeView.as_view(), name='patient-merge'),
+    
+    # Calendar view (Sprint 1: Agenda Read-Only)
+    path('practitioners/<uuid:practitioner_id>/calendar/', PractitionerCalendarView.as_view(), name='practitioner-calendar'),
+    
+    # Availability calculation (Sprint 2: Free Slots)
+    path('practitioners/<uuid:practitioner_id>/availability/', PractitionerAvailabilityView.as_view(), name='practitioner-availability'),
+    
+    # Appointment booking (Sprint 3: Book from Available Slots)
+    path('practitioners/<uuid:practitioner_id>/book/', PractitionerBookingView.as_view(), name='practitioner-booking'),
     
     # Standard CRUD via router
     path('', include(router.urls)),

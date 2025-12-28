@@ -6,6 +6,7 @@
   "nav": {
     "agenda": "Agenda",
     "schedule": "Nueva Cita",
+    "booking": "Reservar Cita",
     "patients": "Pacientes",
     "encounters": "Consultas",
     "proposals": "Propuestas",
@@ -240,6 +241,55 @@
       "title": "Acceso No Autorizado",
       "description": "No tienes permiso para acceder a esta sección. Solo los administradores pueden gestionar usuarios.",
       "action": "Ir al Inicio"
+    }
+  },
+  "booking": {
+    "title": "Reservar Cita",
+    "description": "Sistema nativo de reservas - Seleccione un horario disponible",
+    "filters": {
+      "practitioner": "Profesional",
+      "dateFrom": "Desde",
+      "dateTo": "Hasta",
+      "updateAvailability": "Actualizar disponibilidad",
+      "loading": "Cargando...",
+      "yourAgenda": "Tu agenda"
+    },
+    "availability": {
+      "title": "Horarios disponibles",
+      "noAvailability": "No hay disponibilidad para el rango seleccionado.",
+      "loading": "Cargando disponibilidad...",
+      "slotsAvailable": "slot(s) disponible(s)"
+    },
+    "modal": {
+      "title": "Confirmar reserva",
+      "date": "Fecha",
+      "time": "Horario",
+      "practitioner": "Profesional",
+      "patient": "Paciente",
+      "location": "Ubicación",
+      "notes": "Notas",
+      "notesPlaceholder": "Información adicional sobre la cita...",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar reserva",
+      "confirming": "Reservando...",
+      "success": {
+        "title": "¡Cita confirmada!",
+        "message": "La cita se ha creado exitosamente en el sistema.",
+        "close": "Cerrar"
+      },
+      "errors": {
+        "slotStarted": "⏱️ Este horario ya ha comenzado. Por favor, seleccione un horario futuro.",
+        "slotNotAvailable": "❌ Este horario ya no está disponible. Otro usuario lo reservó recientemente.",
+        "noPermission": "🔒 No tiene permisos para crear citas.",
+        "validation": "⚠️ Error de validación",
+        "generic": "❌ Error al crear la cita. Intente nuevamente.",
+        "selectPatientLocation": "Seleccione paciente y ubicación"
+      }
+    },
+    "errors": {
+      "loadInitialData": "Error al cargar datos iniciales. Recargue la página.",
+      "loadAvailability": "Error al cargar disponibilidad. Intente nuevamente.",
+      "noPermissionView": "No tiene permisos para ver la disponibilidad de este profesional."
     }
   }
 }

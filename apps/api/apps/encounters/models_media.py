@@ -44,9 +44,9 @@ class ClinicalMedia(models.Model):
     
     # Core relationships
     encounter = models.ForeignKey(
-        'encounters.Encounter',
+        'clinical.Encounter',
         on_delete=models.CASCADE,
-        related_name='media',
+        related_name='clinical_media',
         verbose_name=_('Encounter'),
         help_text=_('Clinical encounter this media is associated with')
     )

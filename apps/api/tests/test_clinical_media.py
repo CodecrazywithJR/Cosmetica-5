@@ -10,8 +10,8 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from apps.authz.models import User
-from apps.clinical.models import Patient
-from apps.encounters.models import Encounter, ClinicalMedia
+from apps.clinical.models import Patient, Encounter
+from apps.encounters.models import ClinicalMedia
 
 
 def create_test_image():

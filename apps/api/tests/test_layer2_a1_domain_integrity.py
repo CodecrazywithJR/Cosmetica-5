@@ -23,7 +23,7 @@ class TestEncounterPatientInvariant:
     
     def test_encounter_requires_patient_model_level(self):
         """Encounter.patient is NOT NULL at model level."""
-        from apps.encounters.models import Encounter
+        from apps.clinical.models import Encounter
         from django.db import IntegrityError
         
         # Attempt to create encounter without patient should fail at DB level
@@ -135,7 +135,7 @@ class TestEncounterAppointmentPatientCoherence:
         self, patient_a, patient_b, appointment_for_patient_a, practitioner
     ):
         """Model-level validation rejects patient-appointment mismatch."""
-        from apps.encounters.models import Encounter
+        from apps.clinical.models import Encounter
         
         encounter = Encounter(
             patient=patient_b,  # Patient B
@@ -244,7 +244,7 @@ class TestSkinPhotoEncounterPatientCoherence:
     
     @pytest.fixture
     def encounter_for_patient_a(self, patient_a, practitioner_user):
-        from apps.encounters.models import Encounter
+        from apps.clinical.models import Encounter
         from apps.authz.models import Practitioner
         
         practitioner, _ = Practitioner.objects.get_or_create(
@@ -345,7 +345,7 @@ class TestReceptionCannotAccessClinicalEntities:
     
     @pytest.fixture
     def encounter(self, patient, practitioner_user):
-        from apps.encounters.models import Encounter
+        from apps.clinical.models import Encounter
         from apps.authz.models import Practitioner
         
         practitioner, _ = Practitioner.objects.get_or_create(

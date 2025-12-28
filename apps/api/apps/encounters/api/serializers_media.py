@@ -3,7 +3,8 @@ ClinicalMedia API Serializers
 """
 from rest_framework import serializers
 from django.utils import timezone
-from apps.encounters.models import ClinicalMedia, Encounter
+from apps.encounters.models import ClinicalMedia
+from apps.clinical.models import Encounter
 
 
 class ClinicalMediaSerializer(serializers.ModelSerializer):

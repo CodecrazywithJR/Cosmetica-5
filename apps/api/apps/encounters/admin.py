@@ -1,12 +1,13 @@
+"""
+Encounter admin - DEPRECATED
+
+⚠️ THIS ADMIN IS DEPRECATED ⚠️
+
+The Encounter model has been removed from this app.
+Use apps.clinical.admin for Encounter administration.
+
+This file is kept to prevent import errors but does not register any models.
+"""
 from django.contrib import admin
 
-from .models import Encounter
-
-
-@admin.register(Encounter)
-class EncounterAdmin(admin.ModelAdmin):
-    list_display = ['id', 'patient', 'encounter_type', 'status', 'scheduled_at', 'created_at']
-    list_filter = ['status', 'encounter_type', 'scheduled_at']
-    search_fields = ['patient__first_name', 'patient__last_name', 'chief_complaint']
-    readonly_fields = ['created_at', 'updated_at']
-    autocomplete_fields = ['patient']
+# No models registered - use apps.clinical.admin.EncounterAdmin instead

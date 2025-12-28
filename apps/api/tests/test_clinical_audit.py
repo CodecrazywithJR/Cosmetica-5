@@ -6,8 +6,7 @@ from rest_framework.test import APIClient
 from django.utils import timezone
 from datetime import timedelta
 
-from apps.clinical.models import ClinicalAuditLog
-from apps.encounters.models import Encounter
+from apps.clinical.models import ClinicalAuditLog, Encounter
 from apps.photos.models import SkinPhoto
 
 

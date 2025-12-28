@@ -163,6 +163,14 @@ class EncounterDocumentKindChoices(models.TextChoices):
     OTHER = 'other', 'Other'
 
 
+class PractitionerBlockKindChoices(models.TextChoices):
+    """Practitioner calendar block types"""
+    VACATION = 'vacation', 'Vacation'
+    BLOCKED = 'blocked', 'Blocked/Unavailable'
+    PERSONAL = 'personal', 'Personal Time'
+    TRAINING = 'training', 'Training'
+
+
 # ============================================================================
 # Models
 # ============================================================================
@@ -1632,4 +1640,76 @@ class ClinicalChargeProposalLine(models.Model):
         if self.quantity and self.unit_price is not None:
             self.line_total = self.quantity * self.unit_price
         super().save(*args, **kwargs)
+
+
+class PractitionerBlock(models.Model):
+    """
+    Calendar blocks for practitioners (vacations, unavailability, etc).
+    Used to mark time ranges when a practitioner is NOT available for appointments.
+    
+    Sprint 1 - Agenda feature
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # FK
+    practitioner = models.ForeignKey(
+        'authz.Practitioner',
+        on_delete=models.CASCADE,
+        related_name='calendar_blocks'
+    )
+    
+    # Time range
+    start = models.DateTimeField(
+        help_text='Block start time (timezone-aware)'
+    )
+    end = models.DateTimeField(
+        help_text='Block end time (timezone-aware)'
+    )
+    
+    # Kind and details
+    kind = models.CharField(
+        max_length=20,
+        choices=PractitionerBlockKindChoices.choices,
+        default=PractitionerBlockKindChoices.BLOCKED
+    )
+    title = models.CharField(
+        max_length=255,
+        help_text='Display title (e.g., "Vacaciones", "No disponible")'
+    )
+    notes = models.TextField(blank=True, default='')
+    
+    # Soft delete
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    
+    # Audit
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_practitioner_blocks'
+    )
+    
+    class Meta:
+        db_table = 'practitioner_blocks'
+        verbose_name = 'Practitioner Block'
+        verbose_name_plural = 'Practitioner Blocks'
+        ordering = ['start']
+        indexes = [
+            models.Index(fields=['practitioner', 'start'], name='idx_block_pract_start'),
+            models.Index(fields=['practitioner', 'is_deleted'], name='idx_block_pract_deleted'),
+            models.Index(fields=['start', 'end'], name='idx_block_time_range'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(end__gt=models.F('start')),
+                name='block_end_after_start'
+            ),
+        ]
+    
+    def __str__(self):
+        return f"{self.practitioner.display_name}: {self.title} ({self.start.date()} - {self.end.date()})"
 

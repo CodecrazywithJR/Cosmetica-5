@@ -10,7 +10,8 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import PermissionDenied
 
-from apps.encounters.models import ClinicalMedia, Encounter
+from apps.encounters.models import ClinicalMedia
+from apps.clinical.models import Encounter
 from apps.encounters.api.serializers_media import (
     ClinicalMediaSerializer,
     ClinicalMediaUploadSerializer,

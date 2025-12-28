@@ -1,32 +1,100 @@
 """
-Encounter views.
+Encounter views - DEPRECATED
 
-BUSINESS RULE: Encounters are clinical data. Only Admin and Practitioner can access.
-Reception is explicitly blocked.
+⚠️ THIS ENDPOINT IS DEPRECATED AND REMOVED ⚠️
+
+All operations return HTTP 410 Gone.
+Use /api/v1/clinical/encounters/ instead.
+
+This file is kept only for explicit deprecation responses.
 """
-from rest_framework import filters, viewsets
+from rest_framework import status, viewsets
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from apps.clinical.permissions import IsClinicalStaff
-
-from .models import Encounter
-from .serializers import EncounterListSerializer, EncounterSerializer
 
 
-class EncounterViewSet(viewsets.ModelViewSet):
+class EncounterViewSet(viewsets.ViewSet):
     """
-    ViewSet for Encounter CRUD operations.
+    DEPRECATED ViewSet - Returns 410 Gone for all operations.
     
-    BUSINESS RULE: Only clinical staff (Admin, Practitioner) can access encounters.
-    Reception cannot view or edit clinical data.
+    This endpoint has been removed. Use /api/v1/clinical/encounters/ instead.
     """
-    queryset = Encounter.objects.select_related('patient').all()
-    permission_classes = [IsAuthenticated, IsClinicalStaff]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['patient__first_name', 'patient__last_name', 'chief_complaint', 'diagnosis']
-    ordering_fields = ['scheduled_at', 'created_at']
-    ordering = ['-scheduled_at']
+    permission_classes = [IsAuthenticated]
     
-    def get_serializer_class(self):
-        if self.action == 'list':
-            return EncounterListSerializer
-        return EncounterSerializer
+    def list(self, request):
+        """GET /api/encounters/ - DEPRECATED"""
+        return Response(
+            {
+                'error': 'ENDPOINT_DEPRECATED',
+                'message': 'This endpoint has been removed. Use /api/v1/clinical/encounters/ instead.',
+                'deprecated_endpoint': '/api/encounters/',
+                'replacement_endpoint': '/api/v1/clinical/encounters/',
+                'documentation': 'https://docs.example.com/api/v1/clinical/encounters/'
+            },
+            status=status.HTTP_410_GONE
+        )
+    
+    def create(self, request):
+        """POST /api/encounters/ - DEPRECATED"""
+        return Response(
+            {
+                'error': 'ENDPOINT_DEPRECATED',
+                'message': 'This endpoint has been removed. Use /api/v1/clinical/encounters/ instead.',
+                'deprecated_endpoint': '/api/encounters/',
+                'replacement_endpoint': '/api/v1/clinical/encounters/',
+                'documentation': 'https://docs.example.com/api/v1/clinical/encounters/'
+            },
+            status=status.HTTP_410_GONE
+        )
+    
+    def retrieve(self, request, pk=None):
+        """GET /api/encounters/{id}/ - DEPRECATED"""
+        return Response(
+            {
+                'error': 'ENDPOINT_DEPRECATED',
+                'message': 'This endpoint has been removed. Use /api/v1/clinical/encounters/ instead.',
+                'deprecated_endpoint': f'/api/encounters/{pk}/',
+                'replacement_endpoint': f'/api/v1/clinical/encounters/{pk}/',
+                'documentation': 'https://docs.example.com/api/v1/clinical/encounters/'
+            },
+            status=status.HTTP_410_GONE
+        )
+    
+    def update(self, request, pk=None):
+        """PUT /api/encounters/{id}/ - DEPRECATED"""
+        return Response(
+            {
+                'error': 'ENDPOINT_DEPRECATED',
+                'message': 'This endpoint has been removed. Use /api/v1/clinical/encounters/ instead.',
+                'deprecated_endpoint': f'/api/encounters/{pk}/',
+                'replacement_endpoint': f'/api/v1/clinical/encounters/{pk}/',
+                'documentation': 'https://docs.example.com/api/v1/clinical/encounters/'
+            },
+            status=status.HTTP_410_GONE
+        )
+    
+    def partial_update(self, request, pk=None):
+        """PATCH /api/encounters/{id}/ - DEPRECATED"""
+        return Response(
+            {
+                'error': 'ENDPOINT_DEPRECATED',
+                'message': 'This endpoint has been removed. Use /api/v1/clinical/encounters/ instead.',
+                'deprecated_endpoint': f'/api/encounters/{pk}/',
+                'replacement_endpoint': f'/api/v1/clinical/encounters/{pk}/',
+                'documentation': 'https://docs.example.com/api/v1/clinical/encounters/'
+            },
+            status=status.HTTP_410_GONE
+        )
+    
+    def destroy(self, request, pk=None):
+        """DELETE /api/encounters/{id}/ - DEPRECATED"""
+        return Response(
+            {
+                'error': 'ENDPOINT_DEPRECATED',
+                'message': 'This endpoint has been removed. Use /api/v1/clinical/encounters/ instead.',
+                'deprecated_endpoint': f'/api/encounters/{pk}/',
+                'replacement_endpoint': f'/api/v1/clinical/encounters/{pk}/',
+                'documentation': 'https://docs.example.com/api/v1/clinical/encounters/'
+            },
+            status=status.HTTP_410_GONE
+        )

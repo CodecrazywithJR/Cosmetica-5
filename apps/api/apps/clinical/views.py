@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 from django.db import transaction, IntegrityError
 from apps.authz.models import RoleChoices
@@ -21,6 +22,7 @@ from apps.clinical.models import (
     Treatment,
     EncounterTreatment,
     ClinicalChargeProposal,
+    PractitionerBlock,
 )
 from apps.clinical.serializers import (
     PatientListSerializer,
@@ -33,6 +35,7 @@ from apps.clinical.serializers import (
     EncounterDetailSerializer,
     EncounterWriteSerializer,
     TreatmentSerializer,
+    CalendarEventSerializer,
 )
 from apps.clinical.serializers_proposals import (
     ClinicalChargeProposalListSerializer,
@@ -1603,3 +1606,581 @@ class ClinicalChargeProposalViewSet(viewsets.ReadOnlyModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+# ============================================================================
+# Calendar View (Sprint 1: Agenda Read-Only)
+# ============================================================================
+
+class PractitionerCalendarView(APIView):
+    """
+    Unified calendar feed for a practitioner.
+    
+    Returns appointments + blocks in a normalized JSON format for calendar display.
+    
+    Endpoint: GET /api/v1/clinical/practitioners/{practitioner_id}/calendar/
+    
+    Query params:
+    - date_from: YYYY-MM-DD (required)
+    - date_to: YYYY-MM-DD (required)
+    
+    Permissions:
+    - Admin: Can view any practitioner
+    - Practitioner: Can view only their own calendar
+    - Reception: Can view any practitioner (read-only)
+    - Accounting: Forbidden (403)
+    - Marketing: Forbidden (403)
+    
+    Business rules:
+    - Appointments with is_deleted=True are excluded
+    - Blocks with is_deleted=True are excluded
+    - Events are sorted by start time
+    - Timezone: All datetimes are in UTC (frontend must localize)
+    """
+    
+    def get(self, request, practitioner_id):
+        """
+        Get calendar events for a practitioner within a date range.
+        """
+        from datetime import datetime, time
+        from django.utils import timezone
+        from apps.authz.models import Practitioner
+        
+        # ========================
+        # 1. PERMISSION CHECK
+        # ========================
+        user_roles = set(
+            request.user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        # Marketing and Accounting are forbidden
+        if RoleChoices.MARKETING in user_roles or RoleChoices.ACCOUNTING in user_roles:
+            raise PermissionDenied("You don't have permission to view calendars")
+        
+        # Admin can view any, Reception can view any, Practitioner can view only their own
+        is_admin = RoleChoices.ADMIN in user_roles
+        is_reception = RoleChoices.RECEPTION in user_roles
+        is_practitioner = RoleChoices.PRACTITIONER in user_roles
+        
+        if not (is_admin or is_reception or is_practitioner):
+            raise PermissionDenied("You don't have permission to view calendars")
+        
+        # If practitioner role, check if viewing their own calendar
+        if is_practitioner and not (is_admin or is_reception):
+            try:
+                user_practitioner = Practitioner.objects.get(user=request.user)
+                if str(user_practitioner.id) != str(practitioner_id):
+                    raise PermissionDenied("You can only view your own calendar")
+            except Practitioner.DoesNotExist:
+                raise PermissionDenied("You are not registered as a practitioner")
+        
+        # ========================
+        # 2. VALIDATE PRACTITIONER
+        # ========================
+        try:
+            practitioner = Practitioner.objects.get(id=practitioner_id)
+        except Practitioner.DoesNotExist:
+            return Response(
+                {'error': f"Practitioner {practitioner_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # ========================
+        # 3. VALIDATE DATE PARAMS
+        # ========================
+        date_from_str = request.query_params.get('date_from')
+        date_to_str = request.query_params.get('date_to')
+        
+        if not date_from_str or not date_to_str:
+            return Response(
+                {'error': 'date_from and date_to are required (format: YYYY-MM-DD)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+            date_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if date_from > date_to:
+            return Response(
+                {'error': 'date_from cannot be after date_to'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Convert to timezone-aware datetimes (start of day to end of day)
+        datetime_from = timezone.make_aware(datetime.combine(date_from, time.min))
+        datetime_to = timezone.make_aware(datetime.combine(date_to, time.max))
+        
+        # ========================
+        # 4. FETCH APPOINTMENTS
+        # ========================
+        appointments = Appointment.objects.filter(
+            practitioner=practitioner,
+            is_deleted=False,
+            scheduled_start__gte=datetime_from,
+            scheduled_start__lte=datetime_to,
+        ).select_related('patient', 'practitioner', 'practitioner__user').order_by('scheduled_start')
+        
+        # ========================
+        # 5. FETCH BLOCKS
+        # ========================
+        blocks = PractitionerBlock.objects.filter(
+            practitioner=practitioner,
+            is_deleted=False,
+            start__gte=datetime_from,
+            start__lte=datetime_to,
+        ).select_related('practitioner', 'practitioner__user').order_by('start')
+        
+        # ========================
+        # 6. MERGE & SERIALIZE
+        # ========================
+        # Combine appointments and blocks into a single list
+        events = list(appointments) + list(blocks)
+        
+        # Sort by start time
+        events.sort(key=lambda e: e.scheduled_start if isinstance(e, Appointment) else e.start)
+        
+        # Serialize
+        serializer = CalendarEventSerializer(events, many=True)
+        
+        return Response({
+            'practitioner_id': str(practitioner.id),
+            'practitioner_name': f"{practitioner.user.first_name} {practitioner.user.last_name}",
+            'date_from': date_from_str,
+            'date_to': date_to_str,
+            'events': serializer.data,
+            'total_events': len(events),
+        }, status=status.HTTP_200_OK)
+
+
+class PractitionerAvailabilityView(APIView):
+    """
+    GET /api/v1/clinical/practitioners/{practitioner_id}/availability/
+    
+    Calculate available time slots for a practitioner.
+    
+    Sprint 2 Implementation:
+    - Read-only, informative endpoint
+    - Does NOT create appointments
+    - Based on real data (appointments + blocks)
+    - Configurable slot duration
+    - Respects RBAC (same as calendar endpoint)
+    
+    Query params:
+        - date_from (required): YYYY-MM-DD
+        - date_to (required): YYYY-MM-DD
+        - slot_duration (optional): minutes, default 30
+        - timezone (optional): default UTC
+    
+    RBAC Rules:
+        - Admin: Can view any practitioner
+        - Reception: Can view any practitioner
+        - Practitioner: Can only view own availability
+        - Marketing/Accounting: 403 Forbidden
+    
+    Returns:
+        {
+            "practitioner_id": "<uuid>",
+            "date_from": "YYYY-MM-DD",
+            "date_to": "YYYY-MM-DD",
+            "slot_duration": 30,
+            "timezone": "UTC",
+            "availability": [
+                {
+                    "date": "YYYY-MM-DD",
+                    "slots": [
+                        {"start": "10:00", "end": "10:30"},
+                        {"start": "10:30", "end": "11:00"}
+                    ]
+                }
+            ]
+        }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, practitioner_id):
+        from apps.authz.models import Practitioner
+        from apps.clinical.services import AvailabilityService
+        from django.core.exceptions import ValidationError
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        user = request.user
+        
+        # Get user roles
+        user_roles = set(
+            user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        # RBAC: Marketing and Accounting cannot view availability
+        if RoleChoices.MARKETING in user_roles or RoleChoices.ACCOUNTING in user_roles:
+            logger.warning(f"User {user.email} attempted to view availability")
+            raise PermissionDenied('You do not have permission to view practitioner availability')
+        
+        # RBAC: Check if user can view this practitioner's calendar
+        is_admin = RoleChoices.ADMIN in user_roles
+        is_reception = RoleChoices.RECEPTION in user_roles
+        is_practitioner = RoleChoices.PRACTITIONER in user_roles
+        
+        can_view_availability = False
+        
+        if is_admin or is_reception:
+            # Admin and Reception can view any practitioner
+            can_view_availability = True
+        elif is_practitioner:
+            # Practitioner can only view their own availability
+            try:
+                user_practitioner = Practitioner.objects.get(user=user)
+                if str(user_practitioner.id) != str(practitioner_id):
+                    logger.warning(
+                        f"Practitioner {user.email} attempted to view another practitioner's availability"
+                    )
+                    raise PermissionDenied('You can only view your own availability')
+                can_view_availability = True
+            except Practitioner.DoesNotExist:
+                raise PermissionDenied('Practitioner profile not found')
+        
+        if not can_view_availability:
+            raise PermissionDenied('You do not have permission to view this availability')
+        
+        # Validate practitioner exists
+        try:
+            practitioner = Practitioner.objects.get(id=practitioner_id)
+        except Practitioner.DoesNotExist:
+            return Response({
+                'error': 'Practitioner not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get query params
+        date_from_str = request.query_params.get('date_from')
+        date_to_str = request.query_params.get('date_to')
+        slot_duration = request.query_params.get('slot_duration', 30)
+        timezone_str = request.query_params.get('timezone', 'UTC')
+        
+        # Validate required params
+        if not date_from_str or not date_to_str:
+            return Response({
+                'error': 'date_from and date_to are required',
+                'details': {
+                    'date_from': 'Required format: YYYY-MM-DD',
+                    'date_to': 'Required format: YYYY-MM-DD'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate date format
+        try:
+            from datetime import datetime
+            datetime.strptime(date_from_str, "%Y-%m-%d")
+            datetime.strptime(date_to_str, "%Y-%m-%d")
+        except ValueError:
+            return Response({
+                'error': 'Invalid date format',
+                'details': 'Use YYYY-MM-DD format'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate slot_duration
+        try:
+            slot_duration = int(slot_duration)
+            if slot_duration < 5 or slot_duration > 240:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'Invalid slot_duration',
+                'details': 'Must be integer between 5 and 240 minutes'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Calculate availability using service
+        try:
+            availability_data = AvailabilityService.calculate_availability(
+                practitioner_id=str(practitioner_id),
+                date_from=date_from_str,
+                date_to=date_to_str,
+                slot_duration=slot_duration,
+                timezone_str=timezone_str
+            )
+            
+            return Response(availability_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error calculating availability: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error calculating availability',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PractitionerBookingView(APIView):
+    """
+    POST /api/v1/clinical/practitioners/{practitioner_id}/book/
+    
+    Create an appointment by booking an available slot.
+    
+    Sprint 3 Implementation:
+    - Creates REAL appointments in DB
+    - Validates slot is available using AvailabilityService
+    - CRITICAL: Rejects slots that already started (slot_start <= now)
+    - Prevents double booking
+    - Prevents booking over PractitionerBlocks
+    - RBAC enforced (same as availability)
+    
+    Request Body:
+        {
+            "date": "YYYY-MM-DD",
+            "start": "HH:MM",
+            "end": "HH:MM",
+            "slot_duration": 30,
+            "patient_id": "uuid",
+            "location_id": "uuid",
+            "notes": "string (optional)"
+        }
+    
+    RBAC Rules:
+        - Admin: Can book for any practitioner
+        - Reception: Can book for any practitioner
+        - Practitioner: Can only book for themselves
+        - Marketing/Accounting: 403 Forbidden
+    
+    Validations:
+        - slot_start > now (STRICT: no slots that already started)
+        - start < end
+        - No overlap with existing appointments
+        - No overlap with PractitionerBlocks
+        - Slot must appear in AvailabilityService calculation
+    
+    Returns:
+        201 CREATED: Appointment created successfully
+        400 BAD REQUEST: Invalid slot or slot already started
+        403 FORBIDDEN: Permission denied
+        409 CONFLICT: Slot already booked or blocked
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, practitioner_id):
+        from apps.authz.models import Practitioner
+        from apps.clinical.services import AvailabilityService
+        from apps.core.models import ClinicLocation
+        from datetime import datetime, timedelta
+        from django.utils import timezone as django_timezone
+        import pytz
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        user = request.user
+        
+        # ========================
+        # 1. RBAC CHECK (same as availability)
+        # ========================
+        user_roles = set(
+            user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        # Marketing and Accounting cannot book
+        if RoleChoices.MARKETING in user_roles or RoleChoices.ACCOUNTING in user_roles:
+            logger.warning(f"User {user.email} attempted to book appointment")
+            raise PermissionDenied('You do not have permission to book appointments')
+        
+        # Check if user can book for this practitioner
+        is_admin = RoleChoices.ADMIN in user_roles
+        is_reception = RoleChoices.RECEPTION in user_roles
+        is_practitioner = RoleChoices.PRACTITIONER in user_roles
+        
+        can_book = False
+        
+        if is_admin or is_reception:
+            can_book = True
+        elif is_practitioner:
+            try:
+                user_practitioner = Practitioner.objects.get(user=user)
+                if str(user_practitioner.id) != str(practitioner_id):
+                    logger.warning(
+                        f"Practitioner {user.email} attempted to book for another practitioner"
+                    )
+                    raise PermissionDenied('You can only book appointments for yourself')
+                can_book = True
+            except Practitioner.DoesNotExist:
+                raise PermissionDenied('Practitioner profile not found')
+        
+        if not can_book:
+            raise PermissionDenied('You do not have permission to book appointments')
+        
+        # Validate practitioner exists
+        try:
+            practitioner = Practitioner.objects.get(id=practitioner_id)
+        except Practitioner.DoesNotExist:
+            return Response({
+                'error': 'Practitioner not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # ========================
+        # 2. VALIDATE REQUEST DATA
+        # ========================
+        date_str = request.data.get('date')
+        start_str = request.data.get('start')
+        end_str = request.data.get('end')
+        slot_duration = request.data.get('slot_duration', 30)
+        patient_id = request.data.get('patient_id')
+        location_id = request.data.get('location_id')
+        notes = request.data.get('notes', '')
+        
+        # Required fields
+        if not all([date_str, start_str, end_str, patient_id, location_id]):
+            return Response({
+                'error': 'Missing required fields',
+                'details': {
+                    'date': 'Required (YYYY-MM-DD)',
+                    'start': 'Required (HH:MM)',
+                    'end': 'Required (HH:MM)',
+                    'patient_id': 'Required (UUID)',
+                    'location_id': 'Required (UUID)'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse and validate datetime
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+            start_time = datetime.strptime(start_str, "%H:%M").time()
+            end_time = datetime.strptime(end_str, "%H:%M").time()
+        except ValueError:
+            return Response({
+                'error': 'Invalid date/time format',
+                'details': 'Use YYYY-MM-DD for date, HH:MM for times'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate start < end
+        if start_time >= end_time:
+            return Response({
+                'error': 'Invalid time range',
+                'details': 'start must be before end'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create timezone-aware datetimes (UTC)
+        tz = pytz.UTC
+        slot_start_dt = tz.localize(datetime.combine(date_obj, start_time))
+        slot_end_dt = tz.localize(datetime.combine(date_obj, end_time))
+        
+        # ========================
+        # 3. CRITICAL VALIDATION: Reject slots that already started
+        # ========================
+        now = django_timezone.now()
+        if slot_start_dt <= now:
+            return Response({
+                'error': 'Slot already started',
+                'details': f'Cannot book slot starting at {start_str}. Current time is {now.strftime("%H:%M")} UTC. Slot must start in the future.',
+                'slot_start': slot_start_dt.isoformat(),
+                'current_time': now.isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ========================
+        # 4. VALIDATE SLOT IS AVAILABLE (using AvailabilityService)
+        # ========================
+        try:
+            availability_data = AvailabilityService.calculate_availability(
+                practitioner_id=str(practitioner_id),
+                date_from=date_str,
+                date_to=date_str,
+                slot_duration=int(slot_duration),
+                timezone_str='UTC'
+            )
+            
+            # Find the requested slot in availability
+            day_availability = next(
+                (day for day in availability_data['availability'] if day['date'] == date_str),
+                None
+            )
+            
+            if not day_availability:
+                return Response({
+                    'error': 'Date not available',
+                    'details': f'No availability for date {date_str}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if the exact slot is in the available slots
+            requested_slot = {'start': start_str, 'end': end_str}
+            slot_found = any(
+                slot['start'] == requested_slot['start'] and slot['end'] == requested_slot['end']
+                for slot in day_availability['slots']
+            )
+            
+            if not slot_found:
+                return Response({
+                    'error': 'Slot not available',
+                    'details': f'Slot {start_str}-{end_str} is not available. It may be occupied or outside working hours.',
+                    'available_slots': day_availability['slots'][:5]  # Show first 5 available slots
+                }, status=status.HTTP_409_CONFLICT)
+            
+        except Exception as e:
+            logger.error(f"Error validating availability: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error validating slot availability',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # ========================
+        # 5. VALIDATE PATIENT AND LOCATION
+        # ========================
+        try:
+            patient = Patient.objects.get(id=patient_id)
+        except Patient.DoesNotExist:
+            return Response({
+                'error': 'Patient not found',
+                'details': f'No patient with ID {patient_id}'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            location = ClinicLocation.objects.get(id=location_id)
+        except ClinicLocation.DoesNotExist:
+            return Response({
+                'error': 'Location not found',
+                'details': f'No location with ID {location_id}'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # ========================
+        # 6. CREATE APPOINTMENT (REAL, NOT MOCK)
+        # ========================
+        try:
+            appointment = Appointment.objects.create(
+                practitioner=practitioner,
+                patient=patient,
+                location=location,
+                scheduled_start=slot_start_dt,
+                scheduled_end=slot_end_dt,
+                status='scheduled',
+                source='manual',
+                notes=notes
+            )
+            
+            logger.info(
+                f"Appointment booked: {appointment.id} by {user.email} "
+                f"for practitioner {practitioner.display_name} "
+                f"on {date_str} {start_str}-{end_str}"
+            )
+            
+            return Response({
+                'success': True,
+                'appointment_id': str(appointment.id),
+                'practitioner_id': str(practitioner.id),
+                'practitioner_name': practitioner.display_name,
+                'patient_id': str(patient.id),
+                'patient_name': f"{patient.first_name} {patient.last_name}",
+                'scheduled_start': appointment.scheduled_start.isoformat(),
+                'scheduled_end': appointment.scheduled_end.isoformat(),
+                'status': appointment.status,
+                'created_at': appointment.created_at.isoformat()
+            }, status=status.HTTP_201_CREATED)
+            
+        except IntegrityError as e:
+            logger.error(f"IntegrityError creating appointment: {str(e)}")
+            return Response({
+                'error': 'Appointment conflict',
+                'details': 'This slot may have just been booked. Please refresh and try another slot.'
+            }, status=status.HTTP_409_CONFLICT)
+        except Exception as e:
+            logger.error(f"Error creating appointment: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error creating appointment',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,103 +1,19 @@
 """
-Encounter serializers.
+Encounter serializers - DEPRECATED
+
+⚠️ THESE SERIALIZERS ARE DEPRECATED ⚠️
+
+DO NOT USE. This file is kept only for reference.
+Use apps.clinical.serializers for Encounter serialization.
+
+- Use: EncounterListSerializer, EncounterDetailSerializer, EncounterWriteSerializer
+- From: apps.clinical.serializers
+- Endpoint: /api/v1/clinical/encounters/
+
+This file will be removed in a future cleanup.
 """
-from rest_framework import serializers
-
-from apps.clinical.serializers import PatientListSerializer
-from apps.clinical.models import log_clinical_audit
-
-from .models import Encounter
-
-
-class EncounterSerializer(serializers.ModelSerializer):
-    """
-    Full encounter serializer.
-    
-    AUDIT: Logs create/update actions to ClinicalAuditLog.
-    VALIDATION: Enforces clinical domain invariants (patient-appointment coherence).
-    """
-    patient_details = PatientListSerializer(source='patient', read_only=True)
-    
-    class Meta:
-        model = Encounter
-        fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at']
-    
-    def validate(self, attrs):
-        """
-        Validate clinical domain invariants.
-        
-        CRITICAL: If encounter references an appointment, both must share the same patient.
-        """
-        patient = attrs.get('patient')
-        appointment = attrs.get('appointment')
-        
-        # If updating, get current values if not provided
-        if self.instance:
-            if not patient:
-                patient = self.instance.patient
-            if 'appointment' not in attrs and self.instance.appointment:
-                appointment = self.instance.appointment
-        
-        # INVARIANT: Patient is required
-        if not patient:
-            raise serializers.ValidationError({
-                'patient': 'Encounter must have a patient assigned.'
-            })
-        
-        # INVARIANT: Appointment-Patient coherence
-        if appointment and appointment.patient_id != patient.id:
-            raise serializers.ValidationError({
-                'appointment': (
-                    f'Appointment patient mismatch: '
-                    f'encounter.patient={patient.id} but '
-                    f'appointment.patient={appointment.patient_id}. '
-                    f'Both must reference the same patient.'
-                )
-            })
-        
-        return attrs
-    
-    def create(self, validated_data):
-        """Create encounter with audit logging."""
-        instance = super().create(validated_data)
-        
-        # Log creation
-        request = self.context.get('request')
-        log_clinical_audit(
-            actor=request.user if request else None,
-            instance=instance,
-            action='create',
-            after=self._get_audit_snapshot(instance),
-            patient=instance.patient,
-            request=request
-        )
-        
-        return instance
-    
-    def update(self, instance, validated_data):
-        """Update encounter with audit logging."""
-        # Capture before snapshot
-        before_snapshot = self._get_audit_snapshot(instance)
-        
-        # Detect changed fields
-        changed_fields = []
-        for field, value in validated_data.items():
-            if getattr(instance, field) != value:
-                changed_fields.append(field)
-        
-        # Perform update
-        instance = super().update(instance, validated_data)
-        
-        # Log update only if there are actual changes
-        if changed_fields:
-            request = self.context.get('request')
-            log_clinical_audit(
-                actor=request.user if request else None,
-                instance=instance,
-                action='update',
-                before=before_snapshot,
-                after=self._get_audit_snapshot(instance),
+# Deprecated - kept for reference only
+# All functionality moved to apps.clinical.serializers
                 changed_fields=changed_fields,
                 patient=instance.patient,
                 request=request

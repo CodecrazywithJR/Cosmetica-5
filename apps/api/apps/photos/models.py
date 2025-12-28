@@ -38,11 +38,11 @@ class SkinPhoto(models.Model):
         verbose_name=_('Patient')
     )
     encounter = models.ForeignKey(
-        'encounters.Encounter',
+        'clinical.Encounter',
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name='photos',
+        related_name='legacy_photos_link',
         verbose_name=_('Encounter')
     )
     

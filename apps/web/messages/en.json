@@ -6,6 +6,7 @@
   "nav": {
     "agenda": "Agenda",
     "schedule": "New Appointment",
+    "booking": "Book Appointment",
     "patients": "Patients",
     "encounters": "Encounters",
     "proposals": "Proposals",
@@ -240,6 +241,55 @@
       "title": "Unauthorized Access",
       "description": "You do not have permission to access this section. Only administrators can manage users.",
       "action": "Go to Home"
+    }
+  },
+  "booking": {
+    "title": "Book Appointment",
+    "description": "Native booking system - Select an available time slot",
+    "filters": {
+      "practitioner": "Practitioner",
+      "dateFrom": "From",
+      "dateTo": "To",
+      "updateAvailability": "Update Availability",
+      "loading": "Loading...",
+      "yourAgenda": "Your Agenda"
+    },
+    "availability": {
+      "title": "Available Time Slots",
+      "noAvailability": "No availability for the selected range.",
+      "loading": "Loading availability...",
+      "slotsAvailable": "slot(s) available"
+    },
+    "modal": {
+      "title": "Confirm Booking",
+      "date": "Date",
+      "time": "Time",
+      "practitioner": "Practitioner",
+      "patient": "Patient",
+      "location": "Location",
+      "notes": "Notes",
+      "notesPlaceholder": "Additional information about the appointment...",
+      "cancel": "Cancel",
+      "confirm": "Confirm Booking",
+      "confirming": "Booking...",
+      "success": {
+        "title": "Appointment Confirmed!",
+        "message": "The appointment has been successfully created in the system.",
+        "close": "Close"
+      },
+      "errors": {
+        "slotStarted": "⏱️ This time slot has already started. Please select a future time.",
+        "slotNotAvailable": "❌ This time slot is no longer available. Another user booked it recently.",
+        "noPermission": "🔒 You do not have permission to create appointments.",
+        "validation": "⚠️ Validation error",
+        "generic": "❌ Error creating appointment. Please try again.",
+        "selectPatientLocation": "Select patient and location"
+      }
+    },
+    "errors": {
+      "loadInitialData": "Error loading initial data. Please reload the page.",
+      "loadAvailability": "Error loading availability. Please try again.",
+      "noPermissionView": "You do not have permission to view this practitioner's availability."
     }
   }
 }

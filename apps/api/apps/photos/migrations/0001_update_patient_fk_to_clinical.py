@@ -10,7 +10,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("clinical", "0007_add_medical_fields_to_patient"),
-        ("encounters", "0001_update_patient_fk_to_clinical"),
     ]
 
     operations = [
@@ -78,7 +77,7 @@ class Migration(migrations.Migration):
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="photos",
-                        to="encounters.encounter",
+                        to="clinical.encounter",  # Changed from encounters to clinical
                         verbose_name="Encounter",
                     ),
                 ),

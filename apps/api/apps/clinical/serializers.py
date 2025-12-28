@@ -14,6 +14,7 @@ from apps.clinical.models import (
     Encounter,
     Treatment,
     EncounterTreatment,
+    PractitionerBlock,
 )
 
 
@@ -879,3 +880,88 @@ class EncounterWriteSerializer(serializers.ModelSerializer):
         instance.save()
         
         return instance
+
+# ============================================================================
+# Calendar Event Serializers (Sprint 1)
+# ============================================================================
+
+class CalendarEventSerializer(serializers.Serializer):
+    """
+    Unified serializer for calendar events (appointments + blocks).
+    
+    Normalizes both Appointment and PractitionerBlock into a common format
+    for the calendar feed endpoint.
+    
+    Used in: GET /api/v1/clinical/practitioners/{id}/calendar/
+    """
+    id = serializers.UUIDField(read_only=True)
+    type = serializers.CharField(read_only=True)  # 'appointment' | 'block'
+    title = serializers.CharField(read_only=True)
+    start = serializers.DateTimeField(read_only=True)
+    end = serializers.DateTimeField(read_only=True)
+    practitioner_id = serializers.UUIDField(read_only=True)
+    practitioner_name = serializers.CharField(read_only=True)
+    
+    # Appointment-specific fields (null for blocks)
+    patient_id = serializers.UUIDField(read_only=True, allow_null=True)
+    patient_name = serializers.CharField(read_only=True, allow_null=True)
+    appointment_status = serializers.CharField(read_only=True, allow_null=True)
+    appointment_source = serializers.CharField(read_only=True, allow_null=True)
+    
+    # Block-specific fields (null for appointments)
+    block_kind = serializers.CharField(read_only=True, allow_null=True)
+    
+    # Common fields
+    notes = serializers.CharField(read_only=True, allow_null=True)
+    
+    def to_representation(self, instance):
+        """
+        Convert Appointment or PractitionerBlock to unified calendar event format.
+        """
+        from apps.clinical.models import Appointment, PractitionerBlock
+        
+        if isinstance(instance, Appointment):
+            # Appointment event
+            practitioner_user = instance.practitioner.user if instance.practitioner else None
+            patient_full_name = None
+            if instance.patient:
+                patient_full_name = f"{instance.patient.first_name} {instance.patient.last_name}".strip()
+            
+            return {
+                'id': instance.id,
+                'type': 'appointment',
+                'title': patient_full_name or 'Appointment',
+                'start': instance.scheduled_start,
+                'end': instance.scheduled_end,
+                'practitioner_id': instance.practitioner_id,
+                'practitioner_name': practitioner_user.get_full_name() if practitioner_user else 'Unknown',
+                'patient_id': instance.patient_id,
+                'patient_name': patient_full_name,
+                'appointment_status': instance.status,
+                'appointment_source': instance.source,
+                'block_kind': None,
+                'notes': instance.notes,
+            }
+        
+        elif isinstance(instance, PractitionerBlock):
+            # Block event
+            practitioner_user = instance.practitioner.user if instance.practitioner else None
+            
+            return {
+                'id': instance.id,
+                'type': 'block',
+                'title': instance.title,
+                'start': instance.start,
+                'end': instance.end,
+                'practitioner_id': instance.practitioner_id,
+                'practitioner_name': practitioner_user.get_full_name() if practitioner_user else 'Unknown',
+                'patient_id': None,
+                'patient_name': None,
+                'appointment_status': None,
+                'appointment_source': None,
+                'block_kind': instance.kind,
+                'notes': instance.notes,
+            }
+        
+        else:
+            raise ValueError(f"Unsupported instance type: {type(instance)}")
