@@ -1,4 +1,36 @@
 {
+  "encounters": {
+    "list": {
+      "patient": {
+        "title": "Consultations du patient",
+        "filters": {
+          "practitioner": "Praticien",
+          "status": "Statut"
+        },
+        "empty": {
+          "message": "Ce patient n'a pas encore de consultations enregistrées."
+        },
+        "columns": {
+          "date": "Date",
+          "type": "Type",
+          "status": "Statut",
+          "practitioner": "Praticien",
+          "treatments": "Traitements",
+          "attachments": "Pièces jointes"
+        },
+        "type": {
+          "consultation": "Consultation",
+          "follow_up": "Suivi",
+          "emergency": "Urgence"
+        },
+        "status": {
+          "draft": "Brouillon",
+          "finalized": "Finalisée",
+          "cancelled": "Annulée"
+        }
+      }
+    }
+  },
   "app": {
     "title": "DermaEMR - Gestion de Pratique Dermatologique",
     "subtitle": "Dossiers Patients et POS Cosmétiques"
@@ -6,6 +38,7 @@
   "nav": {
     "agenda": "Agenda",
     "schedule": "Nouveau Rendez-vous",
+    "booking": "Réserver Rendez-vous",
     "patients": "Patients",
     "encounters": "Consultations",
     "proposals": "Propositions",
@@ -26,8 +59,20 @@
     "search": "Rechercher",
     "filter": "Filtrer",
     "retry": "Réessayer",
+    "yes": "Oui",
+    "no": "Non",
     "languageLabel": "Langue",
     "user": "Utilisateur",
+    "sex": {
+      "female": "Féminin",
+      "male": "Masculin",
+      "other": "Autre",
+      "unknown": "Inconnu",
+      "F": "Féminin",
+      "M": "Masculin",
+      "O": "Autre",
+      "U": "Inconnu"
+    },
     "actions": {
       "cancel": "Annuler",
       "close": "Fermer",
@@ -46,11 +91,142 @@
     "status_error": "Erreur"
   },
   "patients": {
-    "title": "Patients",
-    "list": "Liste des Patients",
+    "subtitle": "Liste des Patients",
+    "list": {
+      "columns": {
+        "name": "Nom",
+        "email": "Email",
+        "phone": "Téléphone",
+        "status": "État",
+        "birthDate": "Date Naiss.",
+        "sex": "Sexe"
+      }
+    },
     "new": "Nouveau Patient",
     "search_placeholder": "Rechercher par nom, téléphone ou email",
-    "no_patients": "Aucun patient trouvé"
+    "no_patients": "Aucun patient trouvé",
+    "status": "Statut",
+    "create": {
+      "description": "Créer un nouveau dossier patient",
+      "pendingImplementation": "Fonctionnalité en développement",
+      "pendingMessage": "Le formulaire est prêt, mais la connexion backend est en attente d'implémentation. Le bouton d'enregistrement est temporairement désactivé.",
+      "saveDisabledTooltip": "La fonctionnalité de création est en attente d'implémentation. Le formulaire est prêt et validé."
+    },
+    "edit": {
+      "title": "Modifier le Patient",
+      "ctaSave": "Enregistrer les Modifications",
+      "ctaCancel": "Annuler",
+      "unsavedChanges": {
+        "title": "Modifications non enregistrées",
+        "body": "Vous avez des modifications non enregistrées. Si vous partez maintenant, vos modifications seront perdues.",
+        "confirm": "Partir quand même",
+        "cancel": "Rester sur la page"
+      }
+    },
+    "detail": {
+      "title": "Détails du Patient",
+      "ctaEdit": "Modifier le Patient",
+      "ctaBack": "Retour à la Liste"
+    },
+    "sections": {
+      "basic": "Informations de Base",
+      "identity": "Identification Officielle",
+      "emergency": "Contact d'Urgence",
+      "consent": "Consentements légaux",
+      "clinicalActions": "Actions cliniques"
+    },
+    "fields": {
+      "first_name": {
+        "label": "Prénom",
+        "help": "Prénom du patient"
+      },
+      "last_name": {
+        "label": "Nom",
+        "help": "Nom du patient"
+      },
+      "phone": {
+        "label": "Téléphone",
+        "help": "Numéro de téléphone du patient"
+      },
+      "birth_date": {
+        "label": "Date de Naissance",
+        "help": "Date de naissance du patient"
+      },
+      "sex": {
+        "label": "Sexe",
+        "help": "Sexe biologique du patient"
+      },
+      "document_type": {
+        "label": "Type de Document",
+        "help": "Sélectionnez le type de document d'identification officiel"
+      },
+      "document_number": {
+        "label": "Numéro de Document",
+        "help": "Entrez le numéro de carte d'identité ou de passeport"
+      },
+      "nationality": {
+        "label": "Nationalité",
+        "help": "Pays de citoyenneté du patient"
+      },
+      "emergency_contact_name": {
+        "label": "Nom du Contact d'Urgence",
+        "help": "Nom complet de la personne à contacter en cas d'urgence"
+      },
+      "emergency_contact_phone": {
+        "label": "Téléphone du Contact d'Urgence",
+        "help": "Numéro de téléphone du contact d'urgence"
+      },
+      "privacy_policy_accepted": {
+        "label": "Politique de Confidentialité Acceptée",
+        "help": "Le patient a lu et accepté la politique de confidentialité"
+      },
+      "terms_accepted": {
+        "label": "Conditions Générales Acceptées",
+        "help": "Le patient a lu et accepté les conditions générales"
+      }
+    },
+    "consent": {
+      "ok": "Consentements OK",
+      "missing": "Consentements Manquants",
+      "requiredForEncounters": "Un patient peut exister sans consentements, mais ne peut pas avoir de consultations sans les accepter."
+    },
+    "consents": {
+      "bannerTitle": "Consentements légaux requis",
+      "bannerMessage": "Ce patient n'a pas accepté les consentements légaux nécessaires. Les consultations cliniques ne peuvent pas être créées tant que la politique de confidentialité et les conditions générales ne sont pas acceptées.",
+      "reviewCta": "Examiner et accepter les consentements"
+    },
+    "documentType": {
+      "dni": "Carte d'identité nationale",
+      "passport": "Passeport",
+      "other": "Autre"
+    },
+    "actions": {
+      "reload": "Recharger les Données",
+      "backToDetail": "Retour aux détails",
+      "newEncounter": "Nouvelle consultation",
+      "consentsRequired": "Le patient doit accepter les consentements avant de commencer les consultations"
+    },
+    "errors": {
+      "loadFailed": "Échec du chargement des patients",
+      "updateFailed": "Échec de la mise à jour du patient",
+      "createFailed": "Échec de la création du patient",
+      "concurrencyConflict": "Un autre utilisateur a modifié ce patient. Vos modifications ne peuvent pas être enregistrées.",
+      "reloadPrompt": "Veuillez recharger les données et réessayer.",
+      "validation": "Veuillez vérifier les erreurs dans le formulaire",
+      "formInvalid": "Veuillez vérifier les champs marqués avant d'enregistrer",
+      "required": "Ce champ est requis",
+      "minLength": "Minimum {{min}} caractères requis",
+      "maxLength": "Maximum {{max}} caractères autorisés",
+      "invalidEmail": "Format d'email invalide",
+      "invalidDate": "Date invalide",
+      "futureDate": "La date ne peut pas être dans le futur",
+      "pairRequired": "Les deux champs sont requis lorsque l'un est rempli",
+      "documentPairRequired": "Le type et le numéro de document doivent être fournis ensemble"
+    },
+    "warnings": {
+      "consentsMissing": "Ce patient n'a pas encore accepté les consentements",
+      "consentsMissingCta": "Requis pour les consultations"
+    }
   },
   "agenda": {
     "title": "Agenda",
@@ -239,5 +415,6 @@
       "title": "Accès Non Autorisé",
       "description": "Vous n'avez pas la permission d'accéder à cette section. Seuls les administrateurs peuvent gérer les utilisateurs.",
       "action": "Aller à l'Accueil"
-    }  }
+    }
+  }
 }

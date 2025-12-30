@@ -103,6 +103,9 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             'full_name_normalized',
             'birth_date',
             'sex',
+            'document_type',
+            'document_number',
+            'nationality',
             'email',
             'phone',
             'phone_e164',
@@ -122,6 +125,16 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             'referral_source_id',
             'referral_details',
             'notes',  # CLINICAL FIELD - Hidden for Reception
+            'blood_type',
+            'allergies',
+            'medical_history',
+            'current_medications',
+            'emergency_contact_name',
+            'emergency_contact_phone',
+            'privacy_policy_accepted',
+            'privacy_policy_accepted_at',
+            'terms_accepted',
+            'terms_accepted_at',
             'row_version',
             'is_deleted',
             'deleted_at',
@@ -233,6 +246,10 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             last_name = validated_data.get('last_name', instance.last_name)
             instance.full_name_normalized = f"{first_name} {last_name}".strip().lower()
         
+        # Update all fields from validated_data
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
         # Update instance
         instance.save()
         return instance
@@ -256,13 +273,6 @@ class PatientDetailSerializer(serializers.ModelSerializer):
                 representation.pop('notes', None)
         
         return representation
-        
-        # Update fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        
-        instance.save()
-        return instance
 
 
 class AppointmentListSerializer(serializers.ModelSerializer):
@@ -710,10 +720,12 @@ class EncounterListSerializer(serializers.ModelSerializer):
     - Patient name
     - Practitioner name
     - Treatment count
+    - Attachments summary (photos + documents)
     """
     patient_name = serializers.SerializerMethodField()
     practitioner_name = serializers.SerializerMethodField()
     treatment_count = serializers.SerializerMethodField()
+    attachments_summary = serializers.SerializerMethodField()
     
     class Meta:
         model = Encounter
@@ -727,6 +739,7 @@ class EncounterListSerializer(serializers.ModelSerializer):
             'status',
             'occurred_at',
             'treatment_count',
+            'attachments_summary',
             'created_at',
         ]
         read_only_fields = fields
@@ -742,6 +755,21 @@ class EncounterListSerializer(serializers.ModelSerializer):
     def get_treatment_count(self, obj):
         """Return count of treatments in this encounter."""
         return obj.encounter_treatments.count()
+    
+    def get_attachments_summary(self, obj):
+        """Return attachments summary with counts."""
+        # Count photos (through EncounterPhoto M2M)
+        photo_count = obj.encounter_photos.filter(clinical_photo__is_deleted=False).count()
+        
+        # Count documents (through EncounterDocument M2M)
+        document_count = obj.encounter_documents.filter(document__is_deleted=False).count()
+        
+        return {
+            'has_photos': photo_count > 0,
+            'has_documents': document_count > 0,
+            'photo_count': photo_count,
+            'document_count': document_count,
+        }
 
 
 class EncounterDetailSerializer(serializers.ModelSerializer):
@@ -753,10 +781,14 @@ class EncounterDetailSerializer(serializers.ModelSerializer):
     - Nested treatments list
     - Patient details
     - Practitioner details
+    - Photos array
+    - Documents array
     """
     patient = serializers.SerializerMethodField()
     practitioner = serializers.SerializerMethodField()
     encounter_treatments = EncounterTreatmentSerializer(many=True, read_only=True)
+    photos = serializers.SerializerMethodField()
+    documents = serializers.SerializerMethodField()
     
     class Meta:
         model = Encounter
@@ -773,6 +805,8 @@ class EncounterDetailSerializer(serializers.ModelSerializer):
             'plan',
             'internal_notes',
             'encounter_treatments',
+            'photos',
+            'documents',
             'signed_at',
             'signed_by_user',
             'row_version',
@@ -800,6 +834,55 @@ class EncounterDetailSerializer(serializers.ModelSerializer):
             'display_name': obj.practitioner.display_name,
             'specialty': obj.practitioner.specialty,
         }
+    
+    def get_photos(self, obj):
+        """Return photos array with presigned URLs."""
+        from apps.clinical.utils_storage import get_clinical_photo_url
+        
+        photos = []
+        for encounter_photo in obj.encounter_photos.filter(clinical_photo__is_deleted=False).select_related('clinical_photo'):
+            photo = encounter_photo.clinical_photo
+            try:
+                url = get_clinical_photo_url(photo)
+            except Exception:
+                url = None
+            
+            photos.append({
+                'id': str(photo.id),
+                'classification': photo.photo_kind,
+                'created_at': photo.created_at.isoformat(),
+                'url': url,
+                'filename': photo.object_key.split('/')[-1] if photo.object_key else None,
+                'mime_type': photo.content_type,
+                'size_bytes': photo.size_bytes,
+            })
+        
+        return photos
+    
+    def get_documents(self, obj):
+        """Return documents array with presigned URLs."""
+        from apps.clinical.utils_storage import get_document_url
+        from apps.documents.models import Document
+        
+        documents = []
+        for encounter_doc in obj.encounter_documents.filter(document__is_deleted=False).select_related('document'):
+            doc = encounter_doc.document
+            try:
+                url = get_document_url(doc)
+            except Exception:
+                url = None
+            
+            documents.append({
+                'id': str(doc.id),
+                'created_at': doc.created_at.isoformat(),
+                'url': url,
+                'filename': doc.object_key.split('/')[-1] if doc.object_key else None,
+                'mime_type': doc.content_type,
+                'size_bytes': doc.size_bytes,
+                'title': doc.title,
+            })
+        
+        return documents
 
 
 class EncounterWriteSerializer(serializers.ModelSerializer):
@@ -828,11 +911,12 @@ class EncounterWriteSerializer(serializers.ModelSerializer):
             'plan',
             'internal_notes',
             'encounter_treatments',
+            'row_version',
         ]
         read_only_fields = ['id']
-    
+
     def validate(self, attrs):
-        """Validate business rules and RBAC restrictions."""
+        """Validate business rules, RBAC restrictions, and row_version concurrency."""
         # Validate status transitions
         if self.instance and 'status' in attrs:
             old_status = self.instance.status
@@ -847,16 +931,47 @@ class EncounterWriteSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         'status': f"Transición inválida: {old_status} -> {new_status}"
                     })
-        
+
+        # Require row_version on update
+        if self.instance:
+            if 'row_version' not in self.initial_data:
+                raise serializers.ValidationError({
+                    'row_version': ['Este campo es obligatorio para actualizar']
+                })
+            provided_version = self.initial_data.get('row_version')
+            # Accept both int and str for row_version
+            try:
+                provided_version = int(provided_version)
+            except Exception:
+                raise serializers.ValidationError({
+                    'row_version': ['Formato inválido para row_version']
+                })
+            if provided_version != self.instance.row_version:
+                # Raise 409 Conflict by propagating exception up to view
+                from rest_framework.exceptions import APIException
+                class Conflict409(APIException):
+                    status_code = 409
+                    default_detail = 'Conflicto de versión: el registro fue modificado por otro usuario.'
+                    default_code = 'conflict'
+                raise Conflict409(
+                    detail={
+                        'row_version': [
+                            f"El registro fue modificado por otro usuario. "
+                            f"Versión actual: {self.instance.row_version}, "
+                            f"versión proporcionada: {provided_version}"
+                        ]
+                    }
+                )
+
         return attrs
-    
+
     def create(self, validated_data):
         """Create encounter with nested treatments."""
         treatments_data = validated_data.pop('encounter_treatments', [])
-        
+
         with transaction.atomic():
             encounter = Encounter.objects.create(**validated_data)
-            
+
             # Create treatments
             for treatment_data in treatments_data:
                 treatment_id = treatment_data.pop('treatment_id')
@@ -866,19 +981,25 @@ class EncounterWriteSerializer(serializers.ModelSerializer):
                     treatment=treatment,
                     **treatment_data
                 )
-        
+
         return encounter
-    
+
     def update(self, instance, validated_data):
-        """Update encounter (treatments are updated separately)."""
+        """Update encounter (treatments are updated separately, row_version incremented)."""
         # Remove treatments from validated_data (handle separately)
         validated_data.pop('encounter_treatments', None)
-        
+
+        # Remove row_version from validated_data (we'll increment it)
+        validated_data.pop('row_version', None)
+
         # Update encounter fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+
+        # Increment row_version
+        instance.row_version += 1
         instance.save()
-        
+
         return instance
 
 # ============================================================================

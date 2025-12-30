@@ -778,6 +778,7 @@ export const ROLES = {
 **Cambiar el método `get_roles` de:**
 ```python
 def get_roles(self, obj):
+    """Get user roles with display names."""
     return [
         {
             'role_name': ur.role.name,
@@ -790,7 +791,7 @@ def get_roles(self, obj):
 **A:**
 ```python
 def get_roles(self, obj):
-    """Retorna lista de strings con nombres de roles."""
+    """Get user roles as list of role names."""
     return list(obj.user_roles.values_list('role__name', flat=True))
 ```
 
@@ -1223,17 +1224,6 @@ const handleRoleChange = (role: string) => {
 3. Solo un rol puede estar activo
 4. Se envía: `{"roles": ["admin"]}`
 
-#### Roles Disponibles
-
-Los mismos 5 roles del sistema:
-- ⚪ Administrador (`admin`)
-- ⚪ Profesional sanitario (`practitioner`)
-- ⚪ Recepción (`reception`)
-- ⚪ Marketing (`marketing`)
-- ⚪ Contabilidad (`accounting`)
-
-**Selección:** Obligatoria (uno y solo uno debe estar seleccionado)
-
 #### Validación
 
 La validación existente sigue funcionando:
@@ -1358,6 +1348,16 @@ Los mismos que en la carga inicial:
 
 1. ✓ Editar usuario, cambiar roles, guardar
 2. ✓ Verificar que checkboxes reflejan lo guardado sin recargar página
+3. ✓ Verificar que otros campos también se actualizan
+4. ✓ Verificar que `is_active` se sincroniza
+5. ✓ Verificar que campos de practicante se actualizan si aplica
+
+---
+
+## Autor
+GitHub Copilot (Claude Sonnet 4.5)
+
+## Referencias
 3. ✓ Verificar que otros campos también se actualizan
 4. ✓ Verificar que `is_active` se sincroniza
 5. ✓ Verificar que campos de practicante se actualizan si aplica

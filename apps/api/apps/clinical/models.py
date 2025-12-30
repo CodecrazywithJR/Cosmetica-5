@@ -44,6 +44,13 @@ class IdentityConfidenceChoices(models.TextChoices):
     HIGH = 'high', 'High'
 
 
+class DocumentTypeChoices(models.TextChoices):
+    """Patient official document types"""
+    DNI = 'dni', 'DNI/ID Card'
+    PASSPORT = 'passport', 'Passport'
+    OTHER = 'other', 'Other'
+
+
 class EncounterTypeChoices(models.TextChoices):
     """Encounter types"""
     MEDICAL_CONSULT = 'medical_consult', 'Medical Consult'
@@ -248,6 +255,16 @@ class Patient(models.Model):
         null=True
     )
     
+    # Official identification
+    document_type = models.CharField(
+        max_length=20,
+        choices=DocumentTypeChoices.choices,
+        blank=True,
+        null=True
+    )
+    document_number = models.CharField(max_length=100, blank=True, null=True)
+    nationality = models.CharField(max_length=100, blank=True, null=True)
+    
     # Contact
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
@@ -309,6 +326,16 @@ class Patient(models.Model):
     allergies = models.TextField(blank=True, default="")
     medical_history = models.TextField(blank=True, default="")
     current_medications = models.TextField(blank=True, default="")
+    
+    # Emergency contact
+    emergency_contact_name = models.CharField(max_length=255, blank=True, null=True)
+    emergency_contact_phone = models.CharField(max_length=50, blank=True, null=True)
+    
+    # Legal consents (quick flags - complement to Consent model)
+    privacy_policy_accepted = models.BooleanField(default=False)
+    privacy_policy_accepted_at = models.DateTimeField(blank=True, null=True)
+    terms_accepted = models.BooleanField(default=False)
+    terms_accepted_at = models.DateTimeField(blank=True, null=True)
     
     # Concurrency control
     row_version = models.IntegerField(default=1)
@@ -581,6 +608,11 @@ class Encounter(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Attachments summary cache fields (v1.1)
+    photo_count_cached = models.IntegerField(default=0)
+    document_count_cached = models.IntegerField(default=0)
+    has_photos_cached = models.BooleanField(default=False)
+    has_documents_cached = models.BooleanField(default=False)
     
     class Meta:
         db_table = 'encounter'

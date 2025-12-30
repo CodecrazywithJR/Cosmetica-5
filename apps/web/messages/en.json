@@ -1,4 +1,36 @@
 {
+  "encounters": {
+    "list": {
+      "patient": {
+        "title": "Patient's Consultations",
+        "filters": {
+          "practitioner": "Practitioner",
+          "status": "Status"
+        },
+        "empty": {
+          "message": "This patient has no consultations yet."
+        },
+        "columns": {
+          "date": "Date",
+          "type": "Type",
+          "status": "Status",
+          "practitioner": "Practitioner",
+          "treatments": "Treatments",
+          "attachments": "Attachments"
+        },
+        "type": {
+          "consultation": "Consultation",
+          "follow_up": "Follow-up",
+          "emergency": "Emergency"
+        },
+        "status": {
+          "draft": "Draft",
+          "finalized": "Finalized",
+          "cancelled": "Cancelled"
+        }
+      }
+    }
+  },
   "app": {
     "title": "DermaEMR - Dermatology Practice Management",
     "subtitle": "Patient Records & Cosmetics POS"
@@ -27,8 +59,20 @@
     "search": "Search",
     "filter": "Filter",
     "retry": "Retry",
+    "yes": "Yes",
+    "no": "No",
     "languageLabel": "Language",
     "user": "User",
+    "sex": {
+      "female": "Female",
+      "male": "Male",
+      "other": "Other",
+      "unknown": "Unknown",
+      "F": "Female",
+      "M": "Male",
+      "O": "Other",
+      "U": "Unknown"
+    },
     "actions": {
       "cancel": "Cancel",
       "close": "Close",
@@ -48,10 +92,146 @@
   },
   "patients": {
     "title": "Patients",
-    "list": "Patient List",
+    "subtitle": "Patient List",
+    "list": {
+      "columns": {
+        "name": "Name",
+        "email": "Email",
+        "phone": "Phone",
+        "status": "Status",
+        "birthDate": "Birth Date",
+        "sex": "Sex"
+      }
+    },
     "new": "New Patient",
     "search_placeholder": "Search by name, phone, or email",
-    "no_patients": "No patients found"
+    "no_patients": "No patients found",
+    "status": "Status",
+    "create": {
+      "description": "Create new patient record",
+      "pendingImplementation": "Feature under development",
+      "pendingMessage": "The form is ready, but backend connection is pending implementation. The save button is temporarily disabled.",
+      "saveDisabledTooltip": "Patient creation functionality is pending implementation. The form is ready and validated."
+    },
+    "edit": {
+      "title": "Edit Patient",
+      "ctaSave": "Save Changes",
+      "ctaCancel": "Cancel",
+      "unsavedChanges": {
+        "title": "Unsaved Changes",
+        "body": "You have unsaved changes. If you leave now, your changes will be lost.",
+        "confirm": "Leave anyway",
+        "cancel": "Stay on page"
+      }
+    },
+    "detail": {
+      "title": "Patient Details",
+      "ctaEdit": "Edit Patient",
+      "ctaBack": "Back to List"
+    },
+    "sections": {
+      "basic": "Basic Information",
+      "identity": "Official Identification",
+      "emergency": "Emergency Contact",
+      "consent": "Legal Consents",
+      "clinicalActions": "Clinical Actions"
+    },
+    "fields": {
+      "first_name": {
+        "label": "First Name",
+        "help": "Patient's first name"
+      },
+      "last_name": {
+        "label": "Last Name",
+        "help": "Patient's last name"
+      },
+      "email": {
+        "label": "Email",
+        "help": "Patient's email address"
+      },
+      "phone": {
+        "label": "Phone",
+        "help": "Patient's phone number"
+      },
+      "birth_date": {
+        "label": "Birth Date",
+        "help": "Patient's date of birth"
+      },
+      "sex": {
+        "label": "Sex",
+        "help": "Patient's biological sex"
+      },
+      "document_type": {
+        "label": "Document Type",
+        "help": "Select official identification document type"
+      },
+      "document_number": {
+        "label": "Document Number",
+        "help": "Enter the ID or passport number"
+      },
+      "nationality": {
+        "label": "Nationality",
+        "help": "Patient's country of citizenship"
+      },
+      "emergency_contact_name": {
+        "label": "Emergency Contact Name",
+        "help": "Full name of the person to contact in case of emergency"
+      },
+      "emergency_contact_phone": {
+        "label": "Emergency Contact Phone",
+        "help": "Phone number of emergency contact"
+      },
+      "privacy_policy_accepted": {
+        "label": "Privacy Policy Accepted",
+        "help": "Patient has read and accepted the privacy policy"
+      },
+      "terms_accepted": {
+        "label": "Terms & Conditions Accepted",
+        "help": "Patient has read and accepted the terms and conditions"
+      }
+    },
+    "consent": {
+      "ok": "Consents OK",
+      "missing": "Consents Missing",
+      "requiredForEncounters": "A patient can exist without consents, but cannot have encounters without accepting them."
+    },
+    "consents": {
+      "bannerTitle": "Legal Consents Required",
+      "bannerMessage": "This patient has not accepted the required legal consents. Clinical encounters cannot be created until both privacy policy and terms & conditions are accepted.",
+      "reviewCta": "Review & Accept Consents"
+    },
+    "documentType": {
+      "dni": "National ID (DNI)",
+      "passport": "Passport",
+      "other": "Other"
+    },
+    "actions": {
+      "reload": "Reload Data",
+      "backToDetail": "Back to Details",
+      "newEncounter": "New Encounter",
+      "consentsRequired": "Patient must accept consents before starting encounters"
+    },
+    "errors": {
+      "loadFailed": "Failed to load patients",
+      "updateFailed": "Failed to update patient",
+      "createFailed": "Failed to create patient",
+      "concurrencyConflict": "Another user has modified this patient. Your changes cannot be saved.",
+      "reloadPrompt": "Please reload the data and try again.",
+      "validation": "Please check the form for errors",
+      "formInvalid": "Please review the marked fields before saving",
+      "required": "This field is required",
+      "minLength": "Minimum {{min}} characters required",
+      "maxLength": "Maximum {{max}} characters allowed",
+      "invalidEmail": "Invalid email format",
+      "invalidDate": "Invalid date",
+      "futureDate": "Date cannot be in the future",
+      "pairRequired": "Both fields are required when one is filled",
+      "documentPairRequired": "Document type and number must both be provided"
+    },
+    "warnings": {
+      "consentsMissing": "This patient has not accepted consents yet",
+      "consentsMissingCta": "Required for encounters"
+    }
   },
   "agenda": {
     "title": "Agenda",

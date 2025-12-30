@@ -1,12 +1,5 @@
 {
-  "/api/healthz/route": "app/api/healthz/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/[locale]/debug/auth/page": "app/[locale]/debug/auth/page.js",
-  "/[locale]/encounters/[id]/page": "app/[locale]/encounters/[id]/page.js",
-  "/[locale]/login/page": "app/[locale]/login/page.js",
-  "/[locale]/maintenance/page": "app/[locale]/maintenance/page.js",
   "/[locale]/page": "app/[locale]/page.js",
-  "/[locale]/proposals/page": "app/[locale]/proposals/page.js",
-  "/[locale]/schedule/page": "app/[locale]/schedule/page.js",
-  "/[locale]/social/page": "app/[locale]/social/page.js"
+  "/[locale]/login/page": "app/[locale]/login/page.js",
+  "/[locale]/encounters/page": "app/[locale]/encounters/page.js"
 }

@@ -42,6 +42,20 @@ import type {
   LocationInfo,
 } from '@/lib/types/booking';
 
+// Diagnostic panel state interface
+interface DiagnosticInfo {
+  practitionerId: string | null;
+  role: string | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  lastRequestUrl: string | null;
+  lastStatusCode: number | null;
+  lastErrorMessage: string | null;
+  lastResponseBody: any;
+  timestamp: number | null;
+  timezone: string;
+}
+
 export default function BookingPage() {
   const { user, hasAnyRole } = useAuth();
   
@@ -70,14 +84,49 @@ export default function BookingPage() {
   const [error, setError] = useState<string>('');
   const [showModal, setShowModal] = useState(false);
 
-  // Initialize date range (today + 7 days)
-  useEffect(() => {
+  // Diagnostic state (development only)
+  const [diagnostic, setDiagnostic] = useState<DiagnosticInfo>({
+    practitionerId: null,
+    role: null,
+    dateFrom: null,
+    dateTo: null,
+    lastRequestUrl: null,
+    lastStatusCode: null,
+    lastErrorMessage: null,
+    lastResponseBody: null,
+    timestamp: null,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+
+  const isDevelopment = process.env.NODE_ENV === 'development';
+
+  // Helper: Get today's date as YYYY-MM-DD
+  const getTodayString = (): string => {
     const today = new Date();
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
+    return formatDateForInput(today);
+  };
+
+  // Helper: Get date N days from today
+  const getDaysFromToday = (days: number): string => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return formatDateForInput(date);
+  };
+
+  // Initialize date range (today + 7 days) - FIX for 2025/2026 bug
+  useEffect(() => {
+    const today = getTodayString();
+    const nextWeek = getDaysFromToday(7);
     
-    setDateFrom(formatDateForInput(today));
-    setDateTo(formatDateForInput(nextWeek));
+    setDateFrom(today);
+    setDateTo(nextWeek);
+    
+    // Update diagnostic
+    setDiagnostic(prev => ({
+      ...prev,
+      dateFrom: today,
+      dateTo: nextWeek,
+    }));
   }, []);
 
   // Load initial data
@@ -107,21 +156,69 @@ export default function BookingPage() {
       setPatients(patientsData);
       setLocations(locationsData);
 
+      // Determine user role for diagnostic
+      const userRole = isAdmin ? 'Admin' : isReception ? 'Reception' : isPractitioner ? 'Practitioner' : 'Unknown';
+      
       // Auto-select practitioner
       if (practitionersData.length > 0) {
+        let selectedId = '';
+        
         // If practitioner role, try to find own practitioner
         if (isPractitioner && user) {
           const ownPractitioner = practitionersData.find(
-            p => p.id === user.id // Assuming practitioner.user_id matches user.id
+            p => p.id === user.id
           );
-          setSelectedPractitioner(ownPractitioner?.id || practitionersData[0].id);
+          selectedId = ownPractitioner?.id || practitionersData[0].id;
         } else {
-          setSelectedPractitioner(practitionersData[0].id);
+          selectedId = practitionersData[0].id;
         }
+        
+        setSelectedPractitioner(selectedId);
+        
+        // Update diagnostic
+        setDiagnostic(prev => ({
+          ...prev,
+          practitionerId: selectedId,
+          role: userRole,
+        }));
+      } else {
+        throw new Error('No practitioners found. Please contact administrator.');
       }
     } catch (err: any) {
       console.error('Failed to load initial data:', err);
-      setError('Error al cargar datos iniciales. Recargue la página.');
+      
+      // Better error messages
+      let errorMsg = 'Error al cargar datos iniciales.';
+      let detailedError = err.message || 'Unknown error';
+      
+      if (err?.response) {
+        const status = err.response.status;
+        detailedError = `HTTP ${status}: ${err.response.data?.detail || err.response.statusText}`;
+        
+        if (status === 401) {
+          errorMsg = 'No está autenticado. Por favor, inicie sesión nuevamente.';
+        } else if (status === 403) {
+          errorMsg = 'No tiene permisos para acceder a esta información.';
+        } else if (status === 404) {
+          errorMsg = 'Endpoint no encontrado. Verifique la configuración del servidor.';
+        } else if (status >= 500) {
+          errorMsg = 'Error del servidor. Intente más tarde.';
+        }
+      } else if (err?.request) {
+        errorMsg = 'No se pudo conectar con el servidor. Verifique su conexión.';
+        detailedError = 'Network error - no response from server';
+      }
+      
+      setError(`${errorMsg} (${detailedError})`);
+      
+      // Update diagnostic
+      setDiagnostic(prev => ({
+        ...prev,
+        lastStatusCode: err?.response?.status || null,
+        lastErrorMessage: detailedError,
+        lastResponseBody: err?.response?.data || null,
+        timestamp: Date.now(),
+      }));
     } finally {
       setLoadingData(false);
     }
@@ -134,6 +231,16 @@ export default function BookingPage() {
       setLoadingAvailability(true);
       setError('');
 
+      // Build the request URL for diagnostic
+      const requestUrl = `/api/v1/clinical/practitioners/${selectedPractitioner}/availability/?date_from=${dateFrom}&date_to=${dateTo}&slot_duration=30`;
+      
+      // Update diagnostic before request
+      setDiagnostic(prev => ({
+        ...prev,
+        lastRequestUrl: requestUrl,
+        timestamp: Date.now(),
+      }));
+
       const data = await fetchAvailability(
         selectedPractitioner,
         dateFrom,
@@ -142,13 +249,58 @@ export default function BookingPage() {
       );
 
       setAvailability(data.availability);
+      
+      // Update diagnostic on success
+      setDiagnostic(prev => ({
+        ...prev,
+        lastStatusCode: 200,
+        lastErrorMessage: null,
+        lastResponseBody: { success: true, days: data.availability.length },
+      }));
     } catch (err: any) {
       console.error('Failed to load availability:', err);
-      if (err?.response?.status === 403) {
-        setError('No tiene permisos para ver la disponibilidad de este profesional.');
-      } else {
-        setError('Error al cargar disponibilidad. Intente nuevamente.');
+      
+      // Better error messages
+      let errorMsg = 'Error al cargar disponibilidad.';
+      let detailedError = err.message || 'Unknown error';
+      
+      if (err?.response) {
+        const status = err.response.status;
+        const responseData = err.response.data;
+        detailedError = `HTTP ${status}: ${responseData?.detail || err.response.statusText}`;
+        
+        if (status === 403) {
+          errorMsg = 'No tiene permisos para ver la disponibilidad de este profesional.';
+        } else if (status === 404) {
+          errorMsg = 'Profesional no encontrado o endpoint incorrecto.';
+        } else if (status === 400) {
+          errorMsg = `Datos inválidos: ${responseData?.detail || 'Verifique las fechas'}`;
+        } else if (status >= 500) {
+          errorMsg = 'Error del servidor al obtener disponibilidad.';
+        }
+        
+        // Update diagnostic
+        setDiagnostic(prev => ({
+          ...prev,
+          lastStatusCode: status,
+          lastErrorMessage: detailedError,
+          lastResponseBody: responseData,
+          timestamp: Date.now(),
+        }));
+      } else if (err?.request) {
+        errorMsg = 'No se pudo conectar con el servidor.';
+        detailedError = 'Network error';
+        
+        setDiagnostic(prev => ({
+          ...prev,
+          lastStatusCode: null,
+          lastErrorMessage: detailedError,
+          lastResponseBody: null,
+          timestamp: Date.now(),
+        }));
       }
+      
+      setError(`${errorMsg} ${detailedError}`);
       setAvailability([]);
     } finally {
       setLoadingAvailability(false);
@@ -159,6 +311,34 @@ export default function BookingPage() {
     setSelectedDate(date);
     setSelectedSlot(slot);
     setShowModal(true);
+  };
+
+  // Handle date change with validation
+  const handleDateFromChange = (newDate: string) => {
+    const today = getTodayString();
+    
+    // If date is too far in the past, reset to today
+    if (newDate < '2020-01-01' || newDate > '2030-12-31') {
+      setDateFrom(today);
+      setDiagnostic(prev => ({ ...prev, dateFrom: today }));
+    } else {
+      setDateFrom(newDate);
+      setDiagnostic(prev => ({ ...prev, dateFrom: newDate }));
+    }
+  };
+
+  const handleDateToChange = (newDate: string) => {
+    const today = getTodayString();
+    
+    // If date is too far in the past or future, reset to today + 7
+    if (newDate < '2020-01-01' || newDate > '2030-12-31') {
+      const nextWeek = getDaysFromToday(7);
+      setDateTo(nextWeek);
+      setDiagnostic(prev => ({ ...prev, dateTo: nextWeek }));
+    } else {
+      setDateTo(newDate);
+      setDiagnostic(prev => ({ ...prev, dateTo: newDate }));
+    }
   };
 
   const handleBookingConfirm = async (
@@ -216,10 +396,83 @@ export default function BookingPage() {
       </div>
 
       <div className="page-content">
+        {/* Diagnostic Panel (Development Only) */}
+        {isDevelopment && (
+          <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-yellow-800">🔧 DIAGNOSTIC PANEL (Dev Only)</h3>
+              <span className="text-xs text-yellow-600">NODE_ENV: {process.env.NODE_ENV}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+              <div>
+                <span className="font-semibold text-yellow-700">Practitioner ID:</span>
+                <span className="ml-2 text-yellow-900">{diagnostic.practitionerId || 'null'}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-yellow-700">User Role:</span>
+                <span className="ml-2 text-yellow-900">{diagnostic.role || 'null'}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-yellow-700">Date From:</span>
+                <span className="ml-2 text-yellow-900">{diagnostic.dateFrom || 'null'}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-yellow-700">Date To:</span>
+                <span className="ml-2 text-yellow-900">{diagnostic.dateTo || 'null'}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="font-semibold text-yellow-700">Last Request URL:</span>
+                <div className="ml-2 text-yellow-900 break-all">{diagnostic.lastRequestUrl || 'N/A'}</div>
+              </div>
+              <div>
+                <span className="font-semibold text-yellow-700">HTTP Status:</span>
+                <span className={`ml-2 font-bold ${diagnostic.lastStatusCode === 200 ? 'text-green-600' : 'text-red-600'}`}>
+                  {diagnostic.lastStatusCode || 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="font-semibold text-yellow-700">Timestamp:</span>
+                <span className="ml-2 text-yellow-900">
+                  {diagnostic.timestamp ? new Date(diagnostic.timestamp).toLocaleTimeString() : 'N/A'}
+                </span>
+              </div>
+              <div className="col-span-2">
+                <span className="font-semibold text-yellow-700">Error Message:</span>
+                <div className="ml-2 text-red-700 break-all">{diagnostic.lastErrorMessage || 'None'}</div>
+              </div>
+              <div className="col-span-2">
+                <span className="font-semibold text-yellow-700">Response Body:</span>
+                <pre className="ml-2 text-xs bg-yellow-100 p-2 rounded mt-1 overflow-auto max-h-32">
+                  {diagnostic.lastResponseBody ? JSON.stringify(diagnostic.lastResponseBody, null, 2) : 'N/A'}
+                </pre>
+              </div>
+              <div className="col-span-2">
+                <span className="font-semibold text-yellow-700">Timezone:</span>
+                <span className="ml-2 text-yellow-900">{diagnostic.timezone}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Error Banner */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-800">{error}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-red-800">{error}</p>
+              <button
+                onClick={() => {
+                  setError('');
+                  if (loadingData) {
+                    loadInitialData();
+                  } else {
+                    loadAvailability();
+                  }
+                }}
+                className="ml-4 px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+              >
+                Reintentar
+              </button>
+            </div>
           </div>
         )}
 
@@ -263,7 +516,7 @@ export default function BookingPage() {
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
+                onChange={(e) => handleDateFromChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -276,7 +529,7 @@ export default function BookingPage() {
               <input
                 type="date"
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
+                onChange={(e) => handleDateToChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>

@@ -1,4 +1,36 @@
 {
+  "encounters": {
+    "list": {
+      "patient": {
+        "title": "Consultas del paciente",
+        "filters": {
+          "practitioner": "Profesional",
+          "status": "Estado"
+        },
+        "empty": {
+          "message": "Este paciente aún no tiene consultas registradas."
+        },
+        "columns": {
+          "date": "Fecha",
+          "type": "Tipo",
+          "status": "Estado",
+          "practitioner": "Profesional",
+          "treatments": "Tratamientos",
+          "attachments": "Adjuntos"
+        },
+        "type": {
+          "consultation": "Consulta",
+          "follow_up": "Seguimiento",
+          "emergency": "Emergencia"
+        },
+        "status": {
+          "draft": "Borrador",
+          "finalized": "Finalizada",
+          "cancelled": "Cancelada"
+        }
+      }
+    }
+  },
   "app": {
     "title": "DermaEMR - Gestión de Práctica Dermatológica",
     "subtitle": "Registros de Pacientes y POS Cosmética"
@@ -27,8 +59,20 @@
     "search": "Buscar",
     "filter": "Filtrar",
     "retry": "Reintentar",
+    "yes": "Sí",
+    "no": "No",
     "languageLabel": "Idioma",
     "user": "Usuario",
+    "sex": {
+      "female": "Femenino",
+      "male": "Masculino",
+      "other": "Otro",
+      "unknown": "Desconocido",
+      "F": "Femenino",
+      "M": "Masculino",
+      "O": "Otro",
+      "U": "Desconocido"
+    },
     "actions": {
       "cancel": "Cancelar",
       "close": "Cerrar",
@@ -48,10 +92,146 @@
   },
   "patients": {
     "title": "Pacientes",
-    "list": "Lista de Pacientes",
+    "subtitle": "Lista de Pacientes",
     "new": "Nuevo Paciente",
     "search_placeholder": "Buscar por nombre, teléfono o email",
-    "no_patients": "No se encontraron pacientes"
+    "no_patients": "No se encontraron pacientes",
+    "status": "Estado",
+    "list": {
+      "columns": {
+        "name": "Nombre",
+        "email": "Correo",
+        "phone": "Teléfono",
+        "status": "Estado",
+        "birthDate": "Fecha Nac.",
+        "sex": "Sexo"
+      }
+    },
+    "create": {
+      "description": "Crear nuevo registro de paciente",
+      "pendingImplementation": "Funcionalidad en desarrollo",
+      "pendingMessage": "El formulario está listo, pero la conexión con el backend está pendiente de implementación. El botón de guardar está temporalmente deshabilitado.",
+      "saveDisabledTooltip": "La funcionalidad de creación está pendiente de implementación. El formulario está listo y validado."
+    },
+    "edit": {
+      "title": "Editar Paciente",
+      "ctaSave": "Guardar Cambios",
+      "ctaCancel": "Cancelar",
+      "unsavedChanges": {
+        "title": "Cambios sin guardar",
+        "body": "Tiene cambios sin guardar. Si sale ahora, sus cambios se perderán.",
+        "confirm": "Salir de todos modos",
+        "cancel": "Permanecer en la página"
+      }
+    },
+    "detail": {
+      "title": "Detalles del Paciente",
+      "ctaEdit": "Editar Paciente",
+      "ctaBack": "Volver a Lista"
+    },
+    "sections": {
+      "basic": "Información Básica",
+      "identity": "Identificación Oficial",
+      "emergency": "Contacto de Emergencia",
+      "consent": "Consentimientos Legales",
+      "clinicalActions": "Acciones Clínicas"
+    },
+    "fields": {
+      "first_name": {
+        "label": "Nombre",
+        "help": "Nombre del paciente"
+      },
+      "last_name": {
+        "label": "Apellido",
+        "help": "Apellido del paciente"
+      },
+      "email": {
+        "label": "Email",
+        "help": "Correo electrónico del paciente"
+      },
+      "phone": {
+        "label": "Teléfono",
+        "help": "Número de teléfono del paciente"
+      },
+      "birth_date": {
+        "label": "Fecha de Nacimiento",
+        "help": "Fecha de nacimiento del paciente"
+      },
+      "sex": {
+        "label": "Sexo",
+        "help": "Sexo biológico del paciente"
+      },
+      "document_type": {
+        "label": "Tipo de Documento",
+        "help": "Seleccione el tipo de documento de identificación oficial"
+      },
+      "document_number": {
+        "label": "Número de Documento",
+        "help": "Ingrese el número de DNI o pasaporte"
+      },
+      "nationality": {
+        "label": "Nacionalidad",
+        "help": "País de ciudadanía del paciente"
+      },
+      "emergency_contact_name": {
+        "label": "Nombre del Contacto de Emergencia",
+        "help": "Nombre completo de la persona a contactar en caso de emergencia"
+      },
+      "emergency_contact_phone": {
+        "label": "Teléfono del Contacto de Emergencia",
+        "help": "Número de teléfono del contacto de emergencia"
+      },
+      "privacy_policy_accepted": {
+        "label": "Política de Privacidad Aceptada",
+        "help": "El paciente ha leído y aceptado la política de privacidad"
+      },
+      "terms_accepted": {
+        "label": "Términos y Condiciones Aceptados",
+        "help": "El paciente ha leído y aceptado los términos y condiciones"
+      }
+    },
+    "consent": {
+      "ok": "Consentimientos OK",
+      "missing": "Faltan Consentimientos",
+      "requiredForEncounters": "Un paciente puede existir sin consentimientos, pero no puede tener consultas sin aceptarlos."
+    },
+    "consents": {
+      "bannerTitle": "Consentimientos Legales Requeridos",
+      "bannerMessage": "Este paciente no ha aceptado los consentimientos legales necesarios. No se pueden crear consultas clínicas hasta que se acepten tanto la política de privacidad como los términos y condiciones.",
+      "reviewCta": "Revisar y Aceptar Consentimientos"
+    },
+    "documentType": {
+      "dni": "DNI",
+      "passport": "Pasaporte",
+      "other": "Otro"
+    },
+    "actions": {
+      "reload": "Recargar Datos",
+      "backToDetail": "Volver a Detalles",
+      "newEncounter": "Nueva Consulta",
+      "consentsRequired": "El paciente debe aceptar los consentimientos antes de iniciar consultas"
+    },
+    "errors": {
+      "loadFailed": "Error al cargar pacientes",
+      "updateFailed": "Error al actualizar paciente",
+      "createFailed": "Error al crear paciente",
+      "concurrencyConflict": "Otro usuario ha modificado este paciente. No se pueden guardar sus cambios.",
+      "reloadPrompt": "Por favor recargue los datos e intente nuevamente.",
+      "validation": "Por favor revise los errores en el formulario",
+      "formInvalid": "Por favor revise los campos marcados antes de guardar",
+      "required": "Este campo es requerido",
+      "minLength": "Mínimo {{min}} caracteres requeridos",
+      "maxLength": "Máximo {{max}} caracteres permitidos",
+      "invalidEmail": "Formato de email inválido",
+      "invalidDate": "Fecha inválida",
+      "futureDate": "La fecha no puede estar en el futuro",
+      "pairRequired": "Ambos campos son requeridos cuando uno está completado",
+      "documentPairRequired": "Tipo y número de documento deben proporcionarse juntos"
+    },
+    "warnings": {
+      "consentsMissing": "Este paciente aún no ha aceptado los consentimientos",
+      "consentsMissingCta": "Requerido para consultas"
+    }
   },
   "agenda": {
     "title": "Agenda",
