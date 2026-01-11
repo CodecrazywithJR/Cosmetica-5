@@ -1,0 +1,55 @@
+{
+  "app": {
+    "name": "Cosmetica 5"
+  },
+  "nav": {
+    "agenda": "Розклад",
+    "proposals": "Пропозиції",
+    "clinical": "Клініка",
+    "patients": "Пацієнти",
+    "encounters": "Прийоми",
+    "pos": "POS",
+    "sales": "Продажі",
+    "admin": "Адміністрація"
+  },
+  "actions": {
+    "save": "Зберегти",
+    "cancel": "Скасувати",
+    "create": "Створити",
+    "close": "Закрити",
+    "login": "Увійти",
+    "logout": "Вийти",
+    "confirm": "Підтвердити",
+    "delete": "Видалити",
+    "edit": "Редагувати",
+    "back": "Назад"
+  },
+  "status": {
+    "loading": "Завантаження...",
+    "error": "Помилка",
+    "success": "Успішно",
+    "scheduled": "Заплановано",
+    "confirmed": "Підтверджено",
+    "cancelled": "Скасовано",
+    "completed": "Завершено"
+  },
+  "errors": {
+    "generic": "Сталася помилка. Спробуйте ще раз.",
+    "network": "Помилка мережі",
+    "unauthorized": "Не авторизовано",
+    "notFound": "Не знайдено"
+  },
+  "language": {
+    "label": "Мова",
+    "ru": "Русский",
+    "uk": "Українська",
+    "hy": "Հայերեն",
+    "fr": "Français",
+    "es": "Español"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Пароль",
+    "login": "Вхід"
+  }
+}

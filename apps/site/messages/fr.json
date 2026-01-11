@@ -1,0 +1,39 @@
+{
+  "nav": {
+    "home": "Accueil",
+    "about": "À propos",
+    "services": "Services",
+    "team": "Notre équipe",
+    "blog": "Blog",
+    "contact": "Contact"
+  },
+  "home": {
+    "hero": {
+      "title": "Dermatologie et cosmétique professionnelle",
+      "subtitle": "La santé de votre peau est notre priorité",
+      "cta": "Prendre rendez-vous"
+    },
+    "services": {
+      "title": "Nos services",
+      "viewAll": "Tous les services"
+    }
+  },
+  "contact": {
+    "title": "Contactez-nous",
+    "form": {
+      "name": "Votre nom",
+      "email": "Email",
+      "phone": "Téléphone (optionnel)",
+      "message": "Message",
+      "submit": "Envoyer",
+      "success": "Merci! Nous vous contacterons bientôt.",
+      "error": "Erreur d'envoi. Veuillez réessayer."
+    }
+  },
+  "common": {
+    "loading": "Chargement...",
+    "error": "Une erreur s'est produite",
+    "readMore": "Lire la suite",
+    "backToHome": "Retour à l'accueil"
+  }
+}

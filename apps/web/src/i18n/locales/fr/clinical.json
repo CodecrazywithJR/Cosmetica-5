@@ -1,0 +1,86 @@
+{
+  "encounter": {
+    "title": "Détails de la consultation",
+    "status": {
+      "draft": "Brouillon",
+      "finalized": "Finalisé",
+      "cancelled": "Annulé"
+    },
+    "type": {
+      "medical_consult": "Consultation médicale",
+      "cosmetic_consult": "Consultation cosmétique",
+      "follow_up": "Suivi",
+      "aesthetic_procedure": "Procédure esthétique"
+    }
+  },
+  "sections": {
+    "patientInfo": "Informations patient",
+    "encounterInfo": "Informations consultation",
+    "treatments": "Traitements"
+  },
+  "patientLabels": {
+    "name": "Nom",
+    "email": "Email",
+    "phone": "Téléphone",
+    "dateOfBirth": "Date de naissance"
+  },
+  "encounterLabels": {
+    "practitioner": "Praticien",
+    "type": "Type",
+    "date": "Date",
+    "status": "Statut",
+    "chiefComplaint": "Motif principal",
+    "assessment": "Évaluation",
+    "plan": "Plan de traitement"
+  },
+  "treatmentLabels": {
+    "treatment": "Traitement",
+    "quantity": "Quantité",
+    "unitPrice": "Prix unitaire",
+    "total": "Total",
+    "notes": "Notes"
+  },
+  "actions": {
+    "addTreatment": "Ajouter un traitement",
+    "finalize": "Finaliser la consultation",
+    "generateProposal": "Générer une proposition",
+    "back": "Retour",
+    "cancel": "Annuler",
+    "add": "Ajouter",
+    "finalizing": "Finalisation...",
+    "generating": "Génération...",
+    "adding": "Ajout..."
+  },
+  "modals": {
+    "addTreatmentTitle": "Ajouter un traitement",
+    "treatmentIdLabel": "ID du traitement *",
+    "treatmentIdPlaceholder": "Entrez l'UUID du traitement",
+    "quantityLabel": "Quantité *",
+    "unitPriceLabel": "Prix unitaire (optionnel)",
+    "unitPricePlaceholder": "Laisser vide pour le prix par défaut",
+    "notesLabel": "Notes (optionnel)",
+    "notesPlaceholder": "Notes supplémentaires sur ce traitement",
+    "finalizeTitle": "Finaliser la consultation",
+    "finalizeWarning": "Êtes-vous sûr de vouloir finaliser cette consultation ?",
+    "finalizeDescription": "Une fois finalisée, la consultation deviendra immuable. Vous ne pourrez plus ajouter ou supprimer de traitements.",
+    "finalizeIrreversible": "Cette action est irréversible.",
+    "confirmFinalize": "Oui, finaliser la consultation"
+  },
+  "empty": {
+    "noTreatments": "Aucun traitement ajouté pour le moment"
+  },
+  "messages": {
+    "proposalGenerated": "Proposition générée avec succès. ID :",
+    "mustAddTreatments": "Ajoutez au moins un traitement avant de finaliser la consultation"
+  },
+  "errors": {
+    "loadingFailed": "Erreur de chargement de la consultation",
+    "notFound": "Consultation introuvable",
+    "addingTreatmentFailed": "Impossible d'ajouter le traitement",
+    "finalizingFailed": "Impossible de finaliser la consultation",
+    "generatingProposalFailed": "Impossible de générer la proposition"
+  },
+  "loading": {
+    "encounter": "Chargement de la consultation..."
+  }
+}

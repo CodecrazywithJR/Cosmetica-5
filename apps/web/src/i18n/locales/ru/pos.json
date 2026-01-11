@@ -1,0 +1,75 @@
+{
+  "title": "Предложения",
+  "filters": {
+    "status": "Статус",
+    "allStatuses": "Все статусы"
+  },
+  "proposal": {
+    "status": {
+      "draft": "Черновик",
+      "converted": "Преобразовано",
+      "cancelled": "Отменено"
+    }
+  },
+  "sale": {
+    "status": {
+      "draft": "Черновик",
+      "paid": "Оплачено",
+      "refunded": "Возвращено"
+    }
+  },
+  "table": {
+    "date": "Дата",
+    "patient": "Пациент",
+    "practitioner": "Специалист",
+    "items": "Элементы",
+    "total": "Итого",
+    "status": "Статус",
+    "actions": "Действия"
+  },
+  "labels": {
+    "quantity": "Количество",
+    "unitPrice": "Цена за ед.",
+    "subtotal": "Промежуточный итог",
+    "lineTotal": "Итого по строке",
+    "totalAmount": "Общая сумма",
+    "currency": "Валюта",
+    "items_one": "{{count}} элемент",
+    "items_few": "{{count}} элемента",
+    "items_many": "{{count}} элементов",
+    "items_other": "{{count}} элементов"
+  },
+  "actions": {
+    "createSale": "Создать продажу",
+    "viewSale": "Просмотр продажи",
+    "cancel": "Отменить",
+    "back": "Назад",
+    "converting": "Преобразование...",
+    "cancelling": "Отмена..."
+  },
+  "modals": {
+    "convertTitle": "Преобразовать предложение в продажу",
+    "convertDescription": "Это действие создаст официальную запись о продаже на основе данного предложения.",
+    "legalEntityLabel": "ID юридического лица *",
+    "legalEntityPlaceholder": "Введите UUID юридического лица",
+    "legalEntityHelp": "Это UUID юридического лица, которое выставит продажу",
+    "cancelTitle": "Отменить предложение",
+    "cancelDescription": "Укажите причину отмены данного предложения. Это действие необратимо.",
+    "cancellationReasonLabel": "Причина отмены *",
+    "cancellationReasonPlaceholder": "Объясните, почему это предложение отменяется",
+    "confirmCancel": "Отменить предложение"
+  },
+  "empty": {
+    "noProposals": "Предложения не найдены",
+    "noResults": "Нет результатов для выбранного фильтра"
+  },
+  "summary": {
+    "totalProposals": "Всего предложений"
+  },
+  "errors": {
+    "loadingFailed": "Ошибка загрузки предложений",
+    "convertFailed": "Не удалось преобразовать предложение",
+    "cancelFailed": "Не удалось отменить предложение",
+    "requiredField": "Это поле обязательно для заполнения"
+  }
+}

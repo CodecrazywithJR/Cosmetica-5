@@ -1,0 +1,92 @@
+"""
+Operations/Diagnostics serializers.
+"""
+from rest_framework import serializers
+
+
+class UserProfileSerializer(serializers.Serializer):
+    """
+    User profile serializer for /api/auth/me/ endpoint.
+    
+    Returns authenticated user information including roles.
+    This is the contract between backend auth and frontend UI.
+    
+    FASE 4.0: Includes practitioner_calendly_url if user is a practitioner.
+    FASE 4.2: Includes first_name and last_name for display purposes.
+    FASE 5: Includes must_change_password for password reset flow.
+    """
+    id = serializers.UUIDField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    first_name = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    last_name = serializers.CharField(read_only=True, required=False, allow_blank=True)
+    is_active = serializers.BooleanField(read_only=True)
+    is_superuser = serializers.BooleanField(read_only=True)
+    must_change_password = serializers.BooleanField(read_only=True)
+    roles = serializers.ListField(child=serializers.CharField(), read_only=True)
+    practitioner_calendly_url = serializers.URLField(read_only=True, required=False, allow_null=True)
+
+
+class ServiceStatusSerializer(serializers.Serializer):
+    """Service health status."""
+    name = serializers.CharField()
+    status = serializers.CharField()
+    details = serializers.DictField(required=False)
+
+
+class DiskSpaceSerializer(serializers.Serializer):
+    """Disk space information."""
+    total = serializers.CharField()
+    used = serializers.CharField()
+    free = serializers.CharField()
+    percent = serializers.FloatField()
+
+
+class DatabaseConnectionSerializer(serializers.Serializer):
+    """Database connection pool info."""
+    total_connections = serializers.IntegerField()
+    active_connections = serializers.IntegerField()
+    idle_connections = serializers.IntegerField()
+
+
+class RedisInfoSerializer(serializers.Serializer):
+    """Redis information."""
+    connected_clients = serializers.IntegerField()
+    used_memory = serializers.CharField()
+    used_memory_peak = serializers.CharField()
+    uptime_days = serializers.IntegerField()
+
+
+class MinioBucketSerializer(serializers.Serializer):
+    """MinIO bucket information."""
+    name = serializers.CharField()
+    object_count = serializers.IntegerField(required=False)
+    size = serializers.CharField(required=False)
+    accessible = serializers.BooleanField()
+
+
+class CeleryWorkerSerializer(serializers.Serializer):
+    """Celery worker information."""
+    hostname = serializers.CharField()
+    status = serializers.CharField()
+    active_tasks = serializers.IntegerField()
+    processed_tasks = serializers.IntegerField()
+
+
+class RecentErrorSerializer(serializers.Serializer):
+    """Recent error log entry."""
+    timestamp = serializers.DateTimeField()
+    level = serializers.CharField()
+    message = serializers.CharField()
+    logger = serializers.CharField()
+
+
+class SystemDiagnosticsSerializer(serializers.Serializer):
+    """Complete system diagnostics."""
+    timestamp = serializers.DateTimeField()
+    services = ServiceStatusSerializer(many=True)
+    disk_space = DiskSpaceSerializer()
+    database = DatabaseConnectionSerializer()
+    redis = RedisInfoSerializer()
+    minio_buckets = MinioBucketSerializer(many=True)
+    celery_workers = CeleryWorkerSerializer(many=True)
+    recent_errors = RecentErrorSerializer(many=True)

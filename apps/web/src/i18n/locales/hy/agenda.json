@@ -1,0 +1,49 @@
+{
+  "title": "Ժամանակացույց",
+  "filters": {
+    "date": "Ամսաթիվ",
+    "status": "Կարգավիճակ",
+    "allStatuses": "Բոլոր կարգավիճակները"
+  },
+  "appointment": {
+    "status": {
+      "scheduled": "Նախատեսված",
+      "confirmed": "Հաստատված",
+      "checked_in": "Ներկայացել է",
+      "completed": "Ավարտված",
+      "cancelled": "Չեղարկված",
+      "no_show": "Չներկայացավ"
+    },
+    "type": {
+      "medical_consult": "Բժշկ. խորհրդատվություն",
+      "cosmetic_consult": "Կոսմետոլ. խորհրդատվություն",
+      "follow_up": "Կրկնակի այց",
+      "aesthetic_procedure": "Էսթետիկ ընթացակարգ"
+    }
+  },
+  "table": {
+    "time": "Ժամ",
+    "patient": "Հիվանդ",
+    "practitioner": "Մասնագետ",
+    "type": "Տեսակ",
+    "status": "Կարգավիճակ",
+    "actions": "Գործողություններ"
+  },
+  "actions": {
+    "confirm": "Հաստատել",
+    "checkIn": "Նշել ներկայությունը",
+    "complete": "Ավարտել",
+    "cancel": "Չեղարկել"
+  },
+  "empty": {
+    "noAppointments": "Գրառումներ չկան",
+    "noResults": "Գրառումներ չեն գտնվել"
+  },
+  "summary": {
+    "totalAppointments": "Ընդամենը գրառումներ"
+  },
+  "errors": {
+    "loadingFailed": "Գրառումների բեռնման սխալ",
+    "updateFailed": "Կարգավիճակի թարմացման սխալ"
+  }
+}

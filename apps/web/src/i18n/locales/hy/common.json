@@ -1,0 +1,55 @@
+{
+  "app": {
+    "name": "Cosmetica 5"
+  },
+  "nav": {
+    "agenda": "Ժամանակացույց",
+    "proposals": "Առաջարկներ",
+    "clinical": "Կլինիկա",
+    "patients": "Հիվանդներ",
+    "encounters": "Այցելություններ",
+    "pos": "POS",
+    "sales": "Վաճառք",
+    "admin": "Ադմինիստրացիա"
+  },
+  "actions": {
+    "save": "Պահպանել",
+    "cancel": "Չեղարկել",
+    "create": "Ստեղծել",
+    "close": "Փակել",
+    "login": "Մուտք",
+    "logout": "Ելք",
+    "confirm": "Հաստատել",
+    "delete": "Ջնջել",
+    "edit": "Խմբագրել",
+    "back": "Հետ"
+  },
+  "status": {
+    "loading": "Բեռնվում է...",
+    "error": "Սխալ",
+    "success": "Հաջողված",
+    "scheduled": "Նախատեսված",
+    "confirmed": "Հաստատված",
+    "cancelled": "Չեղարկված",
+    "completed": "Ավարտված"
+  },
+  "errors": {
+    "generic": "Սխալ է տեղի ունեցել: Փորձեք կրկին:",
+    "network": "Ցանցի սխալ",
+    "unauthorized": "Չհաստատված",
+    "notFound": "Չի գտնվել"
+  },
+  "language": {
+    "label": "Լեզու",
+    "ru": "Русский",
+    "uk": "Українська",
+    "hy": "Հայերեն",
+    "fr": "Français",
+    "es": "Español"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Գաղտնաբառ",
+    "login": "Մուտք"
+  }
+}

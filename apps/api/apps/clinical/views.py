@@ -1,0 +1,2079 @@
+"""
+Clinical viewsets for Patient and PatientGuardian.
+Based on API_CONTRACTS.md PAC section.
+"""
+import logging
+from rest_framework import viewsets, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Q, Exists, OuterRef
+from django.db import transaction, IntegrityError
+from apps.authz.models import RoleChoices
+from apps.clinical.models import (
+    Patient,
+    PatientGuardian,
+    Encounter,
+    Appointment,
+    Consent,
+    ClinicalPhoto,
+    Treatment,
+    EncounterTreatment,
+    ClinicalChargeProposal,
+    PractitionerBlock,
+)
+from apps.clinical.serializers import (
+    PatientListSerializer,
+    PatientDetailSerializer,
+    PatientGuardianSerializer,
+    AppointmentListSerializer,
+    AppointmentDetailSerializer,
+    AppointmentWriteSerializer,
+    EncounterListSerializer,
+    EncounterDetailSerializer,
+    EncounterWriteSerializer,
+    TreatmentSerializer,
+    CalendarEventSerializer,
+)
+from apps.clinical.serializers_proposals import (
+    ClinicalChargeProposalListSerializer,
+    ClinicalChargeProposalDetailSerializer,
+    CreateSaleFromProposalSerializer,
+)
+from apps.clinical.permissions import (
+    PatientPermission,
+    GuardianPermission,
+    AppointmentPermission,
+    TreatmentPermission,
+    EncounterPermission,
+    ClinicalChargeProposalPermission,
+)
+
+logger = logging.getLogger(__name__)
+class PatientViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Patient endpoints.
+    
+    Endpoints:
+    - POST /api/v1/patients/
+    - GET /api/v1/patients/
+    - GET /api/v1/patients/{id}/
+    - PATCH /api/v1/patients/{id}/
+    """
+    permission_classes = [PatientPermission]
+    
+    def get_queryset(self):
+        """
+        Filter queryset based on user role and include_deleted parameter.
+        
+        - By default, exclude soft-deleted patients (is_deleted=False)
+        - Admin can use ?include_deleted=true to see deleted patients
+        """
+        queryset = Patient.objects.select_related('referral_source')
+        
+        # Check if user is Admin
+        user_roles = set(
+            self.request.user.user_roles.values_list('role__name', flat=True)
+        )
+        is_admin = RoleChoices.ADMIN in user_roles
+        
+        # Handle include_deleted parameter
+        include_deleted = self.request.query_params.get('include_deleted', 'false').lower() == 'true'
+        
+        if include_deleted and is_admin:
+            # Admin can see deleted patients with ?include_deleted=true
+            pass  # Return all patients
+        else:
+            # Default: exclude soft-deleted
+            queryset = queryset.filter(is_deleted=False)
+        
+        # Search filters
+        q = self.request.query_params.get('q')
+        if q:
+            # Full-text search in first_name, last_name, email, phone
+            queryset = queryset.filter(
+                Q(first_name__icontains=q) |
+                Q(last_name__icontains=q) |
+                Q(email__icontains=q) |
+                Q(phone__icontains=q) |
+                Q(full_name_normalized__icontains=q.lower())
+            )
+        
+        # Exact filters
+        email = self.request.query_params.get('email')
+        if email:
+            queryset = queryset.filter(email=email)
+        
+        phone = self.request.query_params.get('phone')
+        if phone:
+            queryset = queryset.filter(phone=phone)
+        
+        country_code = self.request.query_params.get('country_code')
+        if country_code:
+            queryset = queryset.filter(country_code=country_code)
+        
+        # Ordering
+        ordering = self.request.query_params.get('ordering', 'last_name')
+        queryset = queryset.order_by(ordering)
+        
+        # Annotate with has_missing_consent_documents (for list view only)
+        # Uses Exists subquery to avoid N+1 queries
+        if self.action == 'list':
+            from apps.clinical.models import Consent
+            queryset = queryset.annotate(
+                has_missing_consent_documents=Exists(
+                    Consent.objects.filter(
+                        patient_id=OuterRef('pk'),
+                        document__isnull=True
+                    )
+                )
+            )
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        """Use list serializer for list view, detail serializer otherwise"""
+        if self.action == 'list':
+            return PatientListSerializer
+        return PatientDetailSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create patient (POST /api/v1/patients/)"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full detail using DetailSerializer
+        detail_serializer = PatientDetailSerializer(
+            serializer.instance,
+            context={'request': request}
+        )
+        headers = self.get_success_headers(detail_serializer.data)
+        return Response(
+            detail_serializer.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+    
+    def perform_create(self, serializer):
+        """Save with audit fields"""
+        serializer.save()
+    
+    def update(self, request, *args, **kwargs):
+        """Update patient (PATCH /api/v1/patients/{id}/)"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as e:
+            # Check if it's a row_version conflict
+            if 'row_version' in str(e):
+                return Response(
+                    {
+                        'error': {
+                            'code': 'CONFLICT',
+                            'message': 'El paciente fue modificado por otro usuario. Recarga los datos.',
+                            'details': {
+                                'current_row_version': instance.row_version,
+                                'provided_row_version': request.data.get('row_version')
+                            }
+                        }
+                    },
+                    status=status.HTTP_409_CONFLICT
+                )
+            raise
+        
+        self.perform_update(serializer)
+        
+        # Refresh from DB to get updated row_version
+        serializer.instance.refresh_from_db()
+        
+        return Response(serializer.data)
+    
+    def perform_update(self, serializer):
+        """Save update"""
+        serializer.save()
+    
+    @action(detail=True, methods=['get', 'post'], url_path='guardians', permission_classes=[GuardianPermission])
+    def guardians(self, request, pk=None):
+        """
+        GET /api/v1/patients/{id}/guardians/
+        POST /api/v1/patients/{id}/guardians/
+        """
+        patient = self.get_object()
+        
+        if request.method == 'GET':
+            # List guardians
+            guardians_qs = patient.guardians.all().order_by('created_at')
+            serializer = PatientGuardianSerializer(guardians_qs, many=True)
+            return Response(serializer.data)
+        
+        elif request.method == 'POST':
+            # Create guardian
+            data = request.data.copy()
+            data['patient_id'] = patient.id
+            
+            serializer = PatientGuardianSerializer(data=data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['post'], url_path='merge')
+    def merge(self, request, pk=None):
+        """
+        POST /api/v1/patients/{id}/merge/
+        
+        Merge source patient (pk) into target patient.
+        Only Admin and Practitioner can execute.
+        
+        Request body:
+        {
+            "target_patient_id": "<uuid>",
+            "merge_reason": "Duplicado: mismo email y teléfono"
+        }
+        
+        Response (200 OK):
+        {
+            "source_patient_id": "...",
+            "target_patient_id": "...",
+            "merged": true,
+            "reassigned": {
+                "encounters": <int>,
+                "appointments": <int>,
+                "consents": <int>,
+                "photos": <int>,
+                "guardians": <int>
+            }
+        }
+        """
+        # Check permissions: Only Admin and Practitioner
+        user_roles = set(
+            request.user.user_roles.values_list('role__name', flat=True)
+        )
+        if not (user_roles & {RoleChoices.ADMIN, RoleChoices.PRACTITIONER}):
+            raise PermissionDenied("Solo Admin y Practitioner pueden ejecutar merge de pacientes")
+        
+        # Validate request data
+        target_patient_id = request.data.get('target_patient_id')
+        merge_reason = request.data.get('merge_reason')
+        
+        if not target_patient_id:
+            raise ValidationError({
+                'target_patient_id': ['Este campo es obligatorio']
+            })
+        
+        if not merge_reason:
+            raise ValidationError({
+                'merge_reason': ['Este campo es obligatorio']
+            })
+        
+        source_patient_id = pk
+        
+        # Validate source != target
+        if str(source_patient_id) == str(target_patient_id):
+            return Response(
+                {
+                    'error': {
+                        'code': 'VALIDATION_ERROR',
+                        'message': 'No se puede mergear un paciente consigo mismo',
+                        'details': {
+                            'target_patient_id': ['El paciente destino no puede ser el mismo que el origen']
+                        }
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Execute merge in atomic transaction
+        try:
+            with transaction.atomic():
+                # Lock source and target patients to prevent race conditions
+                try:
+                    source_patient = Patient.objects.select_for_update().get(pk=source_patient_id)
+                except Patient.DoesNotExist:
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'NOT_FOUND',
+                                'message': 'Paciente origen no encontrado'
+                            }
+                        },
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                
+                try:
+                    target_patient = Patient.objects.select_for_update().get(pk=target_patient_id)
+                except Patient.DoesNotExist:
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'VALIDATION_ERROR',
+                                'message': 'Paciente destino no encontrado',
+                                'details': {
+                                    'target_patient_id': ['El paciente destino no existe']
+                                }
+                            }
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Validate source is not already merged
+                if source_patient.is_merged:
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'CONFLICT',
+                                'message': 'No se puede realizar el merge',
+                                'details': {
+                                    'reason': 'El paciente origen ya está merged con otro paciente'
+                                }
+                            }
+                        },
+                        status=status.HTTP_409_CONFLICT
+                    )
+                
+                # Validate target is not merged
+                if target_patient.is_merged:
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'CONFLICT',
+                                'message': 'No se puede realizar el merge',
+                                'details': {
+                                    'reason': 'El paciente destino está merged. No se puede usar como destino.'
+                                }
+                            }
+                        },
+                        status=status.HTTP_409_CONFLICT
+                    )
+                
+                # Validate source and target are not soft-deleted
+                if source_patient.is_deleted:
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'CONFLICT',
+                                'message': 'No se puede realizar el merge',
+                                'details': {
+                                    'reason': 'El paciente origen está eliminado'
+                                }
+                            }
+                        },
+                        status=status.HTTP_409_CONFLICT
+                    )
+                
+                if target_patient.is_deleted:
+                    return Response(
+                        {
+                            'error': {
+                                'code': 'CONFLICT',
+                                'message': 'No se puede realizar el merge',
+                                'details': {
+                                    'reason': 'El paciente destino está eliminado'
+                                }
+                            }
+                        },
+                        status=status.HTTP_409_CONFLICT
+                    )
+                
+                # Reassign all related records from source to target
+                reassigned = {}
+                
+                # Encounters
+                encounters_count = Encounter.objects.filter(patient=source_patient).update(
+                    patient=target_patient
+                )
+                reassigned['encounters'] = encounters_count
+                
+                # Appointments
+                appointments_count = Appointment.objects.filter(patient=source_patient).update(
+                    patient=target_patient
+                )
+                reassigned['appointments'] = appointments_count
+                
+                # Consents
+                consents_count = Consent.objects.filter(patient=source_patient).update(
+                    patient=target_patient
+                )
+                reassigned['consents'] = consents_count
+                
+                # Clinical Photos
+                photos_count = ClinicalPhoto.objects.filter(patient=source_patient).update(
+                    patient=target_patient
+                )
+                reassigned['photos'] = photos_count
+                
+                # Guardians
+                guardians_count = PatientGuardian.objects.filter(patient=source_patient).update(
+                    patient=target_patient
+                )
+                reassigned['guardians'] = guardians_count
+                
+                # Mark source patient as merged
+                source_patient.is_merged = True
+                source_patient.merged_into_patient = target_patient
+                source_patient.merge_reason = merge_reason
+                source_patient.row_version += 1
+                source_patient.save(update_fields=[
+                    'is_merged',
+                    'merged_into_patient',
+                    'merge_reason',
+                    'row_version',
+                    'updated_at'
+                ])
+                
+                # Return success response
+                return Response(
+                    {
+                        'source_patient_id': str(source_patient.id),
+                        'target_patient_id': str(target_patient.id),
+                        'merged': True,
+                        'reassigned': reassigned
+                    },
+                    status=status.HTTP_200_OK
+                )
+        
+        except Exception as e:
+            # Catch any unexpected errors
+            return Response(
+                {
+                    'error': {
+                        'code': 'INTERNAL_ERROR',
+                        'message': f'Error durante el merge: {str(e)}'
+                    }
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class GuardianViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for PatientGuardian endpoints.
+    
+    Endpoints:
+    - PATCH /api/v1/guardians/{id}/
+    - DELETE /api/v1/guardians/{id}/
+    """
+    queryset = PatientGuardian.objects.select_related('patient').all()
+    serializer_class = PatientGuardianSerializer
+    permission_classes = [GuardianPermission]
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']
+    
+    def update(self, request, *args, **kwargs):
+        """Update guardian (PATCH /api/v1/guardians/{id}/)"""
+        partial = kwargs.pop('partial', True)  # Always partial for PATCH
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        DELETE /api/v1/guardians/{id}/
+        Hard delete guardian (no soft delete).
+        """
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AppointmentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Appointment endpoints.
+    
+    Endpoints:
+    - POST /api/v1/appointments/
+    - GET /api/v1/appointments/
+    - GET /api/v1/appointments/{id}/
+    - PATCH /api/v1/appointments/{id}/
+    - DELETE /api/v1/appointments/{id}/ (Admin only, soft delete)
+    """
+    permission_classes = [AppointmentPermission]
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+    
+    def get_queryset(self):
+        """
+        Filter queryset based on user role and query parameters.
+        
+        Filters:
+        - status: Filter by appointment status
+        - date_from: Filter appointments scheduled_start >= date_from
+        - date_to: Filter appointments scheduled_start <= date_to
+        - patient_id: Filter by patient UUID
+        - practitioner_id: Filter by practitioner UUID
+        - location_id: Filter by location UUID
+        - include_deleted: Show soft-deleted appointments (Admin only)
+        """
+        # Optimize with select_related
+        queryset = Appointment.objects.select_related(
+            'patient',
+            'practitioner',
+            'location',
+            'encounter'
+        )
+        
+        # Check if user is Admin
+        user_roles = set(
+            self.request.user.user_roles.values_list('role__name', flat=True)
+        )
+        is_admin = RoleChoices.ADMIN in user_roles
+        
+        # Handle include_deleted (Admin only)
+        include_deleted = self.request.query_params.get('include_deleted', 'false').lower() == 'true'
+        if include_deleted and is_admin:
+            # Include deleted appointments
+            pass
+        else:
+            # Exclude deleted appointments
+            queryset = queryset.filter(is_deleted=False)
+        
+        # Filter by status
+        status_filter = self.request.query_params.get('status', None)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Filter by date range
+        date_from = self.request.query_params.get('date_from', None)
+        if date_from:
+            queryset = queryset.filter(scheduled_start__gte=date_from)
+        
+        date_to = self.request.query_params.get('date_to', None)
+        if date_to:
+            queryset = queryset.filter(scheduled_start__lte=date_to)
+        
+        # Filter by patient_id
+        patient_id = self.request.query_params.get('patient_id', None)
+        if patient_id:
+            queryset = queryset.filter(patient_id=patient_id)
+        
+        # Filter by practitioner_id
+        practitioner_id = self.request.query_params.get('practitioner_id', None)
+        if practitioner_id:
+            queryset = queryset.filter(practitioner_id=practitioner_id)
+        
+        # Filter by location_id
+        location_id = self.request.query_params.get('location_id', None)
+        if location_id:
+            queryset = queryset.filter(location_id=location_id)
+        
+        # Order by scheduled_start descending
+        queryset = queryset.order_by('-scheduled_start')
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        """
+        Return appropriate serializer based on action.
+        
+        - list: AppointmentListSerializer (lightweight)
+        - retrieve: AppointmentDetailSerializer (full read-only)
+        - create/update: AppointmentWriteSerializer (write)
+        """
+        if self.action == 'list':
+            return AppointmentListSerializer
+        elif self.action == 'retrieve':
+            return AppointmentDetailSerializer
+        else:
+            return AppointmentWriteSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """
+        POST /api/v1/appointments/
+        BLOCKED: Creation of appointments without Calendly contradicts PROJECT_DECISIONS.md §17.
+        
+        Per §17.1: "Calendly es el único motor de agenda y disponibilidad del sistema.
+        El ERP no crea citas 'solo en local'."
+        
+        Valid sources:
+        - 'calendly' with external_id (from webhook)
+        - Future: 'calendly' via API call (to be implemented)
+        
+        Rejection rule: source='manual' or external_id=null is NOT allowed.
+        """
+        return Response(
+            {
+                'error': 'Direct appointment creation is disabled',
+                'detail': (
+                    'Appointments must be created through Calendly integration. '
+                    'Per PROJECT_DECISIONS.md §17.1, the ERP does not create appointments locally. '
+                    'Use Calendly booking widget or (future) Calendly API integration.'
+                ),
+                'reason': 'prevents_phantom_gaps'
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    def update(self, request, *args, **kwargs):
+        """
+        PATCH /api/v1/appointments/{id}/
+        Update appointment with status transition validation.
+        """
+        partial = kwargs.pop('partial', True)  # Always partial for PATCH
+        instance = self.get_object()
+        
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=partial
+        )
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Return detail serializer for response
+        response_serializer = AppointmentDetailSerializer(instance)
+        
+        return Response(response_serializer.data)
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        DELETE /api/v1/appointments/{id}/
+        Soft delete appointment (Admin only).
+        """
+        # Check if user is Admin
+        user_roles = set(
+            request.user.user_roles.values_list('role__name', flat=True)
+        )
+        if RoleChoices.ADMIN not in user_roles:
+            raise PermissionDenied(
+                "Solo Admin puede eliminar citas"
+            )
+        
+        instance = self.get_object()
+        
+        # Soft delete
+        from django.utils import timezone
+        instance.is_deleted = True
+        instance.deleted_at = timezone.now()
+        instance.save()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=True, methods=['post'], url_path='transition')
+    def transition_status(self, request, pk=None):
+        """
+        POST /api/v1/appointments/{id}/transition/
+        
+        Transition appointment to a new status with validation.
+        
+        BUSINESS RULES:
+        - Only allowed transitions are permitted (see model)
+        - no_show can only be set after scheduled_start has passed
+        - Terminal states (completed, cancelled, no_show) cannot be changed
+        
+        Request body:
+        {
+            "status": "confirmed",  # New status
+            "reason": "Patient requested cancellation"  # Optional reason for cancel/no_show
+        }
+        
+        Allowed transitions:
+        - draft -> confirmed | cancelled
+        - confirmed -> checked_in | cancelled | no_show
+        - checked_in -> completed | cancelled
+        
+        Returns:
+            200: Transition successful
+            400: Invalid transition or validation error
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        
+        appointment = self.get_object()
+        new_status = request.data.get('status')
+        reason = request.data.get('reason')
+        
+        if not new_status:
+            return Response(
+                {'error': 'El campo "status" es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate with transaction and row locking to prevent race conditions
+        try:
+            with transaction.atomic():
+                # Lock the row for update
+                appointment = Appointment.objects.select_for_update().get(pk=pk)
+                
+                # Attempt transition
+                appointment.transition_status(new_status, user=request.user, reason=reason)
+                
+                # Save the appointment
+                appointment.save()
+                
+                # Return updated appointment
+                serializer = AppointmentDetailSerializer(appointment)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+                
+        except DjangoValidationError as e:
+            return Response(
+                {'error': str(e.message) if hasattr(e, 'message') else str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'], url_path='attend')
+    def attend(self, request, pk=None):
+        """
+        POST /api/v1/appointments/{id}/attend/
+        
+        ATOMIC operation: Create Encounter + Link to Appointment + Mark as 'completed'.
+        This is the CANONICAL endpoint for "Atender paciente" workflow per ENCOUNTER_WORKFLOW_DECISIONS.md.
+        
+        Business Rules:
+        - Creates new Encounter with status='draft'
+        - Links appointment.encounter = new_encounter
+        - Marks appointment.status = 'completed'
+        - ALL operations in single transaction.atomic() with select_for_update()
+        - Idempotent: If encounter already linked, returns existing encounter (no duplicate creation)
+        
+        Permissions: Admin, Practitioner, Reception (403 for Accounting/Marketing)
+        
+        Validations:
+        - appointment.status must NOT be 'cancelled' or 'no_show' (400)
+        - appointment.patient must exist (enforced by FK)
+        
+        Request body (all fields optional for encounter creation):
+        {
+            "encounter_type": "medical_consult|followup|emergency|...",  // Optional, defaults to 'medical_consult'
+            "chief_complaint": "Patient-reported reason for visit",
+            "occurred_at": "2025-01-09T10:00:00Z"  // Optional, defaults to timezone.now()
+        }
+        
+        Response 201 CREATED (new encounter):
+        {
+            "appointment_id": "uuid",
+            "encounter_id": "uuid",
+            "appointment_status": "completed",
+            "encounter_status": "draft",
+            "created": true
+        }
+        
+        Response 200 OK (idempotent - encounter already exists):
+        {
+            "appointment_id": "uuid",
+            "encounter_id": "uuid",
+            "appointment_status": "completed",
+            "encounter_status": "draft|finalized|cancelled",
+            "created": false
+        }
+        
+        Response 400 BAD_REQUEST:
+        {
+            "error": "Cannot attend appointment with status 'cancelled'"
+        }
+        """
+        from apps.clinical.models import Encounter, EncounterTypeChoices, EncounterStatusChoices
+        from django.utils import timezone
+        from django.utils.dateparse import parse_datetime
+        
+        # Permission check: Admin, Practitioner, Reception
+        user_roles = set(
+            request.user.user_roles.values_list('role__name', flat=True)
+        )
+        allowed_roles = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER, RoleChoices.RECEPTION}
+        
+        if not (user_roles & allowed_roles):
+            raise PermissionDenied(
+                "Solo Admin, Practitioner y Reception pueden atender pacientes"
+            )
+        
+        with transaction.atomic():
+            # CRITICAL: Lock appointment row to prevent race conditions
+            try:
+                appointment = Appointment.objects.select_for_update().get(pk=pk)
+            except Appointment.DoesNotExist:
+                return Response(
+                    {'error': 'Cita no encontrada'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Validation: Cannot attend deleted appointment
+            if appointment.is_deleted:
+                return Response(
+                    {'error': 'No se puede atender una cita eliminada'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validation: Block terminal statuses (cancelled, no_show)
+            if appointment.status in ['cancelled', 'no_show']:
+                return Response(
+                    {'error': f"No se puede atender una cita con status='{appointment.status}'"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # IDEMPOTENCY: If encounter already linked, return existing encounter
+            if appointment.encounter:
+                # Ensure status is 'completed' (hardening)
+                if appointment.status != 'completed':
+                    appointment.status = 'completed'
+                    appointment.save(update_fields=['status', 'updated_at'])
+                
+                return Response(
+                    {
+                        'appointment_id': str(appointment.id),
+                        'encounter_id': str(appointment.encounter.id),
+                        'appointment_status': appointment.status,
+                        'encounter_status': appointment.encounter.status,
+                        'created': False
+                    },
+                    status=status.HTTP_200_OK
+                )
+            
+            # Extract optional encounter fields from request
+            encounter_type = request.data.get('encounter_type', 'medical_consult')
+            chief_complaint = request.data.get('chief_complaint', '')
+            occurred_at_raw = request.data.get('occurred_at')
+            
+            # Parse occurred_at if provided, otherwise use now()
+            if occurred_at_raw:
+                if isinstance(occurred_at_raw, str):
+                    occurred_at = parse_datetime(occurred_at_raw)
+                    if not occurred_at:
+                        return Response(
+                            {'error': 'occurred_at debe tener formato ISO 8601 válido'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                else:
+                    occurred_at = occurred_at_raw
+            else:
+                occurred_at = timezone.now()
+            
+            # Validate encounter_type
+            if encounter_type not in dict(EncounterTypeChoices.choices):
+                return Response(
+                    {'error': f"encounter_type inválido: '{encounter_type}'"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # CREATE ENCOUNTER (status='draft' per business rules)
+            encounter = Encounter.objects.create(
+                patient=appointment.patient,
+                practitioner=appointment.practitioner,
+                location=appointment.location,
+                type=encounter_type,
+                status=EncounterStatusChoices.DRAFT,
+                occurred_at=occurred_at,
+                chief_complaint=chief_complaint,
+                created_by_user=request.user
+            )
+            
+            # LINK APPOINTMENT TO ENCOUNTER + MARK AS COMPLETED
+            appointment.encounter = encounter
+            appointment.status = 'completed'
+            appointment.save(update_fields=['encounter', 'status', 'updated_at'])
+            
+            return Response(
+                {
+                    'appointment_id': str(appointment.id),
+                    'encounter_id': str(encounter.id),
+                    'appointment_status': appointment.status,
+                    'encounter_status': encounter.status,
+                    'created': True
+                },
+                status=status.HTTP_201_CREATED
+            )
+    
+
+def _process_calendly_sync(sync_data, created_by_user=None):
+    """
+    Internal function: Process Calendly sync (shared by webhook and manual endpoint).
+    
+    This function contains the core logic for creating/updating appointments from Calendly.
+    It's called by both:
+    - AppointmentViewSet.calendly_sync() (manual endpoint)
+    - calendly_webhook() (automatic webhook)
+    
+    Args:
+        sync_data (dict): Appointment data with keys:
+            - external_id (str, required): Calendly event ID
+            - scheduled_start (datetime, required): Start time (timezone-aware)
+            - scheduled_end (datetime, required): End time (timezone-aware)
+            - patient_email (str, optional): Patient email for lookup
+            - patient_phone (str, optional): Patient phone for lookup
+            - patient_first_name (str, optional): Patient first name
+            - patient_last_name (str, optional): Patient last name
+            - practitioner_id (UUID, optional): Practitioner ID
+            - location_id (UUID, optional): Location ID
+            - status (str, optional): Appointment status (default: 'scheduled')
+            - notes (str, optional): Appointment notes
+        created_by_user (User, optional): User who triggered the sync (None for webhook)
+    
+    Returns:
+        tuple: (appointment: Appointment, created: bool)
+    
+    Raises:
+        ValueError: If validation fails
+        IntegrityError: If database constraint fails (unlikely due to get_or_create)
+    """
+    from django.db import transaction
+    from django.db import IntegrityError
+    
+    # Extract and validate required fields
+    external_id = sync_data.get('external_id')
+    scheduled_start = sync_data.get('scheduled_start')
+    scheduled_end = sync_data.get('scheduled_end')
+    
+    if not external_id:
+        raise ValueError('external_id es obligatorio')
+    
+    if not scheduled_start or not scheduled_end:
+        raise ValueError('scheduled_start y scheduled_end son obligatorios')
+    
+    # Validate datetime types and timezone awareness
+    from django.utils.timezone import is_aware
+    from django.conf import settings
+    
+    if settings.USE_TZ:
+        if not is_aware(scheduled_start) or not is_aware(scheduled_end):
+            raise ValueError('scheduled_start y scheduled_end deben incluir timezone')
+    
+    if scheduled_end <= scheduled_start:
+        raise ValueError('scheduled_end debe ser posterior a scheduled_start')
+    
+    # Extract patient data
+    patient_email = sync_data.get('patient_email')
+    patient_phone = sync_data.get('patient_phone')
+    patient_first_name = sync_data.get('patient_first_name', '')
+    patient_last_name = sync_data.get('patient_last_name', '')
+    
+    # CRITICAL: Wrap in atomic transaction to prevent race conditions
+    with transaction.atomic():
+        # Find or create patient
+        patient = None
+        
+        # Try to find by email first (priority)
+        if patient_email:
+            patient = Patient.objects.filter(
+                email=patient_email,
+                is_deleted=False
+            ).first()
+        
+        # If not found by email, try phone_e164
+        if not patient and patient_phone:
+            # Normalize phone to E.164 if needed (basic normalization)
+            phone_e164 = patient_phone.strip()
+            if not phone_e164.startswith('+'):
+                phone_e164 = f'+{phone_e164}'
+            
+            patient = Patient.objects.filter(
+                phone_e164=phone_e164,
+                is_deleted=False
+            ).first()
+        
+        # Create minimal patient if not found
+        if not patient:
+            full_name_normalized = f"{patient_first_name} {patient_last_name}".strip().lower()
+            
+            patient = Patient.objects.create(
+                first_name=patient_first_name or 'Calendly',
+                last_name=patient_last_name or 'Patient',
+                full_name_normalized=full_name_normalized or 'calendly patient',
+                email=patient_email or None,
+                phone=patient_phone or None,
+                phone_e164=phone_e164 if patient_phone else None,
+                identity_confidence='low',
+                created_by_user=created_by_user
+            )
+        
+        # CRITICAL: Use get_or_create pattern to prevent race conditions on external_id
+        try:
+            appointment, created = Appointment.objects.get_or_create(
+                external_id=external_id,
+                defaults={
+                    'patient': patient,
+                    'source': 'calendly',
+                    'scheduled_start': scheduled_start,
+                    'scheduled_end': scheduled_end,
+                    'status': sync_data.get('status', 'scheduled'),
+                    'practitioner_id': sync_data.get('practitioner_id'),
+                    'location_id': sync_data.get('location_id'),
+                    'notes': sync_data.get('notes'),
+                }
+            )
+        except IntegrityError:
+            # DEFENSIVE: Race condition detected - fetch existing record
+            appointment = Appointment.objects.get(external_id=external_id)
+            created = False
+        
+        if not created:
+            # Update existing appointment
+            appointment.patient = patient
+            appointment.scheduled_start = scheduled_start
+            appointment.scheduled_end = scheduled_end
+            
+            # Update optional fields if provided
+            if 'practitioner_id' in sync_data:
+                appointment.practitioner_id = sync_data['practitioner_id']
+            if 'location_id' in sync_data:
+                appointment.location_id = sync_data['location_id']
+            if 'status' in sync_data:
+                appointment.status = sync_data['status']
+            if 'notes' in sync_data:
+                appointment.notes = sync_data['notes']
+            
+            appointment.save()
+        
+        return appointment, created
+
+
+# Patient Merge Views
+
+from apps.clinical.permissions import IsClinicalOpsOrAdmin
+from apps.clinical.services import merge_patients, get_merge_candidates, PatientMergeError
+from apps.clinical.serializers import (
+    MergeCandidateSerializer,
+    PatientMergeRequestSerializer,
+    PatientMergeResponseSerializer
+)
+
+
+class PatientMergeCandidatesView(APIView):
+    """
+    GET /api/v1/clinical/patients/{id}/merge-candidates
+    
+    Find potential duplicate patients for merging.
+    """
+    permission_classes = [IsClinicalOpsOrAdmin]
+    
+    def get(self, request, pk):
+        try:
+            patient = Patient.objects.get(id=pk, is_deleted=False)
+        except Patient.DoesNotExist:
+            return Response(
+                {'error': 'Patient not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        limit = int(request.query_params.get('limit', 20))
+        limit = min(max(limit, 1), 100)  # Clamp between 1-100
+        
+        candidates = get_merge_candidates(patient, limit=limit)
+        serializer = MergeCandidateSerializer(candidates, many=True)
+        
+        return Response(serializer.data)
+
+
+class PatientMergeView(APIView):
+    """
+    POST /api/v1/clinical/patients/merge
+    
+    Merge source patient into target patient.
+    
+    Body:
+    {
+        "source_patient_id": "...",
+        "target_patient_id": "...",
+        "strategy": "manual|phone_exact|email_exact|name_trgm",
+        "notes": "optional",
+        "evidence": {...}
+    }
+    """
+    permission_classes = [IsClinicalOpsOrAdmin]
+    
+    def post(self, request):
+        serializer = PatientMergeRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        data = serializer.validated_data
+        
+        try:
+            target_patient = merge_patients(
+                source_id=data['source_patient_id'],
+                target_id=data['target_patient_id'],
+                merged_by=request.user,
+                strategy=data.get('strategy', 'manual'),
+                notes=data.get('notes'),
+                evidence=data.get('evidence')
+            )
+            
+            # Get relations summary
+            from apps.clinical.services import _count_patient_relations
+            source_patient = Patient.objects.get(id=data['source_patient_id'])
+            moved_relations = _count_patient_relations(target_patient)
+            
+            # Get merge log
+            merge_log = target_patient.merge_target_logs.latest('merged_at')
+            
+            response_data = {
+                'target_patient_id': target_patient.id,
+                'moved_relations_summary': moved_relations,
+                'merge_log_id': merge_log.id
+            }
+            
+            response_serializer = PatientMergeResponseSerializer(response_data)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+            
+        except Patient.DoesNotExist:
+            return Response(
+                {'error': 'Source or target patient not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except PatientMergeError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(
+                "Unexpected error during patient merge",
+                exc_info=True,
+                extra={'user_id': str(request.user.id) if request.user else None}
+            )
+            return Response(
+                {'error': 'An unexpected error occurred during merge'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# ============================================================================
+# Clinical Core v1: Encounter and Treatment ViewSets
+# ============================================================================
+
+class TreatmentViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Treatment catalog.
+    
+    Endpoints:
+    - GET /api/v1/treatments/ - List all treatments (filtered by is_active)
+    - GET /api/v1/treatments/{id}/ - Get treatment detail
+    - POST /api/v1/treatments/ - Create treatment (Admin only)
+    - PATCH /api/v1/treatments/{id}/ - Update treatment (Admin only)
+    - DELETE /api/v1/treatments/{id}/ - Soft delete treatment (Admin only)
+    
+    Query parameters:
+    - ?include_inactive=true - Include inactive treatments (default: false)
+    - ?q=search_term - Search by name
+    """
+    queryset = Treatment.objects.all()
+    serializer_class = TreatmentSerializer
+    permission_classes = [TreatmentPermission]
+    
+    def get_queryset(self):
+        """Filter by is_active and search."""
+        queryset = Treatment.objects.all()
+        
+        # Filter by is_active (default: only active)
+        include_inactive = self.request.query_params.get('include_inactive', 'false').lower() == 'true'
+        if not include_inactive:
+            queryset = queryset.filter(is_active=True)
+        
+        # Search by name
+        q = self.request.query_params.get('q')
+        if q:
+            queryset = queryset.filter(name__icontains=q)
+        
+        return queryset.order_by('name')
+
+
+class EncounterViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Encounter (clinical visits).
+    
+    Endpoints:
+    - GET /api/v1/encounters/ - List encounters
+    - GET /api/v1/encounters/{id}/ - Get encounter detail
+    - POST /api/v1/encounters/ - Create encounter
+    - PATCH /api/v1/encounters/{id}/ - Update encounter
+    - DELETE /api/v1/encounters/{id}/ - Soft delete encounter
+    
+    Query parameters:
+    - ?patient_id=... - Filter by patient
+    - ?practitioner_id=... - Filter by practitioner
+    - ?status=draft|finalized|cancelled - Filter by status
+    - ?date_from=YYYY-MM-DD - Filter by occurred_at >= date_from
+    - ?date_to=YYYY-MM-DD - Filter by occurred_at <= date_to
+    """
+    permission_classes = [EncounterPermission]
+    
+    def get_queryset(self):
+        """Filter by patient, practitioner, status, date range."""
+        queryset = Encounter.objects.select_related('patient', 'practitioner', 'location')
+        queryset = queryset.prefetch_related('encounter_treatments__treatment')
+        queryset = queryset.filter(is_deleted=False)
+        
+        # Filter by patient
+        patient_id = self.request.query_params.get('patient_id')
+        if patient_id:
+            queryset = queryset.filter(patient_id=patient_id)
+        
+        # Filter by practitioner
+        practitioner_id = self.request.query_params.get('practitioner_id')
+        if practitioner_id:
+            queryset = queryset.filter(practitioner_id=practitioner_id)
+        
+        # Filter by status
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        
+        # Filter by date range
+        date_from = self.request.query_params.get('date_from')
+        if date_from:
+            queryset = queryset.filter(occurred_at__date__gte=date_from)
+        
+        date_to = self.request.query_params.get('date_to')
+        if date_to:
+            queryset = queryset.filter(occurred_at__date__lte=date_to)
+        
+        return queryset.order_by('-occurred_at')
+    
+    def get_serializer_class(self):
+        """Use different serializers for list/detail/write."""
+        if self.action == 'list':
+            return EncounterListSerializer
+        elif self.action == 'retrieve':
+            return EncounterDetailSerializer
+        else:  # create, update, partial_update
+            return EncounterWriteSerializer
+    
+    @action(detail=True, methods=['post'], url_path='generate-proposal')
+    def generate_proposal(self, request, pk=None):
+        """
+        POST /api/v1/clinical/encounters/{id}/generate-proposal/
+        
+        Generate a ClinicalChargeProposal from a finalized encounter.
+        
+        This is the EXPLICIT step before creating a Sale.
+        
+        Body:
+        {
+            "notes": "optional internal notes"
+        }
+        
+        Returns:
+        {
+            "proposal_id": "uuid",
+            "message": "Success message",
+            "total_amount": "Decimal",
+            "line_count": int
+        }
+        
+        Business Rules:
+        - Encounter must be FINALIZED
+        - One proposal per encounter (idempotency)
+        - Requires at least one treatment in encounter
+        """
+        from apps.clinical.services import generate_charge_proposal_from_encounter
+        
+        encounter = self.get_object()
+        notes = request.data.get('notes', '')
+        
+        # Generate proposal (validation happens in service)
+        try:
+            proposal = generate_charge_proposal_from_encounter(
+                encounter=encounter,
+                created_by=request.user,
+                notes=notes
+            )
+            
+            return Response({
+                'proposal_id': str(proposal.id),
+                'message': f"Charge proposal generated from encounter {encounter.id}",
+                'total_amount': str(proposal.total_amount),
+                'line_count': proposal.lines.count(),
+                'status': proposal.status
+            }, status=status.HTTP_201_CREATED)
+            
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def add_treatment(self, request, pk=None):
+        """
+        POST /api/v1/encounters/{id}/add_treatment/
+        
+        Add a treatment to an existing encounter.
+        
+        Body:
+        {
+            "treatment_id": "...",
+            "quantity": 1,
+            "unit_price": 100.00,  # optional
+            "notes": "..."         # optional
+        }
+        """
+        encounter = self.get_object()
+        
+        # Validate encounter status
+        if encounter.status != 'draft':
+            return Response(
+                {'error': 'Solo se pueden agregar tratamientos a encuentros en estado draft'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate request data
+        treatment_id = request.data.get('treatment_id')
+        quantity = request.data.get('quantity', 1)
+        unit_price = request.data.get('unit_price')
+        notes = request.data.get('notes', '')
+        
+        if not treatment_id:
+            return Response(
+                {'error': 'treatment_id es obligatorio'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            treatment = Treatment.objects.get(id=treatment_id)
+            if not treatment.is_active:
+                return Response(
+                    {'error': f"El tratamiento '{treatment.name}' está inactivo"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Treatment.DoesNotExist:
+            return Response(
+                {'error': 'Tratamiento no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Create EncounterTreatment
+        try:
+            with transaction.atomic():
+                encounter_treatment = EncounterTreatment.objects.create(
+                    encounter=encounter,
+                    treatment=treatment,
+                    quantity=quantity,
+                    unit_price=unit_price,
+                    notes=notes
+                )
+            
+            from apps.clinical.serializers import EncounterTreatmentSerializer
+            serializer = EncounterTreatmentSerializer(encounter_treatment)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except IntegrityError:
+            return Response(
+                {'error': 'Este tratamiento ya existe en el encuentro'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+# ============================================================================
+# Clinical → Sales Integration ViewSet (Fase 3)
+# ============================================================================
+
+class ClinicalChargeProposalViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for ClinicalChargeProposal (Clinical → Sales Integration).
+    
+    Endpoints:
+    - GET /api/v1/clinical/proposals/             - List proposals (with filters)
+    - GET /api/v1/clinical/proposals/{id}/        - Detail with nested lines
+    - POST /api/v1/clinical/proposals/{id}/create_sale/ - Convert proposal to sale
+    
+    Permissions:
+    - ClinicalOps/Practitioner: Generate proposals (via Encounter viewset)
+    - Reception: View proposals + convert to sale
+    - Admin: Full access
+    - Accounting: Read-only
+    - Marketing: No access
+    
+    Query params:
+    - ?status=draft|converted|cancelled - Filter by status
+    - ?patient={patient_id} - Filter by patient
+    - ?encounter={encounter_id} - Filter by encounter
+    """
+    permission_classes = [ClinicalChargeProposalPermission]
+    
+    def get_queryset(self):
+        """
+        Return proposals with optional filters.
+        
+        Query params:
+        - status: Filter by proposal status
+        - patient: Filter by patient ID
+        - encounter: Filter by encounter ID
+        """
+        from apps.clinical.models import ClinicalChargeProposal
+        
+        queryset = ClinicalChargeProposal.objects.select_related(
+            'patient',
+            'practitioner',
+            'encounter',
+            'converted_to_sale',
+            'created_by'
+        ).prefetch_related('lines')
+        
+        # Filter by status
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        
+        # Filter by patient
+        patient_id = self.request.query_params.get('patient')
+        if patient_id:
+            queryset = queryset.filter(patient_id=patient_id)
+        
+        # Filter by encounter
+        encounter_id = self.request.query_params.get('encounter')
+        if encounter_id:
+            queryset = queryset.filter(encounter_id=encounter_id)
+        
+        return queryset.order_by('-created_at')
+    
+    def get_serializer_class(self):
+        """Use different serializers for list vs detail."""
+        from apps.clinical.serializers_proposals import (
+            ClinicalChargeProposalListSerializer,
+            ClinicalChargeProposalDetailSerializer,
+            CreateSaleFromProposalSerializer
+        )
+        
+        if self.action == 'list':
+            return ClinicalChargeProposalListSerializer
+        elif self.action == 'create_sale':
+            return CreateSaleFromProposalSerializer
+        return ClinicalChargeProposalDetailSerializer
+    
+    @action(detail=True, methods=['post'], url_path='create-sale')
+    def create_sale(self, request, pk=None):
+        """
+        Convert proposal to Sale (draft status).
+        
+        POST /api/v1/clinical/proposals/{id}/create-sale/
+        
+        Body:
+        {
+            "legal_entity_id": "uuid",
+            "notes": "optional notes"
+        }
+        
+        Returns:
+        {
+            "sale_id": "uuid",
+            "message": "Success message"
+        }
+        """
+        from apps.clinical.services import create_sale_from_proposal
+        from apps.legal.models import LegalEntity
+        
+        proposal = self.get_object()
+        
+        # Validate input
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        legal_entity_id = serializer.validated_data['legal_entity_id']
+        notes = serializer.validated_data.get('notes', '')
+        
+        # Get legal entity
+        try:
+            legal_entity = LegalEntity.objects.get(id=legal_entity_id)
+        except LegalEntity.DoesNotExist:
+            return Response(
+                {'error': f"Legal entity {legal_entity_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Create sale from proposal
+        try:
+            sale = create_sale_from_proposal(
+                proposal=proposal,
+                created_by=request.user,
+                legal_entity=legal_entity,
+                notes=notes
+            )
+            
+            return Response({
+                'sale_id': str(sale.id),
+                'message': f"Proposal {proposal.id} converted to sale {sale.id}",
+                'sale_status': sale.status,
+                'sale_total': str(sale.total)
+            }, status=status.HTTP_201_CREATED)
+            
+        except ValidationError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+# ============================================================================
+# Calendar View (Sprint 1: Agenda Read-Only)
+# ============================================================================
+
+class PractitionerCalendarView(APIView):
+    """
+    Unified calendar feed for a practitioner.
+    
+    Returns appointments + blocks in a normalized JSON format for calendar display.
+    
+    Endpoint: GET /api/v1/clinical/practitioners/{practitioner_id}/calendar/
+    
+    Query params:
+    - date_from: YYYY-MM-DD (required)
+    - date_to: YYYY-MM-DD (required)
+    
+    Permissions:
+    - Admin: Can view any practitioner
+    - Practitioner: Can view only their own calendar
+    - Reception: Can view any practitioner (read-only)
+    - Accounting: Forbidden (403)
+    - Marketing: Forbidden (403)
+    
+    Business rules:
+    - Appointments with is_deleted=True are excluded
+    - Blocks with is_deleted=True are excluded
+    - Events are sorted by start time
+    - Timezone: All datetimes are in UTC (frontend must localize)
+    """
+    
+    def get(self, request, practitioner_id):
+        """
+        Get calendar events for a practitioner within a date range.
+        """
+        from datetime import datetime, time
+        from django.utils import timezone
+        from apps.authz.models import Practitioner
+        
+        # ========================
+        # 1. PERMISSION CHECK
+        # ========================
+        user_roles = set(
+            request.user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        # Marketing and Accounting are forbidden
+        if RoleChoices.MARKETING in user_roles or RoleChoices.ACCOUNTING in user_roles:
+            raise PermissionDenied("You don't have permission to view calendars")
+        
+        # Admin can view any, Reception can view any, Practitioner can view only their own
+        is_admin = RoleChoices.ADMIN in user_roles
+        is_reception = RoleChoices.RECEPTION in user_roles
+        is_practitioner = RoleChoices.PRACTITIONER in user_roles
+        
+        if not (is_admin or is_reception or is_practitioner):
+            raise PermissionDenied("You don't have permission to view calendars")
+        
+        # If practitioner role, check if viewing their own calendar
+        if is_practitioner and not (is_admin or is_reception):
+            try:
+                user_practitioner = Practitioner.objects.get(user=request.user)
+                if str(user_practitioner.id) != str(practitioner_id):
+                    raise PermissionDenied("You can only view your own calendar")
+            except Practitioner.DoesNotExist:
+                raise PermissionDenied("You are not registered as a practitioner")
+        
+        # ========================
+        # 2. VALIDATE PRACTITIONER
+        # ========================
+        try:
+            practitioner = Practitioner.objects.get(id=practitioner_id)
+        except Practitioner.DoesNotExist:
+            return Response(
+                {'error': f"Practitioner {practitioner_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # ========================
+        # 3. VALIDATE DATE PARAMS
+        # ========================
+        date_from_str = request.query_params.get('date_from')
+        date_to_str = request.query_params.get('date_to')
+        
+        if not date_from_str or not date_to_str:
+            return Response(
+                {'error': 'date_from and date_to are required (format: YYYY-MM-DD)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+            date_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if date_from > date_to:
+            return Response(
+                {'error': 'date_from cannot be after date_to'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Convert to timezone-aware datetimes (start of day to end of day)
+        datetime_from = timezone.make_aware(datetime.combine(date_from, time.min))
+        datetime_to = timezone.make_aware(datetime.combine(date_to, time.max))
+        
+        # ========================
+        # 4. FETCH APPOINTMENTS
+        # ========================
+        appointments = Appointment.objects.filter(
+            practitioner=practitioner,
+            is_deleted=False,
+            scheduled_start__gte=datetime_from,
+            scheduled_start__lte=datetime_to,
+        ).select_related('patient', 'practitioner', 'practitioner__user').order_by('scheduled_start')
+        
+        # ========================
+        # 5. FETCH BLOCKS
+        # ========================
+        blocks = PractitionerBlock.objects.filter(
+            practitioner=practitioner,
+            is_deleted=False,
+            start__gte=datetime_from,
+            start__lte=datetime_to,
+        ).select_related('practitioner', 'practitioner__user').order_by('start')
+        
+        # ========================
+        # 6. MERGE & SERIALIZE
+        # ========================
+        # Combine appointments and blocks into a single list
+        events = list(appointments) + list(blocks)
+        
+        # Sort by start time
+        events.sort(key=lambda e: e.scheduled_start if isinstance(e, Appointment) else e.start)
+        
+        # Serialize
+        serializer = CalendarEventSerializer(events, many=True)
+        
+        return Response({
+            'practitioner_id': str(practitioner.id),
+            'practitioner_name': f"{practitioner.user.first_name} {practitioner.user.last_name}",
+            'date_from': date_from_str,
+            'date_to': date_to_str,
+            'events': serializer.data,
+            'total_events': len(events),
+        }, status=status.HTTP_200_OK)
+
+
+class PractitionerAvailabilityView(APIView):
+    """
+    GET /api/v1/clinical/practitioners/{practitioner_id}/availability/
+    
+    Calculate available time slots for a practitioner.
+    
+    Sprint 2 Implementation:
+    - Read-only, informative endpoint
+    - Does NOT create appointments
+    - Based on real data (appointments + blocks)
+    - Configurable slot duration
+    - Respects RBAC (same as calendar endpoint)
+    
+    Query params:
+        - date_from (required): YYYY-MM-DD
+        - date_to (required): YYYY-MM-DD
+        - slot_duration (optional): minutes, default 30
+        - timezone (optional): default UTC
+    
+    RBAC Rules:
+        - Admin: Can view any practitioner
+        - Reception: Can view any practitioner
+        - Practitioner: Can only view own availability
+        - Marketing/Accounting: 403 Forbidden
+    
+    Returns:
+        {
+            "practitioner_id": "<uuid>",
+            "date_from": "YYYY-MM-DD",
+            "date_to": "YYYY-MM-DD",
+            "slot_duration": 30,
+            "timezone": "UTC",
+            "availability": [
+                {
+                    "date": "YYYY-MM-DD",
+                    "slots": [
+                        {"start": "10:00", "end": "10:30"},
+                        {"start": "10:30", "end": "11:00"}
+                    ]
+                }
+            ]
+        }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, practitioner_id):
+        from apps.authz.models import Practitioner
+        from apps.clinical.services import AvailabilityService
+        from django.core.exceptions import ValidationError
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        user = request.user
+        
+        # Get user roles
+        user_roles = set(
+            user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        # RBAC: Marketing and Accounting cannot view availability
+        if RoleChoices.MARKETING in user_roles or RoleChoices.ACCOUNTING in user_roles:
+            logger.warning(f"User {user.email} attempted to view availability")
+            raise PermissionDenied('You do not have permission to view practitioner availability')
+        
+        # RBAC: Check if user can view this practitioner's calendar
+        is_admin = RoleChoices.ADMIN in user_roles
+        is_reception = RoleChoices.RECEPTION in user_roles
+        is_practitioner = RoleChoices.PRACTITIONER in user_roles
+        
+        can_view_availability = False
+        
+        if is_admin or is_reception:
+            # Admin and Reception can view any practitioner
+            can_view_availability = True
+        elif is_practitioner:
+            # Practitioner can only view their own availability
+            try:
+                user_practitioner = Practitioner.objects.get(user=user)
+                if str(user_practitioner.id) != str(practitioner_id):
+                    logger.warning(
+                        f"Practitioner {user.email} attempted to view another practitioner's availability"
+                    )
+                    raise PermissionDenied('You can only view your own availability')
+                can_view_availability = True
+            except Practitioner.DoesNotExist:
+                raise PermissionDenied('Practitioner profile not found')
+        
+        if not can_view_availability:
+            raise PermissionDenied('You do not have permission to view this availability')
+        
+        # Validate practitioner exists
+        try:
+            practitioner = Practitioner.objects.get(id=practitioner_id)
+        except Practitioner.DoesNotExist:
+            return Response({
+                'error': 'Practitioner not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get query params
+        date_from_str = request.query_params.get('date_from')
+        date_to_str = request.query_params.get('date_to')
+        slot_duration = request.query_params.get('slot_duration', 30)
+        timezone_str = request.query_params.get('timezone', 'UTC')
+        
+        # Validate required params
+        if not date_from_str or not date_to_str:
+            return Response({
+                'error': 'date_from and date_to are required',
+                'details': {
+                    'date_from': 'Required format: YYYY-MM-DD',
+                    'date_to': 'Required format: YYYY-MM-DD'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate date format
+        try:
+            from datetime import datetime
+            datetime.strptime(date_from_str, "%Y-%m-%d")
+            datetime.strptime(date_to_str, "%Y-%m-%d")
+        except ValueError:
+            return Response({
+                'error': 'Invalid date format',
+                'details': 'Use YYYY-MM-DD format'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate slot_duration
+        try:
+            slot_duration = int(slot_duration)
+            if slot_duration < 5 or slot_duration > 240:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'Invalid slot_duration',
+                'details': 'Must be integer between 5 and 240 minutes'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Calculate availability using service
+        try:
+            availability_data = AvailabilityService.calculate_availability(
+                practitioner_id=str(practitioner_id),
+                date_from=date_from_str,
+                date_to=date_to_str,
+                slot_duration=slot_duration,
+                timezone_str=timezone_str
+            )
+            
+            return Response(availability_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error calculating availability: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error calculating availability',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PractitionerBookingView(APIView):
+    """
+    POST /api/v1/clinical/practitioners/{practitioner_id}/book/
+    
+    Create an appointment by booking an available slot.
+    
+    Sprint 3 Implementation:
+    - Creates REAL appointments in DB
+    - Validates slot is available using AvailabilityService
+    - CRITICAL: Rejects slots that already started (slot_start <= now)
+    - Prevents double booking
+    - Prevents booking over PractitionerBlocks
+    - RBAC enforced (same as availability)
+    
+    Request Body:
+        {
+            "date": "YYYY-MM-DD",
+            "start": "HH:MM",
+            "end": "HH:MM",
+            "slot_duration": 30,
+            "patient_id": "uuid",
+            "location_id": "uuid",
+            "notes": "string (optional)"
+        }
+    
+    RBAC Rules:
+        - Admin: Can book for any practitioner
+        - Reception: Can book for any practitioner
+        - Practitioner: Can only book for themselves
+        - Marketing/Accounting: 403 Forbidden
+    
+    Validations:
+        - slot_start > now (STRICT: no slots that already started)
+        - start < end
+        - No overlap with existing appointments
+        - No overlap with PractitionerBlocks
+        - Slot must appear in AvailabilityService calculation
+    
+    Returns:
+        201 CREATED: Appointment created successfully
+        400 BAD REQUEST: Invalid slot or slot already started
+        403 FORBIDDEN: Permission denied
+        409 CONFLICT: Slot already booked or blocked
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, practitioner_id):
+        from apps.authz.models import Practitioner
+        from apps.clinical.services import AvailabilityService
+        from apps.core.models import ClinicLocation
+        from datetime import datetime, timedelta
+        from django.utils import timezone as django_timezone
+        import pytz
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        user = request.user
+        
+        # ========================
+        # 1. RBAC CHECK (same as availability)
+        # ========================
+        user_roles = set(
+            user.user_roles.values_list('role__name', flat=True)
+        )
+        
+        # Marketing and Accounting cannot book
+        if RoleChoices.MARKETING in user_roles or RoleChoices.ACCOUNTING in user_roles:
+            logger.warning(f"User {user.email} attempted to book appointment")
+            raise PermissionDenied('You do not have permission to book appointments')
+        
+        # Check if user can book for this practitioner
+        is_admin = RoleChoices.ADMIN in user_roles
+        is_reception = RoleChoices.RECEPTION in user_roles
+        is_practitioner = RoleChoices.PRACTITIONER in user_roles
+        
+        can_book = False
+        
+        if is_admin or is_reception:
+            can_book = True
+        elif is_practitioner:
+            try:
+                user_practitioner = Practitioner.objects.get(user=user)
+                if str(user_practitioner.id) != str(practitioner_id):
+                    logger.warning(
+                        f"Practitioner {user.email} attempted to book for another practitioner"
+                    )
+                    raise PermissionDenied('You can only book appointments for yourself')
+                can_book = True
+            except Practitioner.DoesNotExist:
+                raise PermissionDenied('Practitioner profile not found')
+        
+        if not can_book:
+            raise PermissionDenied('You do not have permission to book appointments')
+        
+        # Validate practitioner exists
+        try:
+            practitioner = Practitioner.objects.get(id=practitioner_id)
+        except Practitioner.DoesNotExist:
+            return Response({
+                'error': 'Practitioner not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # ========================
+        # 2. VALIDATE REQUEST DATA
+        # ========================
+        date_str = request.data.get('date')
+        start_str = request.data.get('start')
+        end_str = request.data.get('end')
+        slot_duration = request.data.get('slot_duration', 30)
+        patient_id = request.data.get('patient_id')
+        location_id = request.data.get('location_id')
+        notes = request.data.get('notes', '')
+        
+        # Required fields
+        if not all([date_str, start_str, end_str, patient_id, location_id]):
+            return Response({
+                'error': 'Missing required fields',
+                'details': {
+                    'date': 'Required (YYYY-MM-DD)',
+                    'start': 'Required (HH:MM)',
+                    'end': 'Required (HH:MM)',
+                    'patient_id': 'Required (UUID)',
+                    'location_id': 'Required (UUID)'
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse and validate datetime
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+            start_time = datetime.strptime(start_str, "%H:%M").time()
+            end_time = datetime.strptime(end_str, "%H:%M").time()
+        except ValueError:
+            return Response({
+                'error': 'Invalid date/time format',
+                'details': 'Use YYYY-MM-DD for date, HH:MM for times'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate start < end
+        if start_time >= end_time:
+            return Response({
+                'error': 'Invalid time range',
+                'details': 'start must be before end'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create timezone-aware datetimes (UTC)
+        tz = pytz.UTC
+        slot_start_dt = tz.localize(datetime.combine(date_obj, start_time))
+        slot_end_dt = tz.localize(datetime.combine(date_obj, end_time))
+        
+        # ========================
+        # 3. CRITICAL VALIDATION: Reject slots that already started
+        # ========================
+        now = django_timezone.now()
+        if slot_start_dt <= now:
+            return Response({
+                'error': 'Slot already started',
+                'details': f'Cannot book slot starting at {start_str}. Current time is {now.strftime("%H:%M")} UTC. Slot must start in the future.',
+                'slot_start': slot_start_dt.isoformat(),
+                'current_time': now.isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # ========================
+        # 4. VALIDATE SLOT IS AVAILABLE (using AvailabilityService)
+        # ========================
+        try:
+            availability_data = AvailabilityService.calculate_availability(
+                practitioner_id=str(practitioner_id),
+                date_from=date_str,
+                date_to=date_str,
+                slot_duration=int(slot_duration),
+                timezone_str='UTC'
+            )
+            
+            # Find the requested slot in availability
+            day_availability = next(
+                (day for day in availability_data['availability'] if day['date'] == date_str),
+                None
+            )
+            
+            if not day_availability:
+                return Response({
+                    'error': 'Date not available',
+                    'details': f'No availability for date {date_str}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if the exact slot is in the available slots
+            requested_slot = {'start': start_str, 'end': end_str}
+            slot_found = any(
+                slot['start'] == requested_slot['start'] and slot['end'] == requested_slot['end']
+                for slot in day_availability['slots']
+            )
+            
+            if not slot_found:
+                return Response({
+                    'error': 'Slot not available',
+                    'details': f'Slot {start_str}-{end_str} is not available. It may be occupied or outside working hours.',
+                    'available_slots': day_availability['slots'][:5]  # Show first 5 available slots
+                }, status=status.HTTP_409_CONFLICT)
+            
+        except Exception as e:
+            logger.error(f"Error validating availability: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error validating slot availability',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # ========================
+        # 5. VALIDATE PATIENT AND LOCATION
+        # ========================
+        try:
+            patient = Patient.objects.get(id=patient_id)
+        except Patient.DoesNotExist:
+            return Response({
+                'error': 'Patient not found',
+                'details': f'No patient with ID {patient_id}'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            location = ClinicLocation.objects.get(id=location_id)
+        except ClinicLocation.DoesNotExist:
+            return Response({
+                'error': 'Location not found',
+                'details': f'No location with ID {location_id}'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # ========================
+        # 6. CREATE APPOINTMENT (REAL, NOT MOCK)
+        # ========================
+        try:
+            appointment = Appointment.objects.create(
+                practitioner=practitioner,
+                patient=patient,
+                location=location,
+                scheduled_start=slot_start_dt,
+                scheduled_end=slot_end_dt,
+                status='scheduled',
+                source='manual',
+                notes=notes
+            )
+            
+            logger.info(
+                f"Appointment booked: {appointment.id} by {user.email} "
+                f"for practitioner {practitioner.display_name} "
+                f"on {date_str} {start_str}-{end_str}"
+            )
+            
+            return Response({
+                'success': True,
+                'appointment_id': str(appointment.id),
+                'practitioner_id': str(practitioner.id),
+                'practitioner_name': practitioner.display_name,
+                'patient_id': str(patient.id),
+                'patient_name': f"{patient.first_name} {patient.last_name}",
+                'scheduled_start': appointment.scheduled_start.isoformat(),
+                'scheduled_end': appointment.scheduled_end.isoformat(),
+                'status': appointment.status,
+                'created_at': appointment.created_at.isoformat()
+            }, status=status.HTTP_201_CREATED)
+            
+        except IntegrityError as e:
+            logger.error(f"IntegrityError creating appointment: {str(e)}")
+            return Response({
+                'error': 'Appointment conflict',
+                'details': 'This slot may have just been booked. Please refresh and try another slot.'
+            }, status=status.HTTP_409_CONFLICT)
+        except Exception as e:
+            logger.error(f"Error creating appointment: {str(e)}", exc_info=True)
+            return Response({
+                'error': 'Error creating appointment',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

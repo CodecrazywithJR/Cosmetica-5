@@ -1,0 +1,549 @@
+{
+  "encounters": {
+    "list": {
+      "patient": {
+        "title": "Consultas del paciente",
+        "filters": {
+          "practitioner": "Profesional",
+          "status": "Estado"
+        },
+        "empty": {
+          "message": "Este paciente aún no tiene consultas registradas."
+        },
+        "columns": {
+          "date": "Fecha",
+          "type": "Tipo",
+          "status": "Estado",
+          "practitioner": "Profesional",
+          "treatments": "Tratamientos",
+          "attachments": "Adjuntos"
+        },
+        "type": {
+          "consultation": "Consulta",
+          "follow_up": "Seguimiento",
+          "emergency": "Emergencia"
+        },
+        "status": {
+          "draft": "Borrador",
+          "finalized": "Finalizada",
+          "cancelled": "Cancelada"
+        }
+      }
+    }
+  },
+  "app": {
+    "title": "DermaEMR - Gestión de Práctica Dermatológica",
+    "subtitle": "Registros de Pacientes y POS Cosmética"
+  },
+  "nav": {
+    "agenda": "Agenda",
+    "schedule": "Nueva Cita",
+    "booking": "Reservar Cita",
+    "patients": "Pacientes",
+    "encounters": "Consultas",
+    "proposals": "Propuestas",
+    "sales": "Ventas",
+    "admin": "Administración",
+    "actions": {
+      "logout": "Cerrar Sesión"
+    }
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "retry": "Reintentar",
+    "yes": "Sí",
+    "no": "No",
+    "ok": "Aceptar",
+    "languageLabel": "Idioma",
+    "user": "Usuario",
+    "sex": {
+      "female": "Femenino",
+      "male": "Masculino",
+      "other": "Otro",
+      "unknown": "Desconocido",
+      "F": "Femenino",
+      "M": "Masculino",
+      "O": "Otro",
+      "U": "Desconocido"
+    },
+    "actions": {
+      "cancel": "Cancelar",
+      "close": "Cerrar",
+      "save": "Guardar",
+      "saving": "Guardando...",
+      "retry": "Reintentar"
+    }
+  },
+  "health": {
+    "checking": "Verificando conexión con backend...",
+    "connected": "Conectado al backend",
+    "disconnected": "No se puede conectar al backend",
+    "database": "Base de datos",
+    "redis": "Redis",
+    "status_ok": "OK",
+    "status_error": "Error"
+  },
+  "patients": {
+    "title": "Pacientes",
+    "subtitle": "Lista de Pacientes",
+    "new": "Nuevo Paciente",
+    "search_placeholder": "Buscar por nombre, teléfono o email",
+    "no_patients": "No se encontraron pacientes",
+    "status": "Estado",
+    "list": {
+      "columns": {
+        "name": "Nombre",
+        "email": "Correo",
+        "phone": "Teléfono",
+        "status": "Estado",
+        "birthDate": "Fecha Nac.",
+        "sex": "Sexo",
+        "actions": "Acciones"      },
+      "warnings": {
+        "incompleteConsents": "Consentimientos legales requeridos",
+        "missingDocuments": "Documentos pendientes"      }
+    },
+    "create": {
+      "description": "Crear nuevo registro de paciente",
+      "pendingImplementation": "Funcionalidad en desarrollo",
+      "pendingMessage": "El formulario está listo, pero la conexión con el backend está pendiente de implementación. El botón de guardar está temporalmente deshabilitado.",
+      "saveDisabledTooltip": "La funcionalidad de creación está pendiente de implementación. El formulario está listo y validado.",
+      "successTitle": "Paciente creado",
+      "successMessage": "El paciente se ha creado correctamente"
+    },
+    "edit": {
+      "title": "Editar Paciente",
+      "ctaSave": "Guardar Cambios",
+      "ctaCancel": "Cancelar",
+      "successTitle": "Paciente actualizado",
+      "successMessage": "Los datos del paciente se han guardado correctamente.",
+      "unsavedChanges": {
+        "title": "Cambios sin guardar",
+        "body": "Tiene cambios sin guardar. Si sale ahora, sus cambios se perderán.",
+        "confirm": "Salir de todos modos",
+        "cancel": "Permanecer en la página"
+      }
+    },
+    "detail": {
+      "title": "Detalles del Paciente",
+      "ctaEdit": "Editar Paciente",
+      "ctaBack": "Volver a Lista"
+    },
+    "sections": {
+      "basic": "Información Básica",
+      "identity": "Identificación Oficial",
+      "emergency": "Contacto de Emergencia",
+      "consent": "Consentimientos Legales",
+      "consentDocuments": "Documentos de Consentimiento",
+      "clinicalActions": "Acciones Clínicas"
+    },
+    "fields": {
+      "first_name": {
+        "label": "Nombre",
+        "help": "Nombre del paciente"
+      },
+      "last_name": {
+        "label": "Apellido",
+        "help": "Apellido del paciente"
+      },
+      "email": {
+        "label": "Email",
+        "help": "Correo electrónico del paciente"
+      },
+      "phone": {
+        "label": "Teléfono",
+        "help": "Número de teléfono del paciente"
+      },
+      "birth_date": {
+        "label": "Fecha de Nacimiento",
+        "help": "Fecha de nacimiento del paciente"
+      },
+      "sex": {
+        "label": "Sexo",
+        "help": "Sexo biológico del paciente"
+      },
+      "document_type": {
+        "label": "Tipo de Documento",
+        "help": "Seleccione el tipo de documento de identificación oficial"
+      },
+      "document_number": {
+        "label": "Número de Documento",
+        "help": "Ingrese el número de DNI o pasaporte"
+      },
+      "nationality": {
+        "label": "Nacionalidad",
+        "help": "País de ciudadanía del paciente"
+      },
+      "emergency_contact_name": {
+        "label": "Nombre del Contacto de Emergencia",
+        "help": "Nombre completo de la persona a contactar en caso de emergencia"
+      },
+      "emergency_contact_phone": {
+        "label": "Teléfono del Contacto de Emergencia",
+        "help": "Número de teléfono del contacto de emergencia"
+      },
+      "privacy_policy_accepted": {
+        "label": "Política de Privacidad Aceptada",
+        "help": "El paciente ha leído y aceptado la política de privacidad"
+      },
+      "terms_accepted": {
+        "label": "Términos y Condiciones Aceptados",
+        "help": "El paciente ha leído y aceptado los términos y condiciones"
+      }
+    },
+    "consent": {
+      "ok": "Consentimientos OK",
+      "missing": "Faltan Consentimientos",
+      "requiredForEncounters": "Un paciente puede existir sin consentimientos, pero no puede tener consultas sin aceptarlos."
+    },
+    "consents": {
+      "bannerTitle": "Consentimientos Legales Requeridos",
+      "bannerMessage": "Este paciente no ha aceptado los consentimientos legales necesarios. No se pueden crear consultas clínicas hasta que se acepten tanto la política de privacidad como los términos y condiciones.",
+      "reviewCta": "Revisar y Aceptar Consentimientos"
+    },    "consentDocuments": {
+      "missingDocumentsBanner": {
+        "title": "Documentos de Consentimiento Pendientes",
+        "message": "Algunos consentimientos documentales aún no tienen archivo escaneado adjunto. Puede subirlos desde la sección de documentos cuando estén disponibles."
+      },
+      "type": {
+        "clinical_photos": "Fotos Clínicas",
+        "marketing_photos": "Fotos de Marketing",
+        "newsletter": "Boletín Informativo",
+        "marketing_messages": "Mensajes de Marketing"
+      },
+      "status": {
+        "granted": "Vigente",
+        "revoked": "Revocado"
+      },
+      "noDocument": "Documento no adjuntado",
+      "dropHere": "Suelta el archivo aquí",
+      "emptyState": {
+        "title": "Sin Documentos de Consentimiento",
+        "message": "No se han encontrado documentos de consentimiento para este paciente. Los documentos escaneados y firmados deben ser subidos al sistema.",
+        "cta": "Subir Documentos de Consentimiento"
+      },
+      "uploadSuccess": "Documento subido exitosamente",
+      "complete": "Documentos Completos",
+      "view": "Ver",
+      "download": "Descargar",
+      "delete": "Eliminar documento",
+      "deleteModal": {
+        "title": "¿Eliminar documento?",
+        "message": "¿Está seguro de que desea eliminar este documento?",
+        "warning": "Esta acción no elimina el consentimiento, solo el archivo adjunto.",
+        "cancel": "Cancelar",
+        "confirm": "Eliminar",
+        "deleting": "Eliminando..."
+      },
+      "uploadDocument": "Subir Documento",
+      "uploading": "Subiendo...",
+      "selectFile": "Seleccionar Archivo",
+      "uploadSuccess": "Documento subido correctamente",
+      "uploadErrors": {
+        "noFile": "No se seleccionó ningún archivo.",
+        "fileTooBig": "El archivo es demasiado grande. El tamaño máximo es 25 MB.",
+        "invalidFileType": "Tipo de archivo no válido. Solo se permiten PDF, JPG, PNG, HEIC y HEIF.",
+        "uploadFailed": "Error al subir el documento. Por favor, inténtalo de nuevo.",
+        "presignedFailed": "Error al preparar la subida. Por favor, inténtalo de nuevo."
+      }
+    },    "documentType": {
+      "dni": "DNI",
+      "passport": "Pasaporte",
+      "other": "Otro"
+    },
+    "actions": {
+      "reload": "Recargar Datos",
+      "backToDetail": "Volver a Detalles",
+      "newEncounter": "Nueva Consulta",
+      "consentsRequired": "El paciente debe aceptar los consentimientos antes de iniciar consultas"
+    },
+    "messages": {
+      "updateSuccess": "Paciente actualizado exitosamente",
+      "updateSuccessMessage": "El paciente ha sido actualizado correctamente."
+    },
+    "errors": {
+      "loadFailed": "Error al cargar pacientes",
+      "updateFailed": "Error al actualizar paciente",
+      "createFailed": "Error al crear paciente",
+      "concurrencyConflict": "Otro usuario ha modificado este paciente. No se pueden guardar sus cambios.",
+      "reloadPrompt": "Por favor recargue los datos e intente nuevamente.",
+      "validation": "Por favor revise los errores en el formulario",
+      "formInvalid": "Por favor revise los campos marcados antes de guardar",
+      "required": "Este campo es requerido",
+      "minLength": "Mínimo {{min}} caracteres requeridos",
+      "maxLength": "Máximo {{max}} caracteres permitidos",
+      "invalidEmail": "Formato de email inválido",
+      "invalidDate": "Fecha inválida",
+      "futureDate": "La fecha no puede estar en el futuro",
+      "pairRequired": "Ambos campos son requeridos cuando uno está completado",
+      "documentPairRequired": "Tipo y número de documento deben proporcionarse juntos"
+    },
+    "warnings": {
+      "consentsMissing": "Este paciente aún no ha aceptado los consentimientos",
+      "consentsMissingCta": "Requerido para consultas"
+    }
+  },
+  "agenda": {
+    "title": "Agenda",
+    "description": "Gestiona citas y horario diario",
+    "filters": {
+      "date": "Fecha",
+      "status": "Estado",
+      "allStatuses": "Todos los Estados",
+      "previousDay": "Día anterior",
+      "nextDay": "Día siguiente",
+      "today": "Hoy"
+    },
+    "table": {
+      "time": "Hora",
+      "patient": "Paciente",
+      "practitioner": "Profesional",
+      "type": "Origen",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "appointment": {
+      "type": {
+        "consultation": "Consulta",
+        "follow_up": "Seguimiento",
+        "procedure": "Procedimiento"
+      },
+      "status": {
+        "scheduled": "Programado",
+        "confirmed": "Confirmado",
+        "checked_in": "Registrado",
+        "in_progress": "En Progreso",
+        "completed": "Completado",
+        "cancelled": "Cancelado",
+        "no_show": "No Asistió"
+      }
+    },
+    "actions": {
+      "newAppointment": "Nueva Cita",
+      "confirm": "Confirmar",
+      "checkIn": "Registrar",
+      "complete": "Completar",
+      "cancel": "Cancelar"
+    },
+    "errors": {
+      "title": "No se pudo cargar la agenda",
+      "description": "Estamos teniendo problemas para conectar con el servidor. Por favor, verifica tu conexión a internet e intenta nuevamente.",
+      "loadingFailed": "Error al cargar citas"
+    },
+    "emptyState": {
+      "title": "No hay citas para este día",
+      "description": "No hay citas programadas para la fecha seleccionada. Las citas aparecerán aquí cuando sean creadas.",
+      "action": "Crear Nueva Cita"
+    },
+    "summary": {
+      "totalAppointments": "Total de citas"
+    }
+  },
+  "calendly": {
+    "notConfigured": {
+      "title": "Calendly no está configurado",
+      "description": "Añade tu URL de Calendly en tu perfil para poder agendar citas.",
+      "action": "Ir a configuración"
+    }
+  },
+  "schedule": {
+    "title": "Agendar Cita",
+    "description": "Selecciona una fecha y hora para tu cita"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar Sesión",      "subtitle": "Sistema de gestión clínico y de ventas",      "emailLabel": "Correo Electrónico",
+      "emailPlaceholder": "tu@email.com",
+      "passwordLabel": "Contraseña",
+      "passwordPlaceholder": "Ingresa tu contraseña",
+      "submit": "Iniciar Sesión",
+      "submitting": "Iniciando sesión...",
+      "invalidCredentials": "Credenciales inválidas",
+      "noActiveAccount": "No se encontró una cuenta activa con las credenciales proporcionadas"
+    },
+    "changePassword": {
+      "title": "Cambio de Contraseña Requerido",
+      "description": "Por razones de seguridad, debe cambiar su contraseña antes de continuar.",
+      "mandatoryWarning": "Debe cambiar su contraseña para acceder al sistema.",
+      "currentPassword": "Contraseña Actual",
+      "currentPasswordRequired": "La contraseña actual es requerida",
+      "newPassword": "Nueva Contraseña",
+      "newPasswordRequired": "La nueva contraseña es requerida",
+      "confirmPassword": "Confirmar Nueva Contraseña",
+      "confirmPasswordRequired": "Por favor confirme su nueva contraseña",
+      "passwordLength": "La contraseña debe tener entre 8 y 16 caracteres",
+      "passwordMismatch": "Las contraseñas no coinciden",
+      "submit": "Cambiar Contraseña",
+      "logout": "Cerrar sesión en su lugar",
+      "error": "Error al cambiar la contraseña. Por favor intente nuevamente."
+    }
+  },
+  "users": {
+    "title": "Gestión de Usuarios",
+    "list": {
+      "title": "Lista de Usuarios"
+    },
+    "new": {
+      "title": "Nuevo Usuario"
+    },
+    "edit": {
+      "title": "Editar Usuario"
+    },
+    "search_placeholder": "Buscar por nombre o email",
+    "no_users": "No se encontraron usuarios",
+    "fields": {
+      "email": "Email",
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "password": "Contraseña",
+      "confirmPassword": "Confirmar Contraseña",
+      "roles": {
+        "label": "Permisos de acceso",
+        "description": "Define a qué partes del sistema puede acceder este usuario.",
+        "admin": "Administrador",
+        "practitioner": "Profesional sanitario",
+        "reception": "Recepción",
+        "marketing": "Marketing",
+        "accounting": "Contabilidad"
+      },
+      "isActive": "Activo",
+      "isPractitioner": "Profesional",
+      "calendlyUrl": "URL de Calendly",
+      "mustChangePassword": "Debe Cambiar Contraseña"
+    },
+    "table": {
+      "name": "Nombre",
+      "email": "Email",
+      "roles": "Permisos",
+      "status": "Estado",
+      "practitioner": "Profesional",
+      "lastLogin": "Último Acceso",
+      "actions": "Acciones"
+    },
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "actions": {
+      "create": "Crear Usuario",
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "edit": "Editar",
+      "delete": "Eliminar",
+      "resetPassword": "Restablecer Contraseña",
+      "copyPassword": "Copiar Contraseña"
+    },
+    "practitioner": {
+      "title": "Información de Profesional",
+      "createPractitioner": "Crear perfil de profesional",
+      "hasPractitioner": "Este usuario tiene perfil de profesional",
+      "noPractitioner": "Sin perfil de profesional",
+      "displayName": "Nombre para Mostrar",
+      "specialty": "Especialidad",
+      "calendlyUrl": "URL de Calendly",
+      "calendlyUrlWarning": "La URL debe comenzar con https://calendly.com/",
+      "calendlySlugWarning": "La URL debe contener un slug de tipo de evento"
+    },
+    "messages": {
+      "createSuccess": "Usuario creado exitosamente",
+      "updateSuccess": "Usuario actualizado exitosamente",
+      "updateSuccessMessage": "El usuario ha sido actualizado correctamente.",
+      "deleteSuccess": "Usuario desactivado exitosamente",
+      "createError": "Error al crear usuario",
+      "updateError": "Error al actualizar usuario",
+      "deleteError": "Error al desactivar usuario",
+      "loadError": "Error al cargar usuarios",
+      "userNotFound": "Usuario no encontrado",
+      "userCreated": "Usuario Creado Exitosamente",
+      "temporaryPassword": "Esta es la contraseña temporal para el nuevo usuario. Por favor cópiela ahora, ya que no se mostrará nuevamente.",
+      "passwordWarning": "El usuario deberá cambiar esta contraseña en su primer inicio de sesión.",
+      "passwordCopied": "✓ ¡Copiado!",
+      "passwordReset": "Contraseña Restablecida Exitosamente",
+      "passwordResetInstructions": "Guarde esta contraseña ahora y compártala por un canal seguro. No se volverá a mostrar.",
+      "passwordShareSecurely": "Comparta esta contraseña de forma segura con el usuario.",
+      "confirmPasswordReset": "¿Está seguro de que desea restablecer la contraseña de este usuario?",
+      "confirmDelete": "¿Está seguro de que desea desactivar este usuario?",
+      "confirmDeleteWarning": "El usuario no podrá iniciar sesión pero sus datos se conservarán para auditoría.",
+      "resetPasswordError": "Error al restablecer la contraseña",
+      "lastAdminError": "No se puede desactivar o quitar el rol de administrador del último administrador activo",
+      "mustChangePasswordActive": "Este usuario debe cambiar su contraseña en el próximo inicio de sesión"
+    },
+    "validation": {
+      "emailRequired": "El email es requerido",
+      "emailInvalid": "El email es inválido",
+      "firstNameRequired": "El nombre es requerido",
+      "lastNameRequired": "El apellido es requerido",
+      "passwordRequired": "La contraseña es requerida",
+      "passwordLength": "La contraseña debe tener entre 8 y 16 caracteres",
+      "confirmPasswordRequired": "Por favor confirme su contraseña",
+      "passwordMismatch": "Las contraseñas no coinciden",
+      "rolesRequired": "Se requiere al menos un rol",
+      "displayNameRequired": "El nombre para mostrar es requerido",
+      "specialtyRequired": "La especialidad es requerida",
+      "calendlyUrlFormat": "La URL de Calendly debe comenzar con https://calendly.com/",
+      "calendlyUrlSlug": "La URL de Calendly debe contener un slug de tipo de evento"
+    },
+    "unauthorized": {
+      "title": "Acceso No Autorizado",
+      "description": "No tienes permiso para acceder a esta sección. Solo los administradores pueden gestionar usuarios.",
+      "action": "Ir al Inicio"
+    }
+  },
+  "booking": {
+    "title": "Reservar Cita",
+    "description": "Sistema nativo de reservas - Seleccione un horario disponible",
+    "filters": {
+      "practitioner": "Profesional",
+      "dateFrom": "Desde",
+      "dateTo": "Hasta",
+      "updateAvailability": "Actualizar disponibilidad",
+      "loading": "Cargando...",
+      "yourAgenda": "Tu agenda"
+    },
+    "availability": {
+      "title": "Horarios disponibles",
+      "noAvailability": "No hay disponibilidad para el rango seleccionado.",
+      "loading": "Cargando disponibilidad...",
+      "slotsAvailable": "slot(s) disponible(s)"
+    },
+    "modal": {
+      "title": "Confirmar reserva",
+      "date": "Fecha",
+      "time": "Horario",
+      "practitioner": "Profesional",
+      "patient": "Paciente",
+      "location": "Ubicación",
+      "notes": "Notas",
+      "notesPlaceholder": "Información adicional sobre la cita...",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar reserva",
+      "confirming": "Reservando...",
+      "success": {
+        "title": "¡Cita confirmada!",
+        "message": "La cita se ha creado exitosamente en el sistema.",
+        "close": "Cerrar"
+      },
+      "errors": {
+        "slotStarted": "⏱️ Este horario ya ha comenzado. Por favor, seleccione un horario futuro.",
+        "slotNotAvailable": "❌ Este horario ya no está disponible. Otro usuario lo reservó recientemente.",
+        "noPermission": "🔒 No tiene permisos para crear citas.",
+        "validation": "⚠️ Error de validación",
+        "generic": "❌ Error al crear la cita. Intente nuevamente.",
+        "selectPatientLocation": "Seleccione paciente y ubicación"
+      }
+    },
+    "errors": {
+      "loadInitialData": "Error al cargar datos iniciales. Recargue la página.",
+      "loadAvailability": "Error al cargar disponibilidad. Intente nuevamente.",
+      "noPermissionView": "No tiene permisos para ver la disponibilidad de este profesional."
+    }
+  }
+}

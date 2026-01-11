@@ -1,0 +1,49 @@
+{
+  "title": "Agenda",
+  "filters": {
+    "date": "Date",
+    "status": "Statut",
+    "allStatuses": "Tous les statuts"
+  },
+  "appointment": {
+    "status": {
+      "scheduled": "Planifié",
+      "confirmed": "Confirmé",
+      "checked_in": "Arrivé",
+      "completed": "Terminé",
+      "cancelled": "Annulé",
+      "no_show": "Absent"
+    },
+    "type": {
+      "medical_consult": "Consultation médicale",
+      "cosmetic_consult": "Consultation cosmétique",
+      "follow_up": "Suivi",
+      "aesthetic_procedure": "Procédure esthétique"
+    }
+  },
+  "table": {
+    "time": "Heure",
+    "patient": "Patient",
+    "practitioner": "Praticien",
+    "type": "Type",
+    "status": "Statut",
+    "actions": "Actions"
+  },
+  "actions": {
+    "confirm": "Confirmer",
+    "checkIn": "Marquer l'arrivée",
+    "complete": "Terminer",
+    "cancel": "Annuler"
+  },
+  "empty": {
+    "noAppointments": "Aucun rendez-vous pour",
+    "noResults": "Aucun rendez-vous trouvé"
+  },
+  "summary": {
+    "totalAppointments": "Total des rendez-vous"
+  },
+  "errors": {
+    "loadingFailed": "Erreur de chargement des rendez-vous",
+    "updateFailed": "Erreur de mise à jour du statut"
+  }
+}

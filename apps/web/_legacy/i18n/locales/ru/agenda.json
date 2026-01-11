@@ -1,0 +1,49 @@
+{
+  "title": "Расписание",
+  "filters": {
+    "date": "Дата",
+    "status": "Статус",
+    "allStatuses": "Все статусы"
+  },
+  "appointment": {
+    "status": {
+      "scheduled": "Запланировано",
+      "confirmed": "Подтверждено",
+      "checked_in": "Прибыл",
+      "completed": "Завершено",
+      "cancelled": "Отменено",
+      "no_show": "Не явился"
+    },
+    "type": {
+      "medical_consult": "Мед. консультация",
+      "cosmetic_consult": "Косметол. консультация",
+      "follow_up": "Повторный приём",
+      "aesthetic_procedure": "Эстетическая процедура"
+    }
+  },
+  "table": {
+    "time": "Время",
+    "patient": "Пациент",
+    "practitioner": "Специалист",
+    "type": "Тип",
+    "status": "Статус",
+    "actions": "Действия"
+  },
+  "actions": {
+    "confirm": "Подтвердить",
+    "checkIn": "Отметить прибытие",
+    "complete": "Завершить",
+    "cancel": "Отменить"
+  },
+  "empty": {
+    "noAppointments": "Нет записей на",
+    "noResults": "Записи не найдены"
+  },
+  "summary": {
+    "totalAppointments": "Всего записей"
+  },
+  "errors": {
+    "loadingFailed": "Ошибка загрузки записей",
+    "updateFailed": "Ошибка обновления статуса"
+  }
+}
