@@ -106,7 +106,9 @@
       },
       "warnings": {
         "incompleteConsents": "Legal consents required",
-        "missingDocuments": "Documents pending"
+        "missingDocuments": "Documents pending",
+        "legalConsentsRequired": "Legal consents required",
+        "consentDocumentMissing": "Consent document not attached"
       }
     },
     "new": "New Patient",
@@ -233,7 +235,6 @@
         "message": "No consent documents found for this patient. Scanned and signed documents must be uploaded to the system.",
         "cta": "Upload Consent Documents"
       },
-      "uploadSuccess": "Document uploaded successfully",
       "complete": "Documents Complete",
       "view": "View",
       "download": "Download",
@@ -250,13 +251,18 @@
       "uploading": "Uploading...",
       "selectFile": "Select File",
       "uploadSuccess": "Document uploaded successfully",
+      "autoCheckedOnUpload": "Consent automatically checked when uploading document",
       "uploadErrors": {
         "noFile": "No file selected.",
         "fileTooBig": "File is too large. Maximum size is 25 MB.",
         "invalidFileType": "Invalid file type. Only PDF, JPG, PNG, HEIC and HEIF are allowed.",
         "uploadFailed": "Failed to upload document. Please try again.",
-        "presignedFailed": "Failed to prepare upload. Please try again."
-      }
+        "presignedFailed": "Failed to prepare upload. Please try again.",
+        "privacy": "Could not upload privacy document",
+        "terms": "Could not upload terms document",
+        "generic": "Some documents could not be processed correctly"
+      },
+      "uploadWarningsTitle": "Document warnings"
     },
     "documentType": {
       "dni": "National ID (DNI)",

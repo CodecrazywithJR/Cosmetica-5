@@ -87,11 +87,13 @@ export default function PatientConsentDocuments({ patientId }: PatientConsentDoc
 
   const handleView = async (consentId: string) => {
     try {
+      console.log('[PatientConsentDocuments] Getting download URL for consent:', consentId);
       const url = await getConsentDocumentDownloadUrl(consentId);
+      console.log('[PatientConsentDocuments] Opening URL:', url.substring(0, 50) + '...');
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (err: any) {
-      console.error('Failed to get download URL:', err);
-      setErrorMessage('Failed to open document');
+      console.error('[PatientConsentDocuments] Failed to get download URL:', err);
+      setErrorMessage(err?.message || 'Failed to open document');
       setTimeout(() => setErrorMessage(''), 5000);
     }
   };
@@ -178,6 +180,7 @@ export default function PatientConsentDocuments({ patientId }: PatientConsentDoc
 
     const consentId = event.target.getAttribute('data-consent-id');
     if (!consentId) {
+      console.error('[PatientConsentDocuments] No consent ID found on file input');
       setErrorMessage(t('uploadErrors.uploadFailed'));
       setTimeout(() => setErrorMessage(''), 5000);
       event.target.value = '';
@@ -186,6 +189,7 @@ export default function PatientConsentDocuments({ patientId }: PatientConsentDoc
 
     const validationError = validateFile(file);
     if (validationError) {
+      console.error('[PatientConsentDocuments] File validation failed:', validationError);
       setErrorMessage(validationError);
       setTimeout(() => setErrorMessage(''), 5000);
       event.target.value = '';
@@ -193,14 +197,16 @@ export default function PatientConsentDocuments({ patientId }: PatientConsentDoc
     }
 
     try {
+      console.log('[PatientConsentDocuments] Uploading file:', file.name, 'to consent:', consentId);
       setUploading(consentId);
       await uploadConsentDocument(consentId, file);
+      console.log('[PatientConsentDocuments] Upload successful, reloading consents');
       await loadConsents();
       setSuccessMessage(t('uploadSuccess'));
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err: any) {
-      console.error('Failed to upload document:', err);
-      setErrorMessage(t('uploadErrors.uploadFailed'));
+      console.error('[PatientConsentDocuments] Failed to upload document:', err);
+      setErrorMessage(err?.message || t('uploadErrors.uploadFailed'));
       setTimeout(() => setErrorMessage(''), 5000);
     } finally {
       setUploading(null);
@@ -224,12 +230,17 @@ export default function PatientConsentDocuments({ patientId }: PatientConsentDoc
 
   const handleDrop = async (e: React.DragEvent, consentId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setActiveDragCategory(null);
 
-    if (uploading) return;
+    if (uploading) {
+      console.warn('[PatientConsentDocuments] Upload already in progress');
+      return;
+    }
 
     const file = e.dataTransfer.files?.[0];
     if (!file) {
+      console.error('[PatientConsentDocuments] No file in drop event');
       setErrorMessage(t('uploadErrors.noFile'));
       setTimeout(() => setErrorMessage(''), 5000);
       return;
@@ -237,20 +248,23 @@ export default function PatientConsentDocuments({ patientId }: PatientConsentDoc
 
     const validationError = validateFile(file);
     if (validationError) {
+      console.error('[PatientConsentDocuments] File validation failed:', validationError);
       setErrorMessage(validationError);
       setTimeout(() => setErrorMessage(''), 5000);
       return;
     }
 
     try {
+      console.log('[PatientConsentDocuments] Drop upload starting:', file.name, 'to consent:', consentId);
       setUploading(consentId);
       await uploadConsentDocument(consentId, file);
+      console.log('[PatientConsentDocuments] Drop upload successful, reloading consents');
       await loadConsents();
       setSuccessMessage(t('uploadSuccess'));
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err: any) {
-      console.error('Failed to upload document:', err);
-      setErrorMessage(t('uploadErrors.uploadFailed'));
+      console.error('[PatientConsentDocuments] Failed to upload document:', err);
+      setErrorMessage(err?.message || t('uploadErrors.uploadFailed'));
       setTimeout(() => setErrorMessage(''), 5000);
     } finally {
       setUploading(null);

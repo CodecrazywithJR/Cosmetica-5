@@ -223,7 +223,12 @@ CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 # ==============================================================================
 # MINIO / S3 STORAGE
 # ==============================================================================
+# Internal endpoint for backend operations (within Docker network)
 MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
+
+# Public endpoint for presigned URLs (accessible from browser)
+MINIO_PUBLIC_ENDPOINT = os.environ.get('MINIO_PUBLIC_ENDPOINT', 'localhost:9000')
+
 MINIO_ACCESS_KEY = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin')
 MINIO_SECRET_KEY = os.environ.get('MINIO_SECRET_KEY', 'minioadmin')
 MINIO_USE_SSL = os.environ.get('MINIO_USE_SSL', 'False') == 'True'

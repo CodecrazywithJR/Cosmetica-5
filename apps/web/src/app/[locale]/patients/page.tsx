@@ -127,11 +127,6 @@ export default function PatientsPage() {
     return code ? `${code} ${patient.phone}` : patient.phone;
   };
 
-  // Check if patient has incomplete logical consents
-  const hasIncompleteConsents = (patient: Patient): boolean => {
-    return !patient.privacy_policy_accepted || !patient.terms_accepted;
-  };
-
   if (loading) {
     return (
       <AppLayout>
@@ -289,20 +284,22 @@ export default function PatientsPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1">
-                          {hasIncompleteConsents(patient) && (
+                          {/* Priority 1: Legal consents missing (BLOCKING) */}
+                          {patient.has_missing_legal_consents && (
                             <div className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-50 border border-yellow-300 rounded text-xs text-yellow-800">
                               <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                               </svg>
-                              <span className="whitespace-nowrap">{t('list.warnings.incompleteConsents')}</span>
+                              <span className="whitespace-nowrap">{t('list.warnings.legalConsentsRequired')}</span>
                             </div>
                           )}
-                          {patient.has_missing_consent_documents && (
-                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-50 border border-yellow-300 rounded text-xs text-yellow-800">
+                          {/* Priority 2: Consent documents missing (INFORMATIVE) - Only show if legal consents are OK */}
+                          {!patient.has_missing_legal_consents && patient.has_missing_consent_documents && (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-300 rounded text-xs text-blue-800">
                               <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              <span className="whitespace-nowrap">{t('list.warnings.missingDocuments')}</span>
+                              <span className="whitespace-nowrap">{t('list.warnings.consentDocumentMissing')}</span>
                             </div>
                           )}
                         </div>

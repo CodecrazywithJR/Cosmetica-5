@@ -105,7 +105,10 @@
         "actions": "Actions"      },
       "warnings": {
         "incompleteConsents": "Consentements légaux requis",
-        "missingDocuments": "Documents en attente"      }
+        "missingDocuments": "Documents en attente",
+        "legalConsentsRequired": "Consentements légaux requis",
+        "consentDocumentMissing": "Document de consentement non joint"
+      }
     },
     "new": "Nouveau Patient",
     "search_placeholder": "Rechercher par nom, téléphone ou email",
@@ -233,12 +236,17 @@
       "uploading": "Téléchargement en cours...",
       "selectFile": "Sélectionner un Fichier",
       "uploadSuccess": "Document téléchargé avec succès",
+      "autoCheckedOnUpload": "Consentement coché automatiquement lors du téléchargement du document",
       "uploadErrors": {
         "fileTooBig": "Le fichier est trop volumineux. La taille maximale est de 25 Mo.",
         "invalidFileType": "Type de fichier non valide. Seuls les formats PDF, JPG, PNG, HEIC et HEIF sont autorisés.",
         "uploadFailed": "Échec du téléchargement du document. Veuillez réessayer.",
-        "presignedFailed": "Échec de la préparation du téléchargement. Veuillez réessayer."
-      }
+        "presignedFailed": "Échec de la préparation du téléchargement. Veuillez réessayer.",
+        "privacy": "Impossible de télécharger le document de confidentialité",
+        "terms": "Impossible de télécharger le document de conditions",
+        "generic": "Certains documents n'ont pas pu être traités correctement"
+      },
+      "uploadWarningsTitle": "Avertissements de documents"
     },    "documentType": {
       "dni": "Carte d'identité nationale",
       "passport": "Passeport",

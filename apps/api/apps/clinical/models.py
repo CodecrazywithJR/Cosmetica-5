@@ -69,6 +69,8 @@ class EncounterStatusChoices(models.TextChoices):
 
 class ConsentTypeChoices(models.TextChoices):
     """Consent types"""
+    PRIVACY_POLICY = 'privacy_policy', 'Privacy Policy'
+    TERMS_AND_CONDITIONS = 'terms_and_conditions', 'Terms and Conditions'
     CLINICAL_PHOTOS = 'clinical_photos', 'Clinical Photos'
     MARKETING_PHOTOS = 'marketing_photos', 'Marketing Photos'
     NEWSLETTER = 'newsletter', 'Newsletter'

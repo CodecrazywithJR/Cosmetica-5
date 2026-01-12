@@ -118,16 +118,71 @@ class PatientViewSet(viewsets.ModelViewSet):
         ordering = self.request.query_params.get('ordering', 'last_name')
         queryset = queryset.order_by(ordering)
         
-        # Annotate with has_missing_consent_documents (for list view only)
-        # Uses Exists subquery to avoid N+1 queries
+        # Annotate with consent warnings (for list view only)
+        # TWO separate flags:
+        # 1) has_missing_legal_consents: TRUE if checkboxes not marked (BLOCKS encounters)
+        # 2) has_missing_consent_documents: TRUE if documents not uploaded (INFORMATIVE only)
         if self.action == 'list':
-            from apps.clinical.models import Consent
+            from apps.clinical.models import Consent, ConsentTypeChoices, ConsentStatusChoices
+            from django.db.models import Count, Case, When, BooleanField
+            
             queryset = queryset.annotate(
-                has_missing_consent_documents=Exists(
-                    Consent.objects.filter(
-                        patient_id=OuterRef('pk'),
-                        document__isnull=True
+                # Count granted privacy_policy consents (not revoked)
+                privacy_policy_count=Count(
+                    'consents',
+                    filter=Q(
+                        consents__consent_type=ConsentTypeChoices.PRIVACY_POLICY,
+                        consents__status=ConsentStatusChoices.GRANTED,
+                        consents__revoked_at__isnull=True
                     )
+                ),
+                # Count granted terms_and_conditions consents (not revoked)
+                terms_count=Count(
+                    'consents',
+                    filter=Q(
+                        consents__consent_type=ConsentTypeChoices.TERMS_AND_CONDITIONS,
+                        consents__status=ConsentStatusChoices.GRANTED,
+                        consents__revoked_at__isnull=True
+                    )
+                ),
+                # Count privacy_policy consents WITH document attached
+                privacy_with_doc_count=Count(
+                    'consents',
+                    filter=Q(
+                        consents__consent_type=ConsentTypeChoices.PRIVACY_POLICY,
+                        consents__status=ConsentStatusChoices.GRANTED,
+                        consents__revoked_at__isnull=True,
+                        consents__document__isnull=False
+                    )
+                ),
+                # Count terms_and_conditions consents WITH document attached
+                terms_with_doc_count=Count(
+                    'consents',
+                    filter=Q(
+                        consents__consent_type=ConsentTypeChoices.TERMS_AND_CONDITIONS,
+                        consents__status=ConsentStatusChoices.GRANTED,
+                        consents__revoked_at__isnull=True,
+                        consents__document__isnull=False
+                    )
+                )
+            ).annotate(
+                # Flag 1: TRUE if either required LEGAL CONSENT is missing (BLOCKING)
+                has_missing_legal_consents=Case(
+                    When(Q(privacy_policy_count=0) | Q(terms_count=0), then=True),
+                    default=False,
+                    output_field=BooleanField()
+                ),
+                # Flag 2: TRUE if consents exist BUT documents are missing (INFORMATIVE)
+                # Only relevant when has_missing_legal_consents=False
+                has_missing_consent_documents=Case(
+                    When(
+                        Q(privacy_policy_count__gt=0) &
+                        Q(terms_count__gt=0) &
+                        (Q(privacy_with_doc_count=0) | Q(terms_with_doc_count=0)),
+                        then=True
+                    ),
+                    default=False,
+                    output_field=BooleanField()
                 )
             )
         

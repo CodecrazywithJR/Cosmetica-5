@@ -59,6 +59,7 @@ class PatientGuardianSerializer(serializers.ModelSerializer):
 
 class PatientListSerializer(serializers.ModelSerializer):
     """Serializer for Patient list view (limited fields)"""
+    has_missing_legal_consents = serializers.SerializerMethodField()
     has_missing_consent_documents = serializers.SerializerMethodField()
     
     class Meta:
@@ -77,9 +78,14 @@ class PatientListSerializer(serializers.ModelSerializer):
             'is_deleted',
             'created_at',
             'updated_at',
+            'has_missing_legal_consents',
             'has_missing_consent_documents',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_has_missing_legal_consents(self, obj):
+        """Return precomputed annotation from queryset (no additional queries)"""
+        return getattr(obj, 'has_missing_legal_consents', False)
     
     def get_has_missing_consent_documents(self, obj):
         """Return precomputed annotation from queryset (no additional queries)"""

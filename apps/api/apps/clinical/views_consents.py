@@ -9,7 +9,7 @@ from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
 
 from apps.clinical.models import Patient, Consent
@@ -61,7 +61,7 @@ class ConsentViewSet(viewsets.ViewSet):
     - Allowed types: PDF, JPG, PNG, HEIC/HEIF
     """
     permission_classes = [IsAuthenticated, ConsentPermission]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     
     def list(self, request, patient_id=None):
         """
@@ -170,12 +170,14 @@ class ConsentViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['post'], url_path='document')
     def attach_document(self, request, pk=None):
         """
-        Attach a document to a consent.
+        Attach a document to a consent using presigned URL flow.
         
         POST /consents/{consent_id}/document/
         
-        Request body (multipart/form-data):
-        - file: Document file (required)
+        Request body (JSON):
+        - filename: string (required) - Original filename
+        - content_type: string (required) - MIME type
+        - size_bytes: integer (required) - File size in bytes
         
         Response:
         - document_id: Document UUID
@@ -207,24 +209,39 @@ class ConsentViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Validate file
-        file = request.FILES.get('file')
-        if not file:
+        # Get metadata from JSON body
+        filename = request.data.get('filename')
+        content_type = request.data.get('content_type')
+        size_bytes = request.data.get('size_bytes')
+        
+        if not filename:
             return Response(
-                {'error': 'file is required'},
+                {'error': 'filename is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not content_type:
+            return Response(
+                {'error': 'content_type is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not size_bytes:
+            return Response(
+                {'error': 'size_bytes is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         # Check file size (25 MB max per PATIENT_CONSENT_DOCUMENTS.md)
-        if file.size > MAX_CONSENT_DOCUMENT_SIZE_BYTES:
+        if size_bytes > MAX_CONSENT_DOCUMENT_SIZE_BYTES:
             return Response(
                 {'error': f'File size exceeds maximum of {MAX_CONSENT_DOCUMENT_SIZE_BYTES / (1024 * 1024)}MB'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         # Check file extension
-        filename = file.name.lower()
-        file_extension = filename.split('.')[-1] if '.' in filename else ''
+        filename_lower = filename.lower()
+        file_extension = filename_lower.split('.')[-1] if '.' in filename_lower else ''
         if file_extension not in ALLOWED_CONSENT_DOCUMENT_EXTENSIONS:
             return Response(
                 {'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_CONSENT_DOCUMENT_EXTENSIONS)}'},
@@ -232,7 +249,6 @@ class ConsentViewSet(viewsets.ViewSet):
             )
         
         # Check MIME type
-        content_type = file.content_type
         if content_type not in ALLOWED_CONSENT_DOCUMENT_MIMES:
             return Response(
                 {'error': f'Invalid MIME type. Allowed: {", ".join(ALLOWED_CONSENT_DOCUMENT_MIMES)}'},
@@ -240,12 +256,7 @@ class ConsentViewSet(viewsets.ViewSet):
             )
         
         # Generate object key
-        object_key = generate_object_key('consents', file.name)
-        
-        # Calculate SHA256
-        file.seek(0)
-        sha256_hash = hashlib.sha256(file.read()).hexdigest()
-        file.seek(0)
+        object_key = generate_object_key('consents', filename)
         
         # Create Document record and link to consent atomically
         with transaction.atomic():
@@ -253,8 +264,8 @@ class ConsentViewSet(viewsets.ViewSet):
                 storage_bucket=settings.MINIO_DOCUMENTS_BUCKET,
                 object_key=object_key,
                 content_type=content_type,
-                size_bytes=file.size,
-                sha256=sha256_hash,
+                size_bytes=size_bytes,
+                sha256='',  # Will be calculated by MinIO
                 title=f"Consent {consent.consent_type}",
                 created_by_user=request.user
             )

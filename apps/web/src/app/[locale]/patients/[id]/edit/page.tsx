@@ -8,6 +8,7 @@ import AppLayout from '@/components/layout/app-layout';
 import { fetchPatientById, updatePatient, type Patient } from '@/lib/api/patients';
 import {
   fetchPatientConsents,
+  createPatientConsent,
   uploadConsentDocument,
   deleteConsentDocument,
   getConsentDocumentDownloadUrl,
@@ -17,7 +18,7 @@ import {
 import { routes, type Locale } from '@/lib/routing';
 
 const CONSENT_TYPES = {
-  PRIVACY: 'data_processing',
+  PRIVACY: 'privacy_policy',
   TERMS: 'terms_and_conditions',
 } as const;
 
@@ -157,6 +158,102 @@ export default function PatientEditPage() {
     }));
   }
 
+  async function ensureConsentExists(type: 'privacy' | 'terms'): Promise<ConsentDocument> {
+    const consentType = type === 'privacy' ? CONSENT_TYPES.PRIVACY : CONSENT_TYPES.TERMS;
+    let consent = getConsentByType(consentType);
+    
+    if (consent) {
+      return consent;
+    }
+    
+    // Create technical ConsentDocument for file attachment
+    // This is separate from legal acceptance (Patient flags)
+    try {
+      consent = await createPatientConsent(
+        patientId,
+        consentType as any,
+        'granted',
+        new Date().toISOString()  // Technical timestamp for document creation
+      );
+      
+      await loadConsents();
+      return consent;
+    } catch (error: any) {
+      console.error('[ensureConsentExists] Failed to create consent:', error);
+      throw new Error('Failed to create consent document');
+    }
+  }
+
+  function validateFile(file: File): { valid: boolean; error?: string } {
+    const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
+    if (file.size > MAX_SIZE) {
+      return { valid: false, error: 'File size exceeds 25MB limit' };
+    }
+
+    const ALLOWED_TYPES = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/heic',
+      'image/heif',
+    ];
+    
+    const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.heic', '.heif'];
+    const fileExtension = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+    
+    if (!ALLOWED_TYPES.includes(file.type) && !ALLOWED_EXTENSIONS.includes(fileExtension)) {
+      return { valid: false, error: 'Invalid file type. Allowed: PDF, JPG, PNG, HEIC, HEIF' };
+    }
+
+    return { valid: true };
+  }
+
+  async function handleFileUploadWithConsent(
+    type: 'privacy' | 'terms',
+    file: File
+  ) {
+    console.log(`[handleFileUploadWithConsent] Starting upload for ${type}:`, file.name);
+
+    // Validate file first
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      console.error('[handleFileUploadWithConsent] Validation failed:', validation.error);
+      setErrorMessage(validation.error || 'Invalid file');
+      setTimeout(() => setErrorMessage(''), 5000);
+      return;
+    }
+
+    const field = type === 'privacy' ? 'privacy_policy_accepted' : 'terms_accepted';
+    
+    // Mark checkbox in UI if not already checked
+    const isChecked = formData[field];
+    if (!isChecked) {
+      setFormData(prev => ({
+        ...prev,
+        [field]: true,
+      }));
+      
+      setSuccessMessage(t('consentDocuments.autoCheckedOnUpload') || 'Consentimiento marcado automáticamente al subir el documento');
+      setTimeout(() => setSuccessMessage(''), 5000);
+    }
+    
+    // Ensure ConsentDocument exists and upload file
+    try {
+      console.log('[handleFileUploadWithConsent] Ensuring consent exists...');
+      const consent = await ensureConsentExists(type);
+      console.log('[handleFileUploadWithConsent] Consent ID:', consent.id);
+      
+      console.log('[handleFileUploadWithConsent] Uploading file...');
+      await handleUpload(consent.id, file);
+      console.log('[handleFileUploadWithConsent] Upload complete');
+    } catch (error: any) {
+      console.error('[handleFileUploadWithConsent] Upload failed:', error);
+      setErrorMessage(error?.message || 'Failed to upload file');
+      setTimeout(() => setErrorMessage(''), 5000);
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!originalPatient || !patientId || patientId.length === 0) return;
@@ -205,13 +302,19 @@ export default function PatientEditPage() {
 
   async function handleUpload(consentId: string, file: File) {
     try {
+      console.log('[handleUpload] Starting upload for consent:', consentId);
       setUploading(consentId);
+      setErrorMessage('');
+      
       await uploadConsentDocument(consentId, file);
+      console.log('[handleUpload] Upload successful, reloading consents...');
+      
       await loadConsents();
-      setSuccessMessage(t('consentDocuments.uploadSuccess'));
+      setSuccessMessage(t('consentDocuments.uploadSuccess') || 'Document uploaded successfully');
       setTimeout(() => setSuccessMessage(''), 5000);
-    } catch {
-      setErrorMessage(t('consentDocuments.uploadErrors.uploadFailed'));
+    } catch (error: any) {
+      console.error('[handleUpload] Upload error:', error);
+      setErrorMessage(error?.message || 'Failed to upload file');
       setTimeout(() => setErrorMessage(''), 5000);
     } finally {
       setUploading(null);
@@ -510,54 +613,73 @@ export default function PatientEditPage() {
                   </p>
                   {(() => {
                     const consent = getConsentByType(CONSENT_TYPES.PRIVACY);
-                    if (!consent) {
+                    
+                    // Show document preview if it exists
+                    if (consent?.has_document && consent.document_filename) {
                       return (
-                        <div className="text-center py-4">
-                          <p className="text-xs text-gray-500">Marca el checkbox para habilitar la carga de documentos</p>
+                        <div className="flex items-center justify-between bg-white rounded p-2 border border-gray-200">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span className="text-xs text-gray-700 truncate">{consent.document_filename}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const url = await getConsentDocumentDownloadUrl(consent.id);
+                                window.open(url, '_blank');
+                              }}
+                              className="text-blue-600 hover:text-blue-700 text-xs"
+                            >
+                              Ver
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConsentToDelete(consent);
+                                setShowDeleteModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-700 text-xs"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       );
                     }
-                    return consent.has_document && consent.document_filename ? (
-                      <div className="flex items-center justify-between bg-white rounded p-2 border border-gray-200">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span className="text-xs text-gray-700 truncate">{consent.document_filename}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const url = await getConsentDocumentDownloadUrl(consent.id);
-                              window.open(url, '_blank');
-                            }}
-                            className="text-blue-600 hover:text-blue-700 text-xs"
-                          >
-                            Ver
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setConsentToDelete(consent);
-                              setShowDeleteModal(true);
-                            }}
-                            className="text-red-600 hover:text-red-700 text-xs"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
+                    
+                    // Always show drop zone if no document exists (consent may or may not exist)
+                    return (
                       <div
-                        onDragOver={(e) => e.preventDefault()}
-                        onDragEnter={() => setActiveDragCategory('privacy')}
-                        onDragLeave={() => setActiveDragCategory(null)}
-                        onDrop={(e) => {
+                        onDragOver={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveDragCategory('privacy');
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveDragCategory(null);
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           setActiveDragCategory(null);
                           const file = e.dataTransfer.files?.[0];
-                          if (file) handleUpload(consent.id, file);
+                          if (file) {
+                            try {
+                              await handleFileUploadWithConsent('privacy', file);
+                            } catch (error) {
+                              setErrorMessage(t('consentDocuments.uploadErrors.uploadFailed'));
+                              setTimeout(() => setErrorMessage(''), 5000);
+                            }
+                          }
                         }}
                         className={`text-center py-4 ${activeDragCategory === 'privacy' ? 'bg-blue-50 border-blue-300' : ''}`}
                       >
@@ -565,7 +687,7 @@ export default function PatientEditPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
                         <p className="mt-1 text-xs text-gray-600">
-                          {uploading === consent.id ? 'Subiendo...' : (
+                          {uploading ? 'Subiendo...' : (
                             <>
                               Arrastra aquí o
                               <label className="ml-1 text-blue-600 hover:text-blue-700 cursor-pointer">
@@ -573,12 +695,21 @@ export default function PatientEditPage() {
                                 <input
                                   type="file"
                                   accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
-                                  onChange={(e) => {
+                                  onChange={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     const file = e.target.files?.[0];
-                                    if (file) handleUpload(consent.id, file);
+                                    if (file) {
+                                      try {
+                                        await handleFileUploadWithConsent('privacy', file);
+                                      } catch (error) {
+                                        setErrorMessage(t('consentDocuments.uploadErrors.uploadFailed'));
+                                        setTimeout(() => setErrorMessage(''), 5000);
+                                      }
+                                    }
                                   }}
                                   className="hidden"
-                                  disabled={uploading === consent.id}
+                                  disabled={!!uploading}
                                 />
                               </label>
                             </>
@@ -621,54 +752,73 @@ export default function PatientEditPage() {
                   </p>
                   {(() => {
                     const consent = getConsentByType(CONSENT_TYPES.TERMS);
-                    if (!consent) {
+                    
+                    // Show document preview if it exists
+                    if (consent?.has_document && consent.document_filename) {
                       return (
-                        <div className="text-center py-4">
-                          <p className="text-xs text-gray-500">Marca el checkbox para habilitar la carga de documentos</p>
+                        <div className="flex items-center justify-between bg-white rounded p-2 border border-gray-200">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span className="text-xs text-gray-700 truncate">{consent.document_filename}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const url = await getConsentDocumentDownloadUrl(consent.id);
+                                window.open(url, '_blank');
+                              }}
+                              className="text-blue-600 hover:text-blue-700 text-xs"
+                            >
+                              Ver
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConsentToDelete(consent);
+                                setShowDeleteModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-700 text-xs"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
                       );
                     }
-                    return consent.has_document && consent.document_filename ? (
-                      <div className="flex items-center justify-between bg-white rounded p-2 border border-gray-200">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span className="text-xs text-gray-700 truncate">{consent.document_filename}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const url = await getConsentDocumentDownloadUrl(consent.id);
-                              window.open(url, '_blank');
-                            }}
-                            className="text-blue-600 hover:text-blue-700 text-xs"
-                          >
-                            Ver
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setConsentToDelete(consent);
-                              setShowDeleteModal(true);
-                            }}
-                            className="text-red-600 hover:text-red-700 text-xs"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
+                    
+                    // Always show drop zone if no document exists (consent may or may not exist)
+                    return (
                       <div
-                        onDragOver={(e) => e.preventDefault()}
-                        onDragEnter={() => setActiveDragCategory('terms')}
-                        onDragLeave={() => setActiveDragCategory(null)}
-                        onDrop={(e) => {
+                        onDragOver={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveDragCategory('terms');
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setActiveDragCategory(null);
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           setActiveDragCategory(null);
                           const file = e.dataTransfer.files?.[0];
-                          if (file) handleUpload(consent.id, file);
+                          if (file) {
+                            try {
+                              await handleFileUploadWithConsent('terms', file);
+                            } catch (error) {
+                              setErrorMessage(t('consentDocuments.uploadErrors.uploadFailed'));
+                              setTimeout(() => setErrorMessage(''), 5000);
+                            }
+                          }
                         }}
                         className={`text-center py-4 ${activeDragCategory === 'terms' ? 'bg-blue-50 border-blue-300' : ''}`}
                       >
@@ -676,7 +826,7 @@ export default function PatientEditPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
                         <p className="mt-1 text-xs text-gray-600">
-                          {uploading === consent.id ? 'Subiendo...' : (
+                          {uploading ? 'Subiendo...' : (
                             <>
                               Arrastra aquí o
                               <label className="ml-1 text-blue-600 hover:text-blue-700 cursor-pointer">
@@ -684,12 +834,21 @@ export default function PatientEditPage() {
                                 <input
                                   type="file"
                                   accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
-                                  onChange={(e) => {
+                                  onChange={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     const file = e.target.files?.[0];
-                                    if (file) handleUpload(consent.id, file);
+                                    if (file) {
+                                      try {
+                                        await handleFileUploadWithConsent('terms', file);
+                                      } catch (error) {
+                                        setErrorMessage(t('consentDocuments.uploadErrors.uploadFailed'));
+                                        setTimeout(() => setErrorMessage(''), 5000);
+                                      }
+                                    }
                                   }}
                                   className="hidden"
-                                  disabled={uploading === consent.id}
+                                  disabled={!!uploading}
                                 />
                               </label>
                             </>

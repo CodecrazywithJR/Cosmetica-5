@@ -109,7 +109,10 @@
         "actions": "Acciones"      },
       "warnings": {
         "incompleteConsents": "Consentimientos legales requeridos",
-        "missingDocuments": "Documentos pendientes"      }
+        "missingDocuments": "Documentos pendientes",
+        "legalConsentsRequired": "Consentimientos legales requeridos",
+        "consentDocumentMissing": "Documento de consentimiento no adjuntado"
+      }
     },
     "create": {
       "description": "Crear nuevo registro de paciente",
@@ -230,7 +233,6 @@
         "message": "No se han encontrado documentos de consentimiento para este paciente. Los documentos escaneados y firmados deben ser subidos al sistema.",
         "cta": "Subir Documentos de Consentimiento"
       },
-      "uploadSuccess": "Documento subido exitosamente",
       "complete": "Documentos Completos",
       "view": "Ver",
       "download": "Descargar",
@@ -247,13 +249,18 @@
       "uploading": "Subiendo...",
       "selectFile": "Seleccionar Archivo",
       "uploadSuccess": "Documento subido correctamente",
+      "autoCheckedOnUpload": "Consentimiento marcado automáticamente al subir el documento",
       "uploadErrors": {
         "noFile": "No se seleccionó ningún archivo.",
         "fileTooBig": "El archivo es demasiado grande. El tamaño máximo es 25 MB.",
         "invalidFileType": "Tipo de archivo no válido. Solo se permiten PDF, JPG, PNG, HEIC y HEIF.",
         "uploadFailed": "Error al subir el documento. Por favor, inténtalo de nuevo.",
-        "presignedFailed": "Error al preparar la subida. Por favor, inténtalo de nuevo."
-      }
+        "presignedFailed": "Error al preparar la subida. Por favor, inténtalo de nuevo.",
+        "privacy": "No se pudo subir el documento de privacidad",
+        "terms": "No se pudo subir el documento de términos",
+        "generic": "Algunos documentos no pudieron procesarse correctamente"
+      },
+      "uploadWarningsTitle": "Advertencias sobre documentos"
     },    "documentType": {
       "dni": "DNI",
       "passport": "Pasaporte",

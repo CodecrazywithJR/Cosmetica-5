@@ -18,6 +18,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import AppLayout from '@/components/layout/app-layout';
 import { routes, type Locale } from '@/lib/routing';
 import { createPatient } from '@/lib/api/patients';
+import { createPatientConsent, uploadConsentDocument } from '@/lib/api/consents';
 
 export default function PatientCreatePage() {
   const router = useRouter();
@@ -29,9 +30,11 @@ export default function PatientCreatePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string>('');
+  const [documentWarnings, setDocumentWarnings] = useState<string[]>([]);
   
-  // Temporary consent documents queue (not uploaded until patient is created and then edited)
-  const [pendingDocuments, setPendingDocuments] = useState<{
+  // Consent files queued for upload after patient creation
+  const [consentFilesQueue, setConsentFilesQueue] = useState<{
     privacy?: File;
     terms?: File;
   }>({});
@@ -197,13 +200,72 @@ export default function PatientCreatePage() {
       // Notify other components that a new patient was created
       window.dispatchEvent(new Event('patients-updated'));
       
-      // Clear pending documents queue (they're not uploaded)
-      setPendingDocuments({});
+      // Upload pending consent documents if any
+      const warnings: string[] = [];
+      const hasPrivacyDoc = consentFilesQueue.privacy;
+      const hasTermsDoc = consentFilesQueue.terms;
+      
+      if (hasPrivacyDoc || hasTermsDoc) {
+        console.log('[PatientCreate] Uploading consent documents:', {
+          privacy: !!hasPrivacyDoc,
+          terms: !!hasTermsDoc
+        });
+
+        try {
+          // Upload privacy document
+          if (hasPrivacyDoc) {
+            try {
+              console.log('[PatientCreate] Creating privacy_policy consent...');
+              const privacyConsent = await createPatientConsent(
+                newPatient.id,
+                'privacy_policy',
+                'granted',
+                new Date().toISOString()  // Technical timestamp
+              );
+              console.log('[PatientCreate] Privacy consent created, uploading document...');
+              await uploadConsentDocument(privacyConsent.id, consentFilesQueue.privacy!);
+              console.log('[PatientCreate] Privacy document uploaded successfully');
+            } catch (err: any) {
+              console.error('[PatientCreate] Failed to upload privacy document:', err);
+              warnings.push(t('consentDocuments.uploadErrors.privacy') || 'No se pudo subir el documento de privacidad');
+            }
+          }
+          
+          // Upload terms document
+          if (hasTermsDoc) {
+            try {
+              console.log('[PatientCreate] Creating terms_and_conditions consent...');
+              const termsConsent = await createPatientConsent(
+                newPatient.id,
+                'terms_and_conditions',
+                'granted',
+                new Date().toISOString()  // Technical timestamp
+              );
+              console.log('[PatientCreate] Terms consent created, uploading document...');
+              await uploadConsentDocument(termsConsent.id, consentFilesQueue.terms!);
+              console.log('[PatientCreate] Terms document uploaded successfully');
+            } catch (err: any) {
+              console.error('[PatientCreate] Failed to upload terms document:', err);
+              warnings.push(t('consentDocuments.uploadErrors.terms') || 'No se pudo subir el documento de términos');
+            }
+          }
+        } catch (err: any) {
+          console.error('[PatientCreate] Error processing documents:', err);
+          warnings.push(t('consentDocuments.uploadErrors.generic') || 'Algunos documentos no pudieron procesarse correctamente');
+        }
+      }
+      
+      setDocumentWarnings(warnings);
+      setConsentFilesQueue({});
       
       // Show success modal (user will return to list)
       setShowSuccessModal(true);
     } catch (err: any) {
       console.error('Failed to create patient:', err);
+      
+      // Clear previous success states
+      setSuccessMessage('');
+      setDocumentWarnings([]);
       
       let errorMsg = t('errors.createFailed') || 'Error al crear paciente';
       
@@ -232,11 +294,37 @@ export default function PatientCreatePage() {
     router.push(routes.patients.list(locale));
   };
 
-  const handleDocumentQueue = (category: 'privacy' | 'terms', file: File | null) => {
+  const queueConsentFile = (category: 'privacy' | 'terms', file: File | null) => {
     if (file) {
-      setPendingDocuments(prev => ({ ...prev, [category]: file }));
+      // Validate file before queueing
+      const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
+      if (file.size > MAX_SIZE) {
+        setError('File size exceeds 25MB limit');
+        return;
+      }
+
+      const ALLOWED_TYPES = [
+        'application/pdf',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/heic',
+        'image/heif',
+      ];
+      
+      const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.heic', '.heif'];
+      const fileExtension = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+      
+      if (!ALLOWED_TYPES.includes(file.type) && !ALLOWED_EXTENSIONS.includes(fileExtension)) {
+        setError('Invalid file type. Allowed: PDF, JPG, PNG, HEIC, HEIF');
+        return;
+      }
+
+      console.log(`[queueConsentFile] Queued ${category} file:`, file.name);
+      setConsentFilesQueue(prev => ({ ...prev, [category]: file }));
     } else {
-      setPendingDocuments(prev => {
+      console.log(`[queueConsentFile] Removed ${category} file from queue`);
+      setConsentFilesQueue(prev => {
         const { [category]: _, ...rest } = prev;
         return rest;
       });
@@ -260,6 +348,22 @@ export default function PatientCreatePage() {
       </div>
 
       <div className="page-content">
+        {/* Success Message Banner */}
+        {successMessage && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-green-800 font-medium">{successMessage}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Error Banner */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -566,17 +670,17 @@ export default function PatientCreatePage() {
                   <p className="text-xs font-medium text-gray-700 mb-2">
                     Documento escaneado (opcional)
                   </p>
-                  {pendingDocuments.privacy ? (
+                  {consentFilesQueue.privacy ? (
                     <div className="flex items-center justify-between bg-white rounded p-2 border border-gray-200">
                       <div className="flex items-center gap-2 min-w-0">
                         <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <span className="text-xs text-gray-700 truncate">{pendingDocuments.privacy.name}</span>
+                        <span className="text-xs text-gray-700 truncate">{consentFilesQueue.privacy.name}</span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDocumentQueue('privacy', null)}
+                        onClick={() => queueConsentFile('privacy', null)}
                         className="text-red-600 hover:text-red-700 text-xs"
                       >
                         ✕
@@ -584,11 +688,23 @@ export default function PatientCreatePage() {
                     </div>
                   ) : (
                     <div
-                      onDragOver={(e) => e.preventDefault()}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
                       onDrop={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         const file = e.dataTransfer.files?.[0];
-                        if (file) handleDocumentQueue('privacy', file);
+                        if (file) queueConsentFile('privacy', file);
                       }}
                       className="text-center py-4"
                     >
@@ -603,8 +719,10 @@ export default function PatientCreatePage() {
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
                             onChange={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
                               const file = e.target.files?.[0];
-                              if (file) handleDocumentQueue('privacy', file);
+                              if (file) queueConsentFile('privacy', file);
                             }}
                             className="hidden"
                           />
@@ -644,17 +762,17 @@ export default function PatientCreatePage() {
                   <p className="text-xs font-medium text-gray-700 mb-2">
                     Documento escaneado (opcional)
                   </p>
-                  {pendingDocuments.terms ? (
+                  {consentFilesQueue.terms ? (
                     <div className="flex items-center justify-between bg-white rounded p-2 border border-gray-200">
                       <div className="flex items-center gap-2 min-w-0">
                         <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <span className="text-xs text-gray-700 truncate">{pendingDocuments.terms.name}</span>
+                        <span className="text-xs text-gray-700 truncate">{consentFilesQueue.terms.name}</span>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDocumentQueue('terms', null)}
+                        onClick={() => queueConsentFile('terms', null)}
                         className="text-red-600 hover:text-red-700 text-xs"
                       >
                         ✕
@@ -662,11 +780,23 @@ export default function PatientCreatePage() {
                     </div>
                   ) : (
                     <div
-                      onDragOver={(e) => e.preventDefault()}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
                       onDrop={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         const file = e.dataTransfer.files?.[0];
-                        if (file) handleDocumentQueue('terms', file);
+                        if (file) queueConsentFile('terms', file);
                       }}
                       className="text-center py-4"
                     >
@@ -681,8 +811,10 @@ export default function PatientCreatePage() {
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
                             onChange={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
                               const file = e.target.files?.[0];
-                              if (file) handleDocumentQueue('terms', file);
+                              if (file) queueConsentFile('terms', file);
                             }}
                             className="hidden"
                           />
@@ -735,6 +867,18 @@ export default function PatientCreatePage() {
                 <p className="text-sm text-gray-500 mb-6">
                   {t('create.successMessage') || 'El paciente se ha creado correctamente'}
                 </p>
+                {documentWarnings.length > 0 && (
+                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-left">
+                    <p className="text-xs font-medium text-yellow-800 mb-2">
+                      ⚠️ {t('consentDocuments.uploadWarningsTitle') || 'Advertencias sobre documentos:'}
+                    </p>
+                    <ul className="text-xs text-yellow-700 space-y-1">
+                      {documentWarnings.map((warning, idx) => (
+                        <li key={idx}>• {warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <button
                   onClick={handleModalClose}
                   className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
