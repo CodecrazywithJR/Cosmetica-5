@@ -1,6 +1,9 @@
-# Python
+# ─────────────────────────────────────────
+# PYTHON
+# ─────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*.pyo
 *$py.class
 *.so
 .Python
@@ -27,7 +30,9 @@ wheels/
 .installed.cfg
 *.egg
 
-# Django
+# ─────────────────────────────────────────
+# DJANGO
+# ─────────────────────────────────────────
 *.log
 local_settings.py
 db.sqlite3
@@ -35,29 +40,50 @@ db.sqlite3-journal
 media/
 staticfiles/
 
-# IDEs
+# ─────────────────────────────────────────
+# ENVIRONMENT VARIABLES
+# .env.dev  → safe to commit (dev defaults)
+# .env.example → safe to commit (reference)
+# Everything else → NEVER commit
+# ─────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.prod
+.env.staging
+
+# ─────────────────────────────────────────
+# NODE / NEXT.JS
+# ─────────────────────────────────────────
+node_modules/
+npm-debug.log
+yarn-error.log
+.yarn-integrity
+.pnp.*
+.next/
+.nuxt/
+out/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# ─────────────────────────────────────────
+# TESTING
+# ─────────────────────────────────────────
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+.pytest_cache/
+.tox/
+
+# ─────────────────────────────────────────
+# IDEs & OS
+# ─────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
-
-# Environment variables
-.env                # Legacy file (no longer used)
-.env.local
-.env.*.local
-.env.prod          # Production config with sensitive passwords - NEVER commit
-# Note: .env.dev is safe to commit (development defaults)
-# Note: .env.example is for reference and should be committed
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-
-# Node (if using frontend)
-node_modules/
-npm-debug.log
-yarn-error.log
+Thumbs.db
