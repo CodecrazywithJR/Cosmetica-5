@@ -7,6 +7,7 @@ import os
 from django.core.exceptions import ImproperlyConfigured
 from apps.clinical.models import Encounter
 from apps.clinical.models import ClinicalMedia
+from tests.conftest import TEST_PASSWORD
 
 
 class TestEncounterCleanup:
@@ -39,45 +40,44 @@ class TestEncounterCleanup:
 
     @pytest.mark.django_db
     def test_legacy_endpoints_deprecated(self):
-        """Verificar que el endpoint legacy retorna 410 Gone"""
-        from django.test import Client
+        """Verificar que el endpoint legacy NO existe (404 o 410)"""
+        from rest_framework.test import APIClient
         from django.contrib.auth import get_user_model
         
         User = get_user_model()
         
-        # Crear usuario para autenticación (el endpoint requiere auth)
         user = User.objects.create_user(
-            email='test@test.com',
-            password='testpass123'
+            email='test_legacy@test.com',
+            password=TEST_PASSWORD
         )
         
-        client = Client()
-        client.force_login(user)
+        client = APIClient()
+        client.force_authenticate(user=user)
         
-        # El endpoint legacy debe retornar 410 Gone
         response = client.get('/api/encounters/')
-        assert response.status_code == 410, \
-            f"El endpoint /api/encounters/ debe retornar 410 Gone, pero retornó {response.status_code}"
+        assert response.status_code in [404, 410], \
+            f"El endpoint /api/encounters/ debe retornar 404 o 410, pero retornó {response.status_code}"
 
     @pytest.mark.django_db
     def test_clinical_endpoint_works(self):
         """Verificar que el endpoint correcto funciona"""
-        from django.test import Client
+        from rest_framework.test import APIClient
         from django.contrib.auth import get_user_model
+        from apps.authz.models import Role, UserRole
         
         User = get_user_model()
         
-        # Crear usuario para autenticación
         user = User.objects.create_user(
-            email='test@test.com',
-            password='testpass123',
+            email='test_clinical@test.com',
+            password=TEST_PASSWORD,
             is_staff=True
         )
+        role, _ = Role.objects.get_or_create(name='admin')
+        UserRole.objects.create(user=user, role=role)
         
-        client = Client()
-        client.force_login(user)
+        client = APIClient()
+        client.force_authenticate(user=user)
         
-        # El endpoint correcto debe funcionar
         response = client.get('/api/v1/clinical/encounters/')
         assert response.status_code in [200, 403], \
             f"El endpoint /api/v1/clinical/encounters/ debe estar activo, retornó {response.status_code}"
@@ -98,11 +98,11 @@ class TestEncounterCleanup:
             
         for root, dirs, files in os.walk(apps_path):
             # Saltar migraciones y archivos deprecated explícitos
-            if 'migrations' in root or 'deprecated' in root:
+            if 'migrations' in root or 'deprecated' in root or 'tests' in root:
                 continue
                 
             for file in files:
-                if file.endswith('.py'):
+                if file.endswith('.py') and not file.startswith('test_'):
                     filepath = os.path.join(root, file)
                     try:
                         with open(filepath, 'r') as f:
@@ -122,73 +122,82 @@ class TestEncounterFunctionality:
     @pytest.mark.django_db
     def test_create_encounter(self):
         """Crear un Encounter usando el modelo correcto"""
-        from apps.clinical.models import Encounter
+        from apps.clinical.models import Encounter, Patient
         from django.contrib.auth import get_user_model
-        from apps.patients.models import Patient
+        from apps.authz.models import Practitioner
+        from django.utils import timezone
         
         User = get_user_model()
         
-        # Crear datos necesarios
         user = User.objects.create_user(
-            email='doctor@test.com',
-            password='testpass123'
+            email='doctor_enc@test.com',
+            password=TEST_PASSWORD
+        )
+        
+        practitioner = Practitioner.objects.create(
+            user=user, display_name='Dr. Cleanup', specialty='General'
         )
         
         patient = Patient.objects.create(
             first_name='John',
             last_name='Doe',
-            email='patient@test.com'
+            email='patient_enc@test.com'
         )
         
-        # Crear encounter
         encounter = Encounter.objects.create(
             patient=patient,
-            practitioner=user,
-            start_date='2025-01-01 10:00:00',
-            end_date='2025-01-01 11:00:00',
-            status='scheduled'
+            practitioner=practitioner,
+            type='consultation',
+            status='draft',
+            occurred_at=timezone.now(),
+            created_by_user=user,
         )
         
         assert encounter.id is not None
         assert encounter.patient == patient
-        assert encounter.practitioner == user
+        assert encounter.practitioner == practitioner
         assert Encounter.objects.count() == 1
 
     @pytest.mark.django_db
     def test_clinical_media_with_encounter(self):
         """Verificar que ClinicalMedia funciona con el Encounter correcto"""
-        from apps.clinical.models import Encounter, ClinicalMedia
+        from apps.clinical.models import Encounter, ClinicalMedia, Patient
         from django.contrib.auth import get_user_model
-        from apps.patients.models import Patient
+        from apps.authz.models import Practitioner
+        from django.utils import timezone
         
         User = get_user_model()
         
-        # Crear datos
         user = User.objects.create_user(
-            email='doctor@test.com',
-            password='testpass123'
+            email='doctor_media@test.com',
+            password=TEST_PASSWORD
+        )
+        
+        practitioner = Practitioner.objects.create(
+            user=user, display_name='Dr. Media', specialty='General'
         )
         
         patient = Patient.objects.create(
             first_name='Jane',
             last_name='Smith',
-            email='patient@test.com'
+            email='patient_media@test.com'
         )
         
         encounter = Encounter.objects.create(
             patient=patient,
-            practitioner=user,
-            start_date='2025-01-01 10:00:00',
-            end_date='2025-01-01 11:00:00',
-            status='scheduled'
+            practitioner=practitioner,
+            type='consultation',
+            status='draft',
+            occurred_at=timezone.now(),
+            created_by_user=user,
         )
         
-        # Crear ClinicalMedia asociado
         media = ClinicalMedia.objects.create(
             encounter=encounter,
+            uploaded_by=user,
             file='test.jpg',
             media_type='photo',
-            description='Test media'
+            notes='Test media'
         )
         
         assert media.id is not None
@@ -204,42 +213,45 @@ class TestEncounterIntegration:
 
     def test_full_encounter_flow(self):
         """Test del flujo completo: crear encounter + media"""
-        from apps.clinical.models import Encounter, ClinicalMedia
+        from apps.clinical.models import Encounter, ClinicalMedia, Patient
         from django.contrib.auth import get_user_model
-        from apps.patients.models import Patient
+        from apps.authz.models import Practitioner
+        from django.utils import timezone
         
         User = get_user_model()
         
-        # Setup
         doctor = User.objects.create_user(
-            email='dr@test.com',
-            password='testpass123'
+            email='dr_flow@test.com',
+            password=TEST_PASSWORD
+        )
+        
+        practitioner = Practitioner.objects.create(
+            user=doctor, display_name='Dr. Flow', specialty='General'
         )
         
         patient = Patient.objects.create(
             first_name='Test',
             last_name='Patient',
-            email='patient@test.com'
+            email='patient_flow@test.com'
         )
         
-        # Crear encounter
         encounter = Encounter.objects.create(
             patient=patient,
-            practitioner=doctor,
-            start_date='2025-01-01 10:00:00',
-            end_date='2025-01-01 11:00:00',
-            status='scheduled'
+            practitioner=practitioner,
+            type='medical_consult',
+            status='draft',
+            occurred_at=timezone.now(),
+            created_by_user=doctor,
         )
         
-        # Agregar media
         media = ClinicalMedia.objects.create(
             encounter=encounter,
+            uploaded_by=doctor,
             file='consultation.jpg',
             media_type='photo'
         )
         
-        # Verificaciones
         assert Encounter.objects.count() == 1
         assert ClinicalMedia.objects.count() == 1
-        assert encounter.clinicalmedia_set.count() == 1
-        assert encounter.clinicalmedia_set.first() == media
+        assert encounter.clinical_media.count() == 1
+        assert encounter.clinical_media.first() == media

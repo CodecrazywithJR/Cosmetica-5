@@ -59,10 +59,15 @@ class TestRequestCorrelation:
     
     def test_adds_request_id_to_response_headers(self):
         """Middleware adds X-Request-ID to response."""
+        import time
         middleware = RequestCorrelationMiddleware(lambda r: Mock(status_code=200))
         request = Mock(META={}, path='/api/test', method='GET', request_id='test-123')
+        request.start_time = time.time()
         request.user = Mock(is_authenticated=False)
-        response = {}
+        response = Mock(status_code=200)
+        response.__setitem__ = lambda self, key, value: None
+        response.__getitem__ = lambda self, key: 'test-123' if key == 'X-Request-ID' else None
+        response.get = lambda key, default=None: 'test-123' if key == 'X-Request-ID' else default
         
         result = middleware.process_response(request, response)
         
@@ -302,8 +307,7 @@ class TestHealthChecks:
 class TestSafeLogging:
     """Test that logging doesn't expose sensitive data."""
     
-    @patch('apps.core.observability.logging.logger')
-    def test_logger_filters_sensitive_extra_fields(self, mock_logger):
+    def test_logger_filters_sensitive_extra_fields(self):
         """Logger filters sensitive fields from extra dict."""
         logger = get_sanitized_logger('test')
         

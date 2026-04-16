@@ -26,6 +26,9 @@ from apps.clinical.serializers_consents import (
     ConsentDetailSerializer,
     ConsentUpdateSerializer,
 )
+from apps.core.tenant import TenantQuerySetMixin
+from apps.ops.services import log_event
+from apps.ops.models import AuditEventType
 
 
 # File validation constants for consent documents
@@ -40,8 +43,11 @@ ALLOWED_CONSENT_DOCUMENT_MIMES = [
 ]
 MAX_CONSENT_DOCUMENT_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB per PATIENT_CONSENT_DOCUMENTS.md
 
+ERROR_PERMISSION_DENIED = 'Permission denied'
+ERROR_CONSENT_NOT_FOUND = 'Consent not found'
 
-class ConsentViewSet(viewsets.ViewSet):
+
+class ConsentViewSet(TenantQuerySetMixin, viewsets.ViewSet):
     """
     ViewSet for managing patient consents and their document attachments.
     
@@ -80,7 +86,7 @@ class ConsentViewSet(viewsets.ViewSet):
         # Check permissions
         if not self._has_access(request.user, patient):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -115,7 +121,7 @@ class ConsentViewSet(viewsets.ViewSet):
         # Check permissions
         if not self._has_write_access(request.user, patient):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -123,7 +129,14 @@ class ConsentViewSet(viewsets.ViewSet):
         serializer = ConsentDetailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         consent = serializer.save(patient=patient)
-        
+        log_event(
+            user=request.user,
+            legal_entity=consent.legal_entity,
+            entity_type='Consent',
+            entity_id=consent.pk,
+            event_type=AuditEventType.CONSENT_SIGNED,
+            payload={'consent_type': consent.consent_type, 'status': consent.status, 'patient_id': str(patient.id)},
+        )
         # Return detail
         return Response(
             ConsentDetailSerializer(consent).data,
@@ -148,14 +161,14 @@ class ConsentViewSet(viewsets.ViewSet):
             consent = Consent.objects.get(id=pk)
         except Consent.DoesNotExist:
             return Response(
-                {'error': 'Consent not found'},
+                {'error': ERROR_CONSENT_NOT_FOUND},
                 status=status.HTTP_404_NOT_FOUND
             )
         
         # Check permissions
         if not self._has_write_access(request.user, consent.patient):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -191,14 +204,14 @@ class ConsentViewSet(viewsets.ViewSet):
             consent = Consent.objects.get(id=pk)
         except Consent.DoesNotExist:
             return Response(
-                {'error': 'Consent not found'},
+                {'error': ERROR_CONSENT_NOT_FOUND},
                 status=status.HTTP_404_NOT_FOUND
             )
         
         # Check permissions
         if not self._has_write_access(request.user, consent.patient):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -311,14 +324,14 @@ class ConsentViewSet(viewsets.ViewSet):
             consent = Consent.objects.get(id=pk)
         except Consent.DoesNotExist:
             return Response(
-                {'error': 'Consent not found'},
+                {'error': ERROR_CONSENT_NOT_FOUND},
                 status=status.HTTP_404_NOT_FOUND
             )
         
         # Check permissions
         if not self._has_access(request.user, consent.patient):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -354,14 +367,14 @@ class ConsentViewSet(viewsets.ViewSet):
             consent = Consent.objects.get(id=pk)
         except Consent.DoesNotExist:
             return Response(
-                {'error': 'Consent not found'},
+                {'error': ERROR_CONSENT_NOT_FOUND},
                 status=status.HTTP_404_NOT_FOUND
             )
         
         # Check permissions
         if not self._has_write_access(request.user, consent.patient):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         

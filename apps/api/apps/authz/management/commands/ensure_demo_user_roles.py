@@ -38,7 +38,6 @@ class Command(BaseCommand):
                 'role': RoleChoices.ADMIN,
                 'is_staff': True,
                 'create_practitioner': True,  # Admin needs practitioner for testing
-                # DO NOT hardcode calendly_url - leave null for manual configuration
             },
             {
                 'email': 'ricardoparlon@gmail.com',
@@ -48,7 +47,6 @@ class Command(BaseCommand):
                 'role': RoleChoices.ADMIN,
                 'is_staff': True,
                 'create_practitioner': True,
-                'calendly_url': 'https://calendly.com/ricardoparlon',
             },
         ]
         
@@ -90,22 +88,20 @@ class Command(BaseCommand):
                             'display_name': f"{user.first_name} {user.last_name}",
                             'role_type': PractitionerRoleChoices.PRACTITIONER,
                             'specialty': 'Dermatology',
-                            'calendly_url': user_data.get('calendly_url'),
                             'is_active': True,
                         }
                     )
                     
                     if prac_created:
                         self.stdout.write(self.style.SUCCESS(
-                            f'    ✓ Created practitioner record (calendly_url: {practitioner.calendly_url or "not configured"})'
+                            f'    ✓ Created practitioner record'
                         ))
                     else:
-                        # CRITICAL: Do NOT overwrite existing calendly_url
                         # Only update display_name to reflect current user name
                         practitioner.display_name = f"{user.first_name} {user.last_name}"
                         practitioner.save(update_fields=['display_name', 'updated_at'])
                         self.stdout.write(
-                            f'    - Practitioner exists (calendly_url: {practitioner.calendly_url or "not configured"}, display_name updated)'
+                            f'    - Practitioner exists (display_name updated)'
                         )
                 
                 # Ensure role assignment

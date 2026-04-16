@@ -84,7 +84,7 @@ class TestAttendCreatesEncounter:
         assert appointment.encounter.status == EncounterStatusChoices.DRAFT
         assert appointment.encounter.patient_id == appointment.patient_id
         assert appointment.encounter.practitioner_id == appointment.practitioner_id
-        assert appointment.encounter.location_id == appointment.location_id
+        assert appointment.encounter.clinic_id == appointment.clinic_id
     
     def test_attend_with_custom_encounter_fields(self, admin_client, appointment):
         """Attend accepts optional encounter fields (encounter_type, chief_complaint, occurred_at)."""
@@ -257,7 +257,7 @@ class TestAttendValidations:
         assert appointment.encounter is None
     
     def test_attend_rejects_deleted_appointment(self, admin_client, appointment):
-        """Cannot attend soft-deleted appointment."""
+        """Soft-deleted appointment is not found — AppointmentManager excludes is_deleted=True."""
         appointment.status = 'confirmed'
         appointment.is_deleted = True
         appointment.deleted_at = timezone.now()
@@ -268,8 +268,9 @@ class TestAttendValidations:
         
         response = admin_client.post(endpoint, payload, format='json')
         
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'eliminada' in response.data['error'].lower()
+        # After AppointmentManager, deleted appointments are invisible (404), not rejected (400).
+        # This is the stronger, correct behavior: deleted resources do not exist from the API.
+        assert response.status_code == status.HTTP_404_NOT_FOUND
     
     def test_attend_rejects_invalid_encounter_type(self, admin_client, appointment):
         """Cannot attend with invalid encounter_type."""
@@ -313,10 +314,9 @@ class TestAttendAtomicity:
         
         # Monkeypatch Encounter.objects.create to raise an exception
         from apps.clinical.models import Encounter as EncounterModel
-        original_create = EncounterModel.objects.create
         
         def failing_create(*args, **kwargs):
-            raise Exception("Simulated encounter creation failure")
+            raise RuntimeError("Simulated encounter creation failure")
         
         monkeypatch.setattr(EncounterModel.objects, 'create', failing_create)
         
@@ -324,7 +324,7 @@ class TestAttendAtomicity:
         payload = {}
         
         # Call should fail
-        with pytest.raises(Exception, match="Simulated encounter creation failure"):
+        with pytest.raises(RuntimeError, match="Simulated encounter creation failure"):
             admin_client.post(endpoint, payload, format='json')
         
         # Verify appointment was NOT marked completed (transaction rolled back)

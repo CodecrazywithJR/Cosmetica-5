@@ -1,0 +1,17 @@
+# =============================================================================
+# Development & Security Analysis Dependencies
+# =============================================================================
+# These tools run ONLY in development and CI — never in production.
+# Install with: pip install -r requirements-dev.txt
+#
+# Runtime dependencies are in requirements.txt
+
+# --- Security Scanning (SAST) ------------------------------------------------
+bandit                  # Python static application security testing
+pip-audit               # Python dependency vulnerability scanner
+detect-secrets          # Pre-commit hook to prevent committing secrets
+semgrep                 # Advanced static security analysis (Python + Django)
+
+# --- Already in requirements.txt (listed here for reference) ------------------
+# pytest, pytest-django, pytest-cov, factory-boy  (testing)
+# black, ruff, isort  (formatting / linting)

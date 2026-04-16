@@ -1,9 +1,11 @@
 """
-Core models: app_settings, clinic_location
+Core models: app_settings, clinic
 Based on DOMAIN_MODEL.md section 1
 """
 import uuid
 from django.db import models
+
+from apps.core.managers import TenantManager
 
 
 class LanguageChoices(models.TextChoices):
@@ -54,12 +56,14 @@ class AppSettings(models.Model):
         return f"App Settings ({self.default_country_code}/{self.default_language})"
 
 
-class ClinicLocation(models.Model):
+class Clinic(models.Model):
     """
-    Clinic locations for multi-site support.
-    
+    Clinic entity for multi-site support.
+    Tenant-scoped: each clinic belongs to exactly one LegalEntity.
+
     Fields from DOMAIN_MODEL.md:
     - id: UUID PK
+    - legal_entity: FK to LegalEntity (tenant isolation)
     - name
     - address_line1: nullable
     - city: nullable
@@ -70,6 +74,12 @@ class ClinicLocation(models.Model):
     - created_at, updated_at
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    legal_entity = models.ForeignKey(
+        'legal.LegalEntity',
+        on_delete=models.PROTECT,
+        related_name='clinics',
+        help_text='Owning legal entity (tenant isolation).',
+    )
     name = models.CharField(max_length=255)
     address_line1 = models.CharField(max_length=255, blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
@@ -80,10 +90,16 @@ class ClinicLocation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Default manager — auto-filtered by current tenant
+    objects = TenantManager()
+
+    # Escape hatch — returns ALL rows regardless of tenant
+    unfiltered = models.Manager()
+
     class Meta:
         db_table = 'clinic_location'
-        verbose_name = 'Clinic Location'
-        verbose_name_plural = 'Clinic Locations'
+        verbose_name = 'Clinic'
+        verbose_name_plural = 'Clinics'
         indexes = [
             models.Index(fields=['is_active'], name='idx_clinic_location_active'),
         ]

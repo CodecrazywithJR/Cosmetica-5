@@ -4,8 +4,10 @@ Product models - Cosmetic product catalog.
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.core.tenant_model import TenantModel
 
-class Product(models.Model):
+
+class Product(TenantModel):
     """
     Product model - cosmetic products for POS.
     """

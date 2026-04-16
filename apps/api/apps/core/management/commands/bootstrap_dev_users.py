@@ -19,8 +19,7 @@ Example DEV_BOOTSTRAP_USERS format:
     "is_practitioner": true,
     "practitioner_data": {
       "display_name": "Dr. Admin",
-      "specialty": "Dermatology",
-      "calendly_url": "https://calendly.com/admin"
+      "specialty": "Dermatology"
     }
   }
 ]
@@ -209,7 +208,6 @@ class Command(BaseCommand):
                 display_name = user.email.split('@')[0]
 
         specialty = practitioner_data.get('specialty', 'Dermatology')
-        calendly_url = practitioner_data.get('calendly_url', '')
         role_type = practitioner_data.get('role_type', 'practitioner')
 
         # Create practitioner
@@ -217,7 +215,6 @@ class Command(BaseCommand):
             user=user,
             display_name=display_name,
             specialty=specialty,
-            calendly_url=calendly_url or None,  # Store None instead of empty string
             role_type=role_type,
             is_active=True,
         )

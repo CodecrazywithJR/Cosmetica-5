@@ -65,6 +65,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=150, blank=True, help_text='Last name of the user')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)  # Required for admin access
+    legal_entity = models.ForeignKey(
+        'legal.LegalEntity',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='users',
+        help_text='Legal entity this user belongs to. NULL for superusers.'
+    )
     must_change_password = models.BooleanField(
         default=False,
         help_text='If true, user must change password on next login'
@@ -85,9 +93,41 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=['email'], name='idx_user_email'),
             models.Index(fields=['is_active'], name='idx_user_active'),
         ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(is_superuser=True) | models.Q(legal_entity__isnull=False),
+                name='user_requires_legal_entity_unless_superuser',
+            ),
+        ]
     
     def __str__(self):
         return self.email
+
+    def clean(self):
+        super().clean()
+        if not self.is_superuser and not self.legal_entity_id:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({
+                'legal_entity': 'Non-superuser users must belong to a legal entity.'
+            })
+
+    def save(self, *args, **kwargs):
+        # Enforce legal_entity for non-superusers.
+        # When update_fields is set and legal_entity is NOT in it,
+        # skip the check so unrelated partial updates on legacy rows
+        # are not broken.
+        from django.core.exceptions import ValidationError
+        update_fields = kwargs.get('update_fields')
+        skip = (
+            update_fields is not None
+            and 'legal_entity' not in update_fields
+        )
+        if not skip and not self.is_superuser and not self.legal_entity_id:
+            raise ValidationError(
+                'Non-superuser users must have a legal_entity. '
+                'Set user.legal_entity before saving.'
+            )
+        super().save(*args, **kwargs)
 
 
 class RoleChoices(models.TextChoices):
@@ -264,12 +304,6 @@ class Practitioner(models.Model):
         help_text='Type of clinical role (practitioner, assistant, clinical_manager)'
     )
     specialty = models.CharField(max_length=100, default='Dermatology')
-    calendly_url = models.URLField(
-        max_length=500,
-        blank=True,
-        null=True,
-        help_text='Personal Calendly scheduling URL for this practitioner. If null, system uses CALENDLY_DEFAULT_URL from settings.'
-    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

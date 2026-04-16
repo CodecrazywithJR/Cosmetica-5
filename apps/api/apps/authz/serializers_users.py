@@ -13,6 +13,8 @@ from apps.authz.models import (
     PractitionerRoleChoices
 )
 
+SPECIAL_CHARS = '!@#$%^&*'
+
 
 class UserRoleSerializer(serializers.Serializer):
     """Serializer for user role information."""
@@ -110,7 +112,6 @@ class UserDetailSerializer(serializers.ModelSerializer):
                 'display_name': p.display_name,
                 'role_type': p.role_type,
                 'specialty': p.specialty,
-                'calendly_url': p.calendly_url,
                 'is_active': p.is_active,
             }
         return None
@@ -152,7 +153,24 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return value
-    
+
+    def validate(self, attrs):
+        """Enforce LE rules on user creation."""
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'legal_entity'):
+            le = request.user.legal_entity
+            # Block if acting user's LE is inactive
+            if le and not le.is_active:
+                raise serializers.ValidationError(
+                    'Cannot create users: this legal entity is currently inactive.'
+                )
+            # Non-superuser acting user must have an LE to assign
+            if not request.user.is_superuser and not le:
+                raise serializers.ValidationError(
+                    'Cannot create users: you do not belong to a legal entity.'
+                )
+        return attrs
+
     def validate_roles(self, value):
         """Validate roles exist."""
         if not value:
@@ -173,22 +191,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
             for field in required_fields:
                 if field not in value:
                     raise serializers.ValidationError(f"practitioner_data must include '{field}'")
-            
-            # Validate calendly_url if provided
-            if 'calendly_url' in value and value['calendly_url']:
-                url = value['calendly_url']
-                warnings = []
-                if not url.startswith('https://calendly.com/'):
-                    warnings.append("Calendly URL should start with 'https://calendly.com/'")
-                if '/' not in url.replace('https://calendly.com/', ''):
-                    warnings.append("Calendly URL should contain a scheduling slug")
-                
-                if warnings:
-                    # Store warnings in context for response
-                    if not hasattr(self, '_calendly_warnings'):
-                        self._calendly_warnings = []
-                    self._calendly_warnings.extend(warnings)
-        
         return value
     
     def create(self, validated_data):
@@ -206,6 +208,12 @@ class UserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'password': 'Password must be between 8 and 16 characters.'
             })
+        
+        # Inherit legal_entity from acting user (tenant isolation)
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'legal_entity_id'):
+            if request.user.legal_entity_id and 'legal_entity' not in validated_data:
+                validated_data['legal_entity'] = request.user.legal_entity
         
         # Create user with must_change_password=True
         user = User.objects.create_user(
@@ -226,7 +234,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 display_name=practitioner_data.get('display_name'),
                 role_type=practitioner_data.get('role_type', PractitionerRoleChoices.PRACTITIONER),
                 specialty=practitioner_data.get('specialty', 'Dermatology'),
-                calendly_url=practitioner_data.get('calendly_url'),
                 is_active=practitioner_data.get('is_active', True)
             )
         
@@ -239,14 +246,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
         """Generate a secure temporary password meeting policy requirements."""
         # Password policy: 8-16 chars, mix of upper, lower, digits, special
         length = 12
-        chars = string.ascii_uppercase + string.ascii_lowercase + string.digits + '!@#$%^&*'
+        chars = string.ascii_uppercase + string.ascii_lowercase + string.digits + SPECIAL_CHARS
         
         # Ensure at least one of each type
         password = [
             secrets.choice(string.ascii_uppercase),
             secrets.choice(string.ascii_lowercase),
             secrets.choice(string.digits),
-            secrets.choice('!@#$%^&*'),
+            secrets.choice(SPECIAL_CHARS),
         ]
         
         # Fill the rest randomly
@@ -304,48 +311,57 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     
     def validate_practitioner_data(self, value):
         """Validate practitioner data if provided."""
-        if value:
-            # Validate calendly_url if provided
-            if 'calendly_url' in value and value['calendly_url']:
-                url = value['calendly_url']
-                warnings = []
-                if not url.startswith('https://calendly.com/'):
-                    warnings.append("Calendly URL should start with 'https://calendly.com/'")
-                if '/' not in url.replace('https://calendly.com/', ''):
-                    warnings.append("Calendly URL should contain a scheduling slug")
-                
-                if warnings:
-                    # Store warnings in context for response
-                    if not hasattr(self, '_calendly_warnings'):
-                        self._calendly_warnings = []
-                    self._calendly_warnings.extend(warnings)
-        
         return value
     
     def validate(self, attrs):
-        """Validate that we're not removing the last active admin."""
+        """Validate last-admin-per-LegalEntity and self-deactivation rules."""
+        request = self.context.get('request')
+        acting_user = request.user if request else None
+
         if 'is_active' in attrs or 'roles' in attrs:
-            # Get current admin users
-            admin_role = Role.objects.get(name=RoleChoices.ADMIN)
-            active_admins = User.objects.filter(
-                is_active=True,
-                user_roles__role=admin_role
-            ).exclude(id=self.instance.id)
-            
-            # Check if we're deactivating or removing admin role from user
             is_deactivating = attrs.get('is_active') is False and self.instance.is_active
             is_removing_admin = (
-                'roles' in attrs and 
-                RoleChoices.ADMIN not in attrs.get('roles', []) and
-                self.instance.user_roles.filter(role__name=RoleChoices.ADMIN).exists()
+                'roles' in attrs
+                and RoleChoices.ADMIN not in attrs.get('roles', [])
+                and self.instance.user_roles.filter(role__name=RoleChoices.ADMIN).exists()
             )
-            
-            # If this is the last admin, prevent change
-            if (is_deactivating or is_removing_admin) and active_admins.count() == 0:
-                raise serializers.ValidationError(
-                    "Cannot deactivate or remove admin role from the last active administrator."
-                )
-        
+
+            if is_deactivating or is_removing_admin:
+                self._check_self_deactivation(acting_user)
+                self._check_last_admin(acting_user)
+
+        return attrs
+
+    def _check_self_deactivation(self, acting_user):
+        """Rule: Admin cannot deactivate themselves."""
+        if (
+            acting_user
+            and acting_user.id == self.instance.id
+            and not acting_user.is_superuser
+        ):
+            raise serializers.ValidationError(
+                'Admin cannot deactivate or remove admin role from themselves.'
+            )
+
+    def _check_last_admin(self, acting_user):
+        """Rule: Last admin per LegalEntity."""
+        admin_role = Role.objects.get(name=RoleChoices.ADMIN)
+        le = self.instance.legal_entity
+        admin_qs = User.objects.filter(
+            is_active=True,
+            user_roles__role=admin_role,
+        )
+        if le:
+            admin_qs = admin_qs.filter(legal_entity=le)
+        admin_qs = admin_qs.exclude(id=self.instance.id)
+
+        if admin_qs.count() == 0 and not (acting_user and acting_user.is_superuser):
+            raise serializers.ValidationError(
+                'Cannot deactivate or remove admin role from the '
+                'last active administrator of this legal entity. '
+                'Only a superuser can perform this action.'
+            )
+
         return attrs
     
     def update(self, instance, validated_data):
@@ -382,7 +398,6 @@ class UserUpdateSerializer(serializers.ModelSerializer):
                     display_name=practitioner_data.get('display_name', instance.email),
                     role_type=practitioner_data.get('role_type', PractitionerRoleChoices.PRACTITIONER),
                     specialty=practitioner_data.get('specialty', 'Dermatology'),
-                    calendly_url=practitioner_data.get('calendly_url'),
                     is_active=practitioner_data.get('is_active', True)
                 )
         
@@ -429,13 +444,13 @@ class PasswordResetSerializer(serializers.Serializer):
     def _generate_temporary_password(self):
         """Generate a secure temporary password meeting policy requirements."""
         length = 12
-        chars = string.ascii_uppercase + string.ascii_lowercase + string.digits + '!@#$%^&*'
+        chars = string.ascii_uppercase + string.ascii_lowercase + string.digits + SPECIAL_CHARS
         
         password = [
             secrets.choice(string.ascii_uppercase),
             secrets.choice(string.ascii_lowercase),
             secrets.choice(string.digits),
-            secrets.choice('!@#$%^&*'),
+            secrets.choice(SPECIAL_CHARS),
         ]
         
         password += [secrets.choice(chars) for _ in range(length - 4)]

@@ -15,6 +15,7 @@ from django.core.cache import cache
 from rest_framework.test import APIClient
 from rest_framework import status
 from apps.website.models import Lead
+from tests.conftest import TEST_PASSWORD
 
 
 @pytest.mark.django_db
@@ -39,25 +40,18 @@ class TestLeadThrottling:
         """Clean up after each test."""
         cache.clear()
     
-    @override_settings(
-        REST_FRAMEWORK={
-            'DEFAULT_THROTTLE_RATES': {
-                'lead_submissions': '5/hour',  # Hourly limit
-                'lead_burst': '3/min',  # Burst limit (will trigger first)
-            }
-        }
-    )
     def test_hourly_rate_limit_returns_429(self):
         """
         GIVEN a public user submitting lead forms
-        WHEN they exceed the hourly rate limit (5/hour in test)
-        THEN the 6th request returns 429 Too Many Requests
-        
-        NOTE: Burst limit (3/min) will allow 3 requests,
-        so we test both burst and hourly limits separately.
+        WHEN they exceed the burst rate limit (2/min per actual settings)
+        THEN the 3rd request returns 429 Too Many Requests
+
+        NOTE: DRF api_settings caches throttle rates and does not reload them
+        from override_settings; we therefore test against the real 2/min burst
+        rate configured in settings.py ('lead_burst': '2/min').
         """
-        # First 3 requests should succeed (within burst limit)
-        for i in range(3):
+        # First 2 requests should succeed (within 2/min burst limit)
+        for i in range(2):
             response = self.client.post(
                 self.url,
                 data={**self.valid_payload, 'email': f'test{i}@example.com'},
@@ -66,8 +60,8 @@ class TestLeadThrottling:
             assert response.status_code == status.HTTP_201_CREATED, (
                 f"Request {i+1} failed with {response.status_code}: {response.data}"
             )
-        
-        # 4th request should be burst-throttled (exceeded 3/min)
+
+        # 3rd request should be burst-throttled (exceeded 2/min)
         response = self.client.post(
             self.url,
             data={**self.valid_payload, 'email': 'test999@example.com'},
@@ -161,7 +155,7 @@ class TestAuthenticatedEndpointsNotThrottled:
         
         self.user = User.objects.create_user(
             email='user@example.com',
-            password='testpass123'
+            password=TEST_PASSWORD
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)

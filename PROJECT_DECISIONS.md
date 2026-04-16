@@ -550,3 +550,82 @@ Agenda
 Este documento define completamente el ERP clínico.
 Es la referencia única y definitiva del proyecto.
 
+---
+
+## 15. Treatment Session Detail UX v1
+
+**Decided: 2026-03-03**
+
+### Rules
+
+- **Completed sessions are immutable.** Once completed, no edits allowed.
+- **No reopen logic.** There is no path from completed/cancelled back to draft.
+- **Draft sessions autosave** notes with 1.5s debounce.
+- **Photos are optional** — UI-only local state until a backend upload endpoint is implemented.
+- **Treatment sessions are NOT linked to Encounters.** They are a separate workflow under Treatment Plans.
+- **All UI strings use next-intl** namespace `"treatmentSession"` across all 6 locale files (en, es, fr, ru, uk, hy).
+
+### Page location
+
+`/[locale]/clinical/treatment-sessions/[id]/`
+
+### Hooks
+
+`use-treatment-sessions.ts` provides:
+- `useTreatmentSession(id)` — fetch single session
+- `useUpdateTreatmentSession()` — PATCH notes/performed_at (draft only)
+- `useCompleteTreatmentSession()` — POST complete action
+- `useCancelTreatmentSession()` — POST cancel action
+
+### State transitions
+
+```
+draft → completed  (irreversible)
+draft → cancelled  (irreversible)
+```
+
+No other transitions exist.
+
+---
+
+## 16. Admin Panel — Legal Entity Management
+
+**Date**: 2025-01-XX
+**Status**: Implemented
+
+### Architecture
+
+The admin panel lives under `/[locale]/admin/` and is visible in the sidebar only for users with `is_superuser` or `ADMIN` role.
+
+The `SuperuserHeaderBar` (tenant-plane switcher) is **kept** — it is infrastructure, not redundant with the admin panel.
+
+### Sidebar
+
+A new "Administración" section appears below the main navigation with a visual separator. First item: **Legal Entities**.
+
+### Pages
+
+| Route | Purpose |
+|---|---|
+| `/admin/legal-entities` | List all legal entities (table with status badges) |
+| `/admin/legal-entities/new` | Create form — generates admin user + temp password |
+| `/admin/legal-entities/[id]/edit` | Edit form — update entity fields + toggle active |
+
+### Hooks
+
+`use-legal-entities.ts` provides:
+- `useLegalEntities()` — GET list
+- `useLegalEntity(id)` — GET detail
+- `useCreateLegalEntity()` — POST (returns `temporary_password`)
+- `useUpdateLegalEntity()` — PATCH
+
+### Access Control
+
+- **Sidebar visibility**: `user.is_superuser || hasRole(ROLES.ADMIN)`
+- **Page guard**: Same check; redirects to home if unauthorized
+- **Backend**: Endpoints restricted to superuser via Django permissions
+
+### i18n
+
+All strings under `admin.legalEntities` namespace across 6 locales (en, es, fr, ru, uk, hy).
+

@@ -102,7 +102,8 @@
         "status": "État",
         "birthDate": "Date Naiss.",
         "sex": "Sexe",
-        "actions": "Actions"      },
+        "actions": "Actions"
+      },
       "warnings": {
         "incompleteConsents": "Consentements légaux requis",
         "missingDocuments": "Documents en attente",
@@ -144,7 +145,9 @@
       "basic": "Informations de Base",
       "identity": "Identification Officielle",
       "emergency": "Contact d'Urgence",
-      "consent": "Consentements légaux",      "consentDocuments": "Documents de Consentement",      "clinicalActions": "Actions cliniques"
+      "consent": "Consentements légaux",
+      "consentDocuments": "Documents de Consentement",
+      "clinicalActions": "Actions cliniques"
     },
     "fields": {
       "first_name": {
@@ -205,7 +208,8 @@
       "bannerTitle": "Consentements légaux requis",
       "bannerMessage": "Ce patient n'a pas accepté les consentements légaux nécessaires. Les consultations cliniques ne peuvent pas être créées tant que la politique de confidentialité et les conditions générales ne sont pas acceptées.",
       "reviewCta": "Examiner et accepter les consentements"
-    },    "consentDocuments": {
+    },
+    "consentDocuments": {
       "missingDocumentsBanner": {
         "title": "Documents de Consentement en Attente",
         "message": "Certains consentements documentaires n'ont pas encore de fichier numérisé joint. Vous pouvez les télécharger depuis la section documents lorsqu'ils sont disponibles."
@@ -247,7 +251,8 @@
         "generic": "Certains documents n'ont pas pu être traités correctement"
       },
       "uploadWarningsTitle": "Avertissements de documents"
-    },    "documentType": {
+    },
+    "documentType": {
       "dni": "Carte d'identité nationale",
       "passport": "Passeport",
       "other": "Autre"
@@ -324,7 +329,8 @@
       "confirm": "Confirmer",
       "checkIn": "Enregistrer",
       "complete": "Terminer",
-      "cancel": "Annuler"
+      "cancel": "Annuler",
+      "startEncounter": "Consultation"
     },
     "summary": {
       "totalAppointments": "Total des rendez-vous"
@@ -431,7 +437,9 @@
       "create": "Créer Utilisateur",
       "save": "Enregistrer",
       "cancel": "Annuler",
-      "edit": "Modifier",      "delete": "Supprimer",      "resetPassword": "Réinitialiser le Mot de Passe",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "resetPassword": "Réinitialiser le Mot de Passe",
       "copyPassword": "Copier le Mot de Passe"
     },
     "practitioner": {
@@ -488,6 +496,264 @@
       "title": "Accès Non Autorisé",
       "description": "Vous n'avez pas la permission d'accéder à cette section. Seuls les administrateurs peuvent gérer les utilisateurs.",
       "action": "Aller à l'Accueil"
+    }
+  },
+  "system": {
+    "badge": {
+      "system": "Système"
+    },
+    "header": {
+      "operating_in": "Opérant dans : {name}"
+    },
+    "actions": {
+      "select_legal_entity": "Sélectionner une Entité Légale",
+      "switch_legal_entity": "Changer d’Entité Légale",
+      "return_to_system": "Retour au Système"
+    },
+    "selector": {
+      "title": "Sélectionner une Entité Légale",
+      "search_placeholder": "Rechercher par nom, pays ou ville...",
+      "no_results": "Aucune entité légale trouvée",
+      "create_first": "Créer la Première Entité",
+      "manage": "Gérer les Entités Juridiques"
+    },
+    "guard": {
+      "title": "Sélectionnez une Entité Légale pour opérer",
+      "description": "En tant qu’administrateur système, vous devez sélectionner une entité légale avant d’accéder aux fonctionnalités métier."
+    }
+  },
+  "proposals": {
+    "detail": {
+      "title": "Détail de la Proposition",
+      "info": "Informations sur la Proposition",
+      "patient": "Patient",
+      "practitioner": "Praticien",
+      "created": "Créée",
+      "validUntil": "Valide jusqu'au",
+      "sentAt": "Envoyée",
+      "acceptedAt": "Acceptée",
+      "cancellationReason": "Motif d'annulation",
+      "notes": "Notes",
+      "lines": "Lignes de Traitement",
+      "treatmentName": "Traitement",
+      "quantity": "Qté",
+      "unitPrice": "Prix unitaire",
+      "lineTotal": "Total",
+      "total": "Total",
+      "noLines": "Aucune ligne de traitement.",
+      "saleCreated": "Vente créée",
+      "readonlyMessage": {
+        "cancelled": "Cette proposition a été annulée.",
+        "expired": "Cette proposition a expiré."
+      }
+    },
+    "status": {
+      "draft": "Brouillon",
+      "sent": "Envoyée",
+      "accepted": "Acceptée",
+      "cancelled": "Annulée",
+      "expired": "Expirée"
+    },
+    "actions": {
+      "backToList": "Retour aux Propositions",
+      "send": "Envoyer la Proposition",
+      "sending": "Envoi…",
+      "accept": "Accepter la Proposition",
+      "accepting": "Acceptation…",
+      "confirmAccept": "Confirmer l'Acceptation",
+      "cancel": "Annuler la Proposition",
+      "cancelling": "Annulation…",
+      "back": "Retour"
+    },
+    "modals": {
+      "acceptTitle": "Accepter la Proposition",
+      "acceptDescription": "Accepter cette proposition créera une Vente et des Plans de Traitement. Cette action est irréversible.",
+      "legalEntityLabel": "ID de l'Entité Légale",
+      "legalEntityPlaceholder": "Saisissez l'UUID de l'entité légale",
+      "cancelTitle": "Annuler la Proposition",
+      "cancelDescription": "Cette action est irréversible. La proposition sera définitivement annulée.",
+      "cancellationReasonLabel": "Motif d'annulation",
+      "cancellationReasonPlaceholder": "Saisissez le motif d'annulation…",
+      "confirmCancel": "Confirmer l'Annulation"
+    },
+    "errors": {
+      "loadFailed": "Échec du chargement de la proposition."
+    }
+  },
+  "patient360": {
+    "tabs": {
+      "overview": "Aperçu",
+      "encounters": "Consultations",
+      "treatmentPlans": "Plans de Traitement",
+      "proposals": "Propositions",
+      "sales": "Ventes"
+    },
+    "comingSoon": "Bientôt disponible",
+    "overview": {
+      "personalData": "Données Personnelles",
+      "notes": "Notes",
+      "noNotes": "Aucune note enregistrée.",
+      "activeCoverage": "Couverture Active",
+      "providerName": "Fournisseur",
+      "memberNumber": "Numéro de membre",
+      "socialSecurityNumber": "Numéro de sécurité sociale",
+      "validFrom": "Valide depuis",
+      "financialKpis": "KPIs Financiers",
+      "proposalsDraft": "Propositions brouillon",
+      "proposalsSent": "Propositions envoyées",
+      "lastSaleDate": "Dernière vente",
+      "clinicalKpis": "KPIs Cliniques",
+      "totalEncounters": "Consultations totales",
+      "activeTreatmentPlans": "Plans de traitement actifs",
+      "errorLoading": "Échec du chargement de l'aperçu patient.",
+      "clinicalHistory": "Historique Clinique",
+      "allStatuses": "Tous les statuts",
+      "dateFrom": "Du",
+      "dateTo": "Au",
+      "clearFilters": "Effacer",
+      "pageOf": "Page {page} sur {total}",
+      "results": "{count} résultats",
+      "previous": "Précédent",
+      "next": "Suivant",
+      "viewEncounter": "Voir",
+      "errorLoadingEncounters": "Échec du chargement des consultations.",
+      "noEncounters": "Aucune consultation trouvée.",
+      "financialHistory": "Historique Financier",
+      "viewProposal": "Voir",
+      "errorLoadingProposals": "Échec du chargement des propositions.",
+      "noProposals": "Aucune proposition trouvée.",
+      "colDate": "Date",
+      "colStatus": "Statut",
+      "colTotal": "Total",
+      "colValidUntil": "Valide jusqu'au",
+      "colPractitioner": "Praticien"
+    },
+    "treatmentPlans": "Plans de Traitement",
+    "noTreatmentPlans": "Aucun plan de traitement trouvé."
+  },
+  "treatmentPlans": {
+    "status": {
+      "draft": "Brouillon",
+      "active": "Actif",
+      "completed": "Terminé",
+      "cancelled": "Annulé"
+    },
+    "colDate": "Date",
+    "colStatus": "Statut",
+    "colSessions": "Séances",
+    "colRemaining": "Restantes",
+    "colProgress": "Progrès",
+    "view": "Voir",
+    "errorLoading": "Échec du chargement des plans de traitement."
+  },
+  "treatmentSession": {
+    "pageTitle": "Séance de Traitement",
+    "header": {
+      "patient": "Patient",
+      "package": "Forfait",
+      "practitioner": "Praticien",
+      "performedAt": "Réalisée le"
+    },
+    "status": {
+      "draft": "Brouillon",
+      "completed": "Terminée",
+      "cancelled": "Annulée"
+    },
+    "actions": {
+      "complete": "Terminer la Séance",
+      "cancel": "Annuler la Séance",
+      "back": "Retour"
+    },
+    "confirm": {
+      "completeTitle": "Terminer la Séance",
+      "completeMessage": "Confirmer que cette séance a été réalisée ? Cette action est irréversible.",
+      "cancelTitle": "Annuler la Séance",
+      "cancelMessage": "Annuler cette séance ? Cette action est irréversible.",
+      "yes": "Confirmer",
+      "no": "Retour"
+    },
+    "editor": {
+      "title": "Notes Cliniques",
+      "placeholder": "Rédiger des notes cliniques pour cette séance...",
+      "saving": "Enregistrement...",
+      "saved": "Enregistré"
+    },
+    "photos": {
+      "title": "Photos",
+      "dropHere": "Déposer les images ici",
+      "uploadHint": "ou cliquez pour sélectionner des fichiers",
+      "noPhotos": "Aucune photo jointe pour le moment."
+    },
+    "error": {
+      "loading": "Échec du chargement de la séance de traitement.",
+      "completing": "Échec de la finalisation de la séance.",
+      "cancelling": "Échec de l'annulation de la séance."
+    }
+  },
+  "admin": {
+    "section": "Administration",
+    "legalEntities": {
+      "title": "Entités Juridiques",
+      "pageTitle": "Entités Juridiques",
+      "createTitle": "Nouvelle Entité Juridique",
+      "editTitle": "Modifier l'Entité Juridique",
+      "columns": {
+        "tradeName": "Nom Commercial",
+        "legalName": "Raison Sociale",
+        "country": "Pays",
+        "siret": "SIRET",
+        "active": "Active",
+        "users": "Utilisateurs",
+        "actions": "Actions"
+      },
+      "empty": "Aucune entité juridique trouvée.",
+      "emptyHint": "Créez votre première entité juridique pour commencer.",
+      "create": "Nouvelle Entité Juridique",
+      "edit": "Modifier",
+      "view": "Voir",
+      "form": {
+        "sectionIdentity": "Identité",
+        "sectionAddress": "Adresse",
+        "sectionContact": "Contact",
+        "sectionAdmin": "Utilisateur Administrateur",
+        "sectionStatus": "Statut",
+        "tradeName": "Nom Commercial",
+        "legalName": "Raison Sociale",
+        "siret": "SIRET",
+        "siren": "SIREN",
+        "vatNumber": "Numéro de TVA",
+        "countryCode": "Code Pays",
+        "addressLine1": "Adresse Ligne 1",
+        "addressLine2": "Adresse Ligne 2",
+        "postalCode": "Code Postal",
+        "city": "Ville",
+        "legalEmail": "Email Juridique",
+        "phone": "Téléphone",
+        "currency": "Devise",
+        "timezone": "Fuseau Horaire",
+        "isActive": "Active",
+        "adminEmail": "Email Administrateur",
+        "adminFirstName": "Prénom Administrateur",
+        "adminLastName": "Nom Administrateur"
+      },
+      "actions": {
+        "create": "Créer l'Entité",
+        "save": "Enregistrer",
+        "cancel": "Annuler"
+      },
+      "messages": {
+        "created": "Entité juridique créée avec succès.",
+        "updated": "Entité juridique mise à jour avec succès.",
+        "errorCreate": "Échec de la création de l'entité juridique.",
+        "errorUpdate": "Échec de la mise à jour de l'entité juridique.",
+        "errorLoad": "Échec du chargement des entités juridiques.",
+        "tempPasswordNotice": "Un mot de passe temporaire a été généré pour l'utilisateur administrateur. Copiez-le maintenant — il ne sera plus affiché.",
+        "goToList": "Aller aux Entités Légales"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      }
     }
   }
 }

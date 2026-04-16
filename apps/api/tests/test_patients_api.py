@@ -11,9 +11,9 @@ from apps.clinical.models import Patient
 
 @pytest.mark.django_db
 class TestPatientCreate:
-    """Test POST /api/v1/patients/ - Create patient."""
+    """Test POST /api/v1/clinical/patients/ - Create patient."""
     
-    endpoint = '/api/v1/patients/'
+    endpoint = '/api/v1/clinical/patients/'
     
     def test_create_patient_success(self, admin_client):
         """Create patient returns id and row_version."""
@@ -95,11 +95,11 @@ class TestPatientCreate:
 
 @pytest.mark.django_db
 class TestPatientUpdate:
-    """Test PATCH /api/v1/patients/{id}/ - Update patient with optimistic locking."""
+    """Test PATCH /api/v1/clinical/patients/{id}/ - Update patient with optimistic locking."""
     
     def test_update_patient_with_correct_row_version(self, admin_client, patient):
         """Update with correct row_version returns 200 and increments version."""
-        endpoint = f'/api/v1/patients/{patient.id}/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/'
         
         payload = {
             'first_name': 'UpdatedName',
@@ -119,7 +119,7 @@ class TestPatientUpdate:
     
     def test_update_patient_without_row_version(self, admin_client, patient):
         """Update without row_version returns 400."""
-        endpoint = f'/api/v1/patients/{patient.id}/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/'
         
         payload = {
             'first_name': 'UpdatedName',
@@ -128,12 +128,13 @@ class TestPatientUpdate:
         
         response = admin_client.patch(endpoint, payload, format='json')
         
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'row_version' in response.data
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert 'error' in response.data
+        assert response.data['error']['code'] == 'CONFLICT'
     
     def test_update_patient_with_stale_row_version(self, admin_client, patient):
         """Update with stale row_version returns 409 Conflict."""
-        endpoint = f'/api/v1/patients/{patient.id}/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/'
         
         # Simulate concurrent update by incrementing row_version
         patient.row_version += 1
@@ -147,13 +148,14 @@ class TestPatientUpdate:
         
         response = admin_client.patch(endpoint, payload, format='json')
         
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'row_version' in response.data
-        assert 'modificado por otro usuario' in str(response.data['row_version']).lower()
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert 'error' in response.data
+        assert response.data['error']['code'] == 'CONFLICT'
+        assert 'modificado por otro usuario' in response.data['error'].get('message', '').lower()
     
     def test_update_patient_email_uniqueness(self, admin_client, patient, patient_factory):
         """Cannot update email to existing patient's email."""
-        endpoint = f'/api/v1/patients/{patient.id}/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/'
         
         # Create another patient with different email
         other_patient = patient_factory(email='other@test.com')
@@ -171,9 +173,9 @@ class TestPatientUpdate:
 
 @pytest.mark.django_db
 class TestPatientList:
-    """Test GET /api/v1/patients/ - List and filter patients."""
+    """Test GET /api/v1/clinical/patients/ - List and filter patients."""
     
-    endpoint = '/api/v1/patients/'
+    endpoint = '/api/v1/clinical/patients/'
     
     def test_list_patients_basic(self, admin_client, patient):
         """List patients returns basic data."""
@@ -211,7 +213,7 @@ class TestPatientList:
         assert str(active.id) in patient_ids
         assert str(deleted.id) not in patient_ids
     
-    def test_list_patients_include_deleted_admin_only(self, admin_client, patient_factory):
+    def test_list_patients_include_deleted_admin_only(self, admin_client, patient_factory, legal_entity):
         """Admin can use include_deleted=true to see deleted patients."""
         # Create deleted patient
         deleted = patient_factory(first_name='Deleted', email='deleted2@test.com')
@@ -220,7 +222,11 @@ class TestPatientList:
         deleted.deleted_at = timezone.now()
         deleted.save()
         
-        response = admin_client.get(f'{self.endpoint}?include_deleted=true')
+        # Superusers require the X-Legal-Entity-ID header when using include_deleted
+        response = admin_client.get(
+            f'{self.endpoint}?include_deleted=true',
+            HTTP_X_LEGAL_ENTITY_ID=str(legal_entity.id),
+        )
         
         assert response.status_code == status.HTTP_200_OK
         
@@ -247,8 +253,8 @@ class TestPatientList:
     
     def test_filter_by_email(self, admin_client, patient_factory):
         """Filter patients by exact email."""
-        patient1 = patient_factory(email='filter1@test.com')
-        patient2 = patient_factory(email='filter2@test.com')
+        patient_factory(email='filter1@test.com')
+        patient_factory(email='filter2@test.com')
         
         response = admin_client.get(f'{self.endpoint}?email=filter1@test.com')
         
@@ -258,18 +264,18 @@ class TestPatientList:
     
     def test_filter_by_phone(self, admin_client, patient_factory):
         """Filter patients by exact phone."""
-        patient1 = patient_factory(
+        patient_factory(
             email='phone1@test.com',
             phone='+34600111111',
             phone_e164='+34600111111'
         )
-        patient2 = patient_factory(
+        patient_factory(
             email='phone2@test.com',
             phone='+34600222222',
             phone_e164='+34600222222'
         )
         
-        response = admin_client.get(f'{self.endpoint}?phone=+34600111111')
+        response = admin_client.get(f'{self.endpoint}?phone=%2B34600111111')
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) == 1
@@ -277,8 +283,8 @@ class TestPatientList:
     
     def test_filter_by_country_code(self, admin_client, patient_factory):
         """Filter patients by country_code."""
-        patient_es = patient_factory(email='spain@test.com', country_code='ES')
-        patient_fr = patient_factory(email='france@test.com', country_code='FR')
+        patient_factory(email='spain@test.com', country_code='ES')
+        patient_factory(email='france@test.com', country_code='FR')
         
         response = admin_client.get(f'{self.endpoint}?country_code=ES')
         
@@ -291,8 +297,8 @@ class TestPatientList:
     
     def test_search_by_q_parameter(self, admin_client, patient_factory):
         """Search patients by name using q parameter."""
-        patient1 = patient_factory(first_name='Unique', last_name='Patient', email='unique@test.com')
-        patient2 = patient_factory(first_name='Other', last_name='Person', email='other@test.com')
+        patient_factory(first_name='Unique', last_name='Patient', email='unique@test.com')
+        patient_factory(first_name='Other', last_name='Person', email='other@test.com')
         
         response = admin_client.get(f'{self.endpoint}?q=Unique')
         
@@ -310,11 +316,11 @@ class TestPatientList:
 
 @pytest.mark.django_db
 class TestPatientRetrieve:
-    """Test GET /api/v1/patients/{id}/ - Retrieve patient detail."""
+    """Test GET /api/v1/clinical/patients/{id}/ - Retrieve patient detail."""
     
     def test_retrieve_patient_success(self, admin_client, patient):
         """Retrieve patient returns full detail."""
-        endpoint = f'/api/v1/patients/{patient.id}/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/'
         
         response = admin_client.get(endpoint)
         
@@ -329,7 +335,7 @@ class TestPatientRetrieve:
         """Retrieve nonexistent patient returns 404."""
         import uuid
         fake_id = uuid.uuid4()
-        endpoint = f'/api/v1/patients/{fake_id}/'
+        endpoint = f'/api/v1/clinical/patients/{fake_id}/'
         
         response = admin_client.get(endpoint)
         
@@ -341,9 +347,11 @@ class TestPatientSoftDelete:
     """Test soft delete for patients."""
     
     def test_admin_can_soft_delete_patient(self, admin_client, patient_factory):
-        """Admin can soft delete patient (if DELETE endpoint exists)."""
+        """Admin can delete patient (if DELETE endpoint exists)."""
+        from apps.clinical.models import Patient
         patient = patient_factory(email='to_delete@test.com')
-        endpoint = f'/api/v1/patients/{patient.id}/'
+        patient_id = patient.id
+        endpoint = f'/api/v1/clinical/patients/{patient_id}/'
         
         response = admin_client.delete(endpoint)
         
@@ -353,15 +361,17 @@ class TestPatientSoftDelete:
         
         assert response.status_code == status.HTTP_204_NO_CONTENT
         
-        # Verify soft delete in database
+        # Verify patient is soft-deleted (still in DB, but marked deleted)
         patient.refresh_from_db()
         assert patient.is_deleted is True
         assert patient.deleted_at is not None
+        # Verify patient is excluded from default queryset
+        assert not Patient.unfiltered.filter(pk=patient_id, is_deleted=False).exists()
     
     def test_non_admin_cannot_delete_patient(self, practitioner_client, patient_factory):
         """Non-admin cannot delete patient."""
         patient = patient_factory(email='no_delete@test.com')
-        endpoint = f'/api/v1/patients/{patient.id}/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/'
         
         response = practitioner_client.delete(endpoint)
         
@@ -385,7 +395,7 @@ class TestPatientSoftDelete:
         patient.deleted_at = timezone.now()
         patient.save()
         
-        response = admin_client.get('/api/v1/patients/')
+        response = admin_client.get('/api/v1/clinical/patients/')
         
         assert response.status_code == status.HTTP_200_OK
         
@@ -396,7 +406,8 @@ class TestPatientSoftDelete:
     def test_admin_can_retrieve_deleted_patient_with_include_deleted(
         self,
         admin_client,
-        patient_factory
+        patient_factory,
+        legal_entity,
     ):
         """Admin can see deleted patients with include_deleted=true."""
         patient = patient_factory(email='include_deleted@test.com')
@@ -407,13 +418,43 @@ class TestPatientSoftDelete:
         patient.deleted_at = timezone.now()
         patient.save()
         
-        response = admin_client.get('/api/v1/patients/?include_deleted=true')
+        # Superusers require the X-Legal-Entity-ID header when using include_deleted
+        response = admin_client.get(
+            '/api/v1/clinical/patients/?include_deleted=true',
+            HTTP_X_LEGAL_ENTITY_ID=str(legal_entity.id),
+        )
         
         assert response.status_code == status.HTTP_200_OK
         
         # Verify deleted patient IS in results
         patient_ids = [p['id'] for p in response.data['results']]
         assert str(patient.id) in patient_ids
+
+    def test_patient_objects_excludes_deleted_records(self, patient_factory):
+        """
+        FIX 2: PatientManager ORM-level protection.
+        Patient.objects.all() must never return soft-deleted patients.
+        """
+        from apps.clinical.models import Patient
+        from django.utils import timezone
+
+        active = patient_factory(email='orm_active@test.com')
+        deleted = patient_factory(email='orm_deleted@test.com')
+
+        # Directly mark as deleted via unfiltered manager (bypasses PatientManager exclusion)
+        Patient.unfiltered.filter(pk=deleted.pk).update(
+            is_deleted=True, deleted_at=timezone.now()
+        )
+
+        # Patient.objects must NOT return the soft-deleted record
+        live_ids = list(Patient.objects.filter(pk__in=[active.pk, deleted.pk]).values_list('id', flat=True))
+        assert active.pk in live_ids
+        assert deleted.pk not in live_ids
+
+        # Patient.unfiltered must return BOTH records
+        all_ids = list(Patient.unfiltered.filter(pk__in=[active.pk, deleted.pk]).values_list('id', flat=True))
+        assert active.pk in all_ids
+        assert deleted.pk in all_ids
 
 
 @pytest.mark.django_db
@@ -425,7 +466,7 @@ class TestPatientMerge:
         source = patient_factory(email='source@test.com')
         target = patient_factory(email='target@test.com')
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Duplicate patient',

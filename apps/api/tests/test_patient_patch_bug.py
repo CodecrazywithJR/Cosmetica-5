@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from apps.clinical.models import Patient
 from apps.authz.models import Role, RoleChoices
 from datetime import date
+from tests.conftest import TEST_PASSWORD
 
 User = get_user_model()
 
@@ -20,7 +21,7 @@ class TestPatientPatchBug:
         """Create admin user"""
         user = User.objects.create_user(
             email='admin@test.com',
-            password='test123',
+            password=TEST_PASSWORD,
             first_name='Admin',
             last_name='User'
         )

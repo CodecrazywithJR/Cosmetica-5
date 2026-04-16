@@ -21,7 +21,6 @@ interface FormData {
   create_practitioner: boolean;
   display_name: string;
   specialty: string;
-  calendly_url: string;
 }
 
 interface PasswordResponse {
@@ -47,11 +46,9 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
     create_practitioner: false,
     display_name: '',
     specialty: '',
-    calendly_url: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [calendlyWarnings, setCalendlyWarnings] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
@@ -80,11 +77,6 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
         delete newErrors[field];
         return newErrors;
       });
-    }
-
-    // Clear calendly warnings when URL changes
-    if (field === 'calendly_url') {
-      setCalendlyWarnings([]);
     }
   };
 
@@ -149,19 +141,6 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
       }
     }
     
-    // Calendly URL validation (blocking errors if invalid format)
-    // Validate regardless of checkbox state if URL is provided
-    if (formData.calendly_url.trim()) {
-      if (!formData.calendly_url.startsWith('https://calendly.com/')) {
-        newErrors.calendly_url = t('validation.calendlyUrlFormat');
-      } else {
-        const parts = formData.calendly_url.replace('https://calendly.com/', '').split('/');
-        if (parts.length < 2 || !parts[0] || !parts[1]) {
-          newErrors.calendly_url = t('validation.calendlyUrlSlug');
-        }
-      }
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -185,17 +164,14 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
         is_active: formData.is_active,
       };
 
-      // Add practitioner data if checkbox is checked OR if calendly_url has value
-      if (formData.create_practitioner || formData.calendly_url.trim()) {
+      // Add practitioner data if checkbox is checked
+      if (formData.create_practitioner) {
         const practitionerData: any = {};
         if (formData.display_name.trim()) {
           practitionerData.display_name = formData.display_name.trim();
         }
         if (formData.specialty.trim()) {
           practitionerData.specialty = formData.specialty.trim();
-        }
-        if (formData.calendly_url.trim()) {
-          practitionerData.calendly_url = formData.calendly_url.trim();
         }
         if (Object.keys(practitionerData).length > 0) {
           payload.practitioner_data = practitionerData;
@@ -484,38 +460,7 @@ export default function CreateUserPage({ params: { locale } }: { params: { local
                 </>
               )}
 
-              {/* Calendly URL - SIEMPRE VISIBLE si showPractitionerSection es true */}
-              <div className="mb-4">
-                <label htmlFor="calendly_url" className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('practitioner.calendlyUrl')}
-                </label>
-                <input
-                  type="url"
-                  id="calendly_url"
-                  value={formData.calendly_url}
-                  onChange={(e) => handleInputChange('calendly_url', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-md ${
-                    errors.calendly_url ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  disabled={isSubmitting}
-                  placeholder="https://calendly.com/username/event"
-                />
-                {errors.calendly_url && <p className="mt-1 text-sm text-red-600">{errors.calendly_url}</p>}
-                {calendlyWarnings.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {calendlyWarnings.map((warning, index) => (
-                      <p key={index} className="text-sm text-yellow-600 flex items-start">
-                        <span className="mr-1">⚠️</span>
-                        <span>{warning}</span>
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Buttons */}
+              {/* Buttons */}
           <div className="flex justify-end space-x-3">
             <button
               type="button"

@@ -1,7 +1,7 @@
 """
 Integration tests for Patient Merge endpoint.
 
-Tests POST /api/v1/patients/{id}/merge/ - Merge patient records.
+Tests POST /api/v1/clinical/patients/{id}/merge/ - Merge patient records.
 Validates permissions, business rules, and relationship reassignment.
 """
 import pytest
@@ -41,7 +41,7 @@ class TestPatientMergePermissions:
         source = patient_factory(email='merge_source@test.com')
         target = patient_factory(email='merge_target@test.com')
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Test merge',
@@ -58,7 +58,7 @@ class TestPatientMergeValidations:
     
     def test_merge_source_equals_target(self, admin_client, patient):
         """Cannot merge patient into itself (source == target)."""
-        endpoint = f'/api/v1/patients/{patient.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/merge/'
         payload = {
             'target_patient_id': str(patient.id),  # Same as source
             'merge_reason': 'Test',
@@ -74,7 +74,7 @@ class TestPatientMergeValidations:
         import uuid
         fake_source_id = uuid.uuid4()
         
-        endpoint = f'/api/v1/patients/{fake_source_id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{fake_source_id}/merge/'
         payload = {
             'target_patient_id': str(patient.id),
             'merge_reason': 'Test',
@@ -89,7 +89,7 @@ class TestPatientMergeValidations:
         import uuid
         fake_target_id = uuid.uuid4()
         
-        endpoint = f'/api/v1/patients/{patient.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/merge/'
         payload = {
             'target_patient_id': str(fake_target_id),
             'merge_reason': 'Test',
@@ -111,7 +111,7 @@ class TestPatientMergeValidations:
         source.merge_reason = 'Previous merge'
         source.save()
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Test',
@@ -134,7 +134,7 @@ class TestPatientMergeValidations:
         target.merge_reason = 'Previous merge'
         target.save()
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Test',
@@ -155,7 +155,7 @@ class TestPatientMergeValidations:
         source.deleted_at = timezone.now()
         source.save()
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Test',
@@ -163,8 +163,9 @@ class TestPatientMergeValidations:
         
         response = admin_client.post(endpoint, payload, format='json')
         
-        assert response.status_code == status.HTTP_409_CONFLICT
-        assert 'deleted' in str(response.data).lower() or 'eliminado' in str(response.data).lower()
+        # PatientManager now excludes soft-deleted records from the default queryset.
+        # Attempting to access a soft-deleted source via its URL returns 404 (resource not found).
+        assert response.status_code == status.HTTP_404_NOT_FOUND
     
     def test_merge_target_soft_deleted(self, admin_client, patient_factory):
         """Cannot merge into soft-deleted target patient."""
@@ -176,7 +177,7 @@ class TestPatientMergeValidations:
         target.deleted_at = timezone.now()
         target.save()
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Test',
@@ -184,12 +185,14 @@ class TestPatientMergeValidations:
         
         response = admin_client.post(endpoint, payload, format='json')
         
-        assert response.status_code == status.HTTP_409_CONFLICT
-        assert 'deleted' in str(response.data).lower() or 'eliminado' in str(response.data).lower()
+        # PatientManager now excludes soft-deleted records from the default queryset.
+        # The target_patient_id references a record invisible to the ORM, so the merge
+        # endpoint cannot find it and returns 400 (invalid/non-existent target).
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
     
     def test_merge_missing_target_patient_id(self, admin_client, patient):
         """Merge without target_patient_id returns 400."""
-        endpoint = f'/api/v1/patients/{patient.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{patient.id}/merge/'
         payload = {
             # Missing target_patient_id
             'merge_reason': 'Test',
@@ -204,7 +207,7 @@ class TestPatientMergeValidations:
         source = patient_factory(email='merge_source5@test.com')
         target = patient_factory(email='merge_target5@test.com')
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             # Missing merge_reason
@@ -224,7 +227,7 @@ class TestPatientMergeRelationships:
         admin_client,
         patient_factory,
         practitioner,
-        clinic_location,
+        clinic,
         admin_user
     ):
         """Merge reassigns Encounters, Appointments, Consents, Photos, Guardians to target."""
@@ -237,7 +240,7 @@ class TestPatientMergeRelationships:
         encounter = Encounter.objects.create(
             patient=source,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             type='medical_consult',
             status='draft',
             occurred_at=timezone.now(),
@@ -248,8 +251,8 @@ class TestPatientMergeRelationships:
         appointment = Appointment.objects.create(
             patient=source,
             practitioner=practitioner,
-            location=clinic_location,
-            source='manual',
+            clinic=clinic,
+            source='erp',
             status='scheduled',
             scheduled_start=timezone.now() + timezone.timedelta(days=1),
             scheduled_end=timezone.now() + timezone.timedelta(days=1, hours=1),
@@ -282,7 +285,7 @@ class TestPatientMergeRelationships:
         )
         
         # Perform merge
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Duplicate patient - consolidating records',
@@ -297,7 +300,7 @@ class TestPatientMergeRelationships:
             assert response.data['reassigned']['encounters'] == 1
             assert response.data['reassigned']['appointments'] == 1
             assert response.data['reassigned']['consents'] == 1
-            assert response.data['reassigned']['clinical_photos'] == 1
+            assert response.data['reassigned']['photos'] == 1
             assert response.data['reassigned']['guardians'] == 1
         
         # Verify relationships reassigned in database
@@ -328,7 +331,7 @@ class TestPatientMergeRelationships:
         source = patient_factory(email='source_empty@test.com')
         target = patient_factory(email='target_empty@test.com')
         
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Duplicate - no history',
@@ -348,7 +351,7 @@ class TestPatientMergeRelationships:
         admin_client,
         patient_factory,
         practitioner,
-        clinic_location,
+        clinic,
         admin_user
     ):
         """Merge reassigns multiple encounters from source to target."""
@@ -359,7 +362,7 @@ class TestPatientMergeRelationships:
         encounter1 = Encounter.objects.create(
             patient=source,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             type='medical_consult',
             status='draft',
             occurred_at=timezone.now() - timezone.timedelta(days=7),
@@ -369,7 +372,7 @@ class TestPatientMergeRelationships:
         encounter2 = Encounter.objects.create(
             patient=source,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             type='cosmetic_consult',
             status='finalized',
             occurred_at=timezone.now() - timezone.timedelta(days=14),
@@ -377,7 +380,7 @@ class TestPatientMergeRelationships:
         )
         
         # Perform merge
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Multiple encounters test',
@@ -398,7 +401,7 @@ class TestPatientMergeRelationships:
         if 'reassigned' in response.data:
             assert response.data['reassigned']['encounters'] == 2
     
-    def test_merge_atomicity_on_error(self, admin_client, patient_factory):
+    def test_merge_atomicity_on_error(self, admin_client, patient_factory, practitioner):
         """Merge is atomic - if validation fails, no changes are made."""
         source = patient_factory(email='atomic_source@test.com')
         target = patient_factory(email='atomic_target@test.com')
@@ -406,14 +409,15 @@ class TestPatientMergeRelationships:
         # Create appointment for source
         appointment = Appointment.objects.create(
             patient=source,
-            source='manual',
+            practitioner=practitioner,
+            source='erp',
             status='scheduled',
             scheduled_start=timezone.now() + timezone.timedelta(days=1),
             scheduled_end=timezone.now() + timezone.timedelta(days=1, hours=1),
         )
         
         # Try to merge with invalid target (source == target)
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(source.id),  # Invalid: same as source
             'merge_reason': 'Test',
@@ -443,7 +447,7 @@ class TestPatientMergeResponse:
         admin_client,
         patient_factory,
         practitioner,
-        clinic_location,
+        clinic,
         admin_user
     ):
         """Merge returns proper response with patient and reassignment info."""
@@ -454,7 +458,7 @@ class TestPatientMergeResponse:
         Encounter.objects.create(
             patient=source,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             type='medical_consult',
             status='draft',
             occurred_at=timezone.now(),
@@ -463,14 +467,15 @@ class TestPatientMergeResponse:
         
         Appointment.objects.create(
             patient=source,
-            source='manual',
+            practitioner=practitioner,
+            source='erp',
             status='scheduled',
             scheduled_start=timezone.now() + timezone.timedelta(days=1),
             scheduled_end=timezone.now() + timezone.timedelta(days=1, hours=1),
         )
         
         # Perform merge
-        endpoint = f'/api/v1/patients/{source.id}/merge/'
+        endpoint = f'/api/v1/clinical/patients/{source.id}/merge/'
         payload = {
             'target_patient_id': str(target.id),
             'merge_reason': 'Response format test',

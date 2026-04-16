@@ -6,7 +6,7 @@ from django.db import models
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from apps.authz.models import User, UserAuditLog, UserAuditActionChoices
+from apps.authz.models import User, UserAuditLog, UserAuditActionChoices, RoleChoices
 from apps.authz.serializers_users import (
     UserListSerializer,
     UserDetailSerializer,
@@ -16,9 +16,10 @@ from apps.authz.serializers_users import (
     PasswordChangeSerializer,
 )
 from apps.authz.permissions import IsAdmin
+from apps.core.tenant import TenantQuerySetMixin
 
 
-class UserAdminViewSet(viewsets.ModelViewSet):
+class UserAdminViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """
     ViewSet for User Administration endpoints (Admin only).
     
@@ -44,8 +45,12 @@ class UserAdminViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdmin]
     
     def get_queryset(self):
-        """Get all users with filters."""
-        queryset = User.objects.prefetch_related('user_roles__role', 'practitioner').all()
+        """Get all users with filters, always scoped to the current tenant."""
+        from apps.core.tenant_context import get_current_tenant
+        tenant = get_current_tenant()
+        queryset = User.objects.prefetch_related(
+            'user_roles__role', 'practitioner'
+        ).filter(legal_entity=tenant)
         
         # Search by email, first_name, last_name
         q = self.request.query_params.get('q')
@@ -110,10 +115,6 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         response_data = UserDetailSerializer(user).data
         response_data['temporary_password'] = getattr(user, '_temporary_password', None)
         
-        # Add warnings if any
-        if hasattr(serializer, '_calendly_warnings'):
-            response_data['warnings'] = serializer._calendly_warnings
-        
         return Response(response_data, status=status.HTTP_201_CREATED)
     
     @transaction.atomic
@@ -154,11 +155,12 @@ class UserAdminViewSet(viewsets.ModelViewSet):
                 }
         
         # Create audit log
-        action = UserAuditActionChoices.DEACTIVATE_USER if (
-            'is_active' in changed_fields and not after_state['is_active']
-        ) else UserAuditActionChoices.ACTIVATE_USER if (
-            'is_active' in changed_fields and after_state['is_active']
-        ) else UserAuditActionChoices.UPDATE_USER
+        if 'is_active' in changed_fields and not after_state['is_active']:
+            action = UserAuditActionChoices.DEACTIVATE_USER
+        elif 'is_active' in changed_fields and after_state['is_active']:
+            action = UserAuditActionChoices.ACTIVATE_USER
+        else:
+            action = UserAuditActionChoices.UPDATE_USER
         
         UserAuditLog.objects.create(
             actor_user=request.user,
@@ -174,10 +176,6 @@ class UserAdminViewSet(viewsets.ModelViewSet):
         
         # Prepare response
         response_data = UserDetailSerializer(user).data
-        
-        # Add warnings if any
-        if hasattr(serializer, '_calendly_warnings'):
-            response_data['warnings'] = serializer._calendly_warnings
         
         return Response(response_data)
     
@@ -306,7 +304,33 @@ class UserAdminViewSet(viewsets.ModelViewSet):
                 {'error': 'User is already inactive'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        # Last admin per LegalEntity protection
+        if user.user_roles.filter(role__name=RoleChoices.ADMIN).exists():
+            from apps.authz.models import Role
+            admin_role = Role.objects.get(name=RoleChoices.ADMIN)
+            le = user.legal_entity
+            admin_qs = User.objects.filter(
+                is_active=True,
+                user_roles__role=admin_role,
+            )
+            if le:
+                admin_qs = admin_qs.filter(legal_entity=le)
+            admin_qs = admin_qs.exclude(id=user.id)
+
+            if admin_qs.count() == 0 and not request.user.is_superuser:
+                return Response(
+                    {'error': 'Cannot deactivate the last active admin of this legal entity. Only a superuser can.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Admin cannot deactivate themselves (unless superuser)
+        if request.user.id == user.id and not request.user.is_superuser:
+            return Response(
+                {'error': 'Admin cannot deactivate themselves.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Perform soft delete
         user.is_active = False
         user.save(update_fields=['is_active', 'updated_at'])

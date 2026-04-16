@@ -4,18 +4,23 @@ Based on API_CONTRACTS.md PAC section.
 """
 from rest_framework import serializers
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from apps.clinical.models import (
     Patient,
     PatientGuardian,
+    PatientInsurance,
     ReferralSource,
     Appointment,
-    AppointmentSourceChoices,
     AppointmentStatusChoices,
+    AppointmentType,
     Encounter,
     Treatment,
     EncounterTreatment,
     PractitionerBlock,
 )
+from apps.authz.models import Practitioner, RoleChoices
+from apps.core.models import Clinic
+from apps.treatment_plans.models import TreatmentPlan
 
 
 class ReferralSourceSerializer(serializers.ModelSerializer):
@@ -215,8 +220,32 @@ class PatientDetailSerializer(serializers.ModelSerializer):
                     ]
                 })
         
+        # Rule: document_type + document_number must be provided together
+        doc_type = attrs.get('document_type', getattr(self.instance, 'document_type', None))
+        doc_number = attrs.get('document_number', getattr(self.instance, 'document_number', None))
+        if doc_type and not doc_number:
+            raise serializers.ValidationError({
+                'document_number': ['document_number es obligatorio cuando document_type está presente']
+            })
+        if doc_number and not doc_type:
+            raise serializers.ValidationError({
+                'document_type': ['document_type es obligatorio cuando document_number está presente']
+            })
+
+        # Rule: emergency_contact_name + emergency_contact_phone must be provided together
+        ec_name = attrs.get('emergency_contact_name', getattr(self.instance, 'emergency_contact_name', None))
+        ec_phone = attrs.get('emergency_contact_phone', getattr(self.instance, 'emergency_contact_phone', None))
+        if ec_name and not ec_phone:
+            raise serializers.ValidationError({
+                'emergency_contact_phone': ['emergency_contact_phone es obligatorio cuando emergency_contact_name está presente']
+            })
+        if ec_phone and not ec_name:
+            raise serializers.ValidationError({
+                'emergency_contact_name': ['emergency_contact_name es obligatorio cuando emergency_contact_phone está presente']
+            })
+
         return attrs
-    
+
     def create(self, validated_data):
         """Create patient with audit fields"""
         # Remove referral_source_id from validated_data if present
@@ -280,7 +309,7 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             )
             
             # Hide clinical fields for Reception
-            if 'Reception' in user_roles:
+            if RoleChoices.RECEPTION in user_roles:
                 # Remove clinical notes field
                 representation.pop('notes', None)
         
@@ -291,8 +320,9 @@ class AppointmentListSerializer(serializers.ModelSerializer):
     """Serializer for Appointment list view (lightweight)"""
     patient_name = serializers.SerializerMethodField()
     practitioner_name = serializers.SerializerMethodField()
-    location_name = serializers.SerializerMethodField()
-    
+    clinic_name = serializers.SerializerMethodField()
+    appointment_type_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Appointment
         fields = [
@@ -301,34 +331,39 @@ class AppointmentListSerializer(serializers.ModelSerializer):
             'patient_name',
             'practitioner_id',
             'practitioner_name',
-            'location_id',
-            'location_name',
+            'clinic_id',
+            'clinic_name',
+            'appointment_type_id',
+            'appointment_type_name',
             'source',
             'status',
             'scheduled_start',
             'scheduled_end',
+            'duration_planned',
             'is_deleted',
             'created_at',
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-    
+
     def get_patient_name(self, obj):
-        """Get patient full name"""
         if obj.patient:
             return f"{obj.patient.first_name} {obj.patient.last_name}".strip()
         return None
-    
+
     def get_practitioner_name(self, obj):
-        """Get practitioner full name"""
         if obj.practitioner:
-            return f"{obj.practitioner.first_name} {obj.practitioner.last_name}".strip()
+            return obj.practitioner.display_name or str(obj.practitioner)
         return None
-    
-    def get_location_name(self, obj):
-        """Get location name"""
-        if obj.location:
-            return obj.location.name
+
+    def get_clinic_name(self, obj):
+        if obj.clinic:
+            return obj.clinic.name
+        return None
+
+    def get_appointment_type_name(self, obj):
+        if obj.appointment_type:
+            return obj.appointment_type.name
         return None
 
 
@@ -336,8 +371,9 @@ class AppointmentDetailSerializer(serializers.ModelSerializer):
     """Serializer for Appointment detail view (all fields, read-only)"""
     patient_name = serializers.SerializerMethodField()
     practitioner_name = serializers.SerializerMethodField()
-    location_name = serializers.SerializerMethodField()
-    
+    clinic_name = serializers.SerializerMethodField()
+    appointment_type_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Appointment
         fields = [
@@ -346,14 +382,19 @@ class AppointmentDetailSerializer(serializers.ModelSerializer):
             'patient_name',
             'practitioner_id',
             'practitioner_name',
-            'location_id',
-            'location_name',
+            'clinic_id',
+            'clinic_name',
+            'appointment_type_id',
+            'appointment_type_name',
             'encounter_id',
+            'treatment_id',
+            'treatment_plan_id',
             'source',
-            'external_id',
             'status',
             'scheduled_start',
             'scheduled_end',
+            'duration_planned',
+            'duration_real',
             'notes',
             'cancellation_reason',
             'no_show_reason',
@@ -366,241 +407,160 @@ class AppointmentDetailSerializer(serializers.ModelSerializer):
             'id',
             'patient_name',
             'practitioner_name',
-            'location_name',
+            'clinic_name',
+            'appointment_type_name',
             'is_deleted',
             'deleted_at',
             'created_at',
             'updated_at',
         ]
-    
+
     def get_patient_name(self, obj):
-        """Get patient full name"""
         if obj.patient:
             return f"{obj.patient.first_name} {obj.patient.last_name}".strip()
         return None
-    
+
     def get_practitioner_name(self, obj):
-        """Get practitioner full name"""
         if obj.practitioner:
-            return f"{obj.practitioner.first_name} {obj.practitioner.last_name}".strip()
+            return obj.practitioner.display_name or str(obj.practitioner)
         return None
-    
-    def get_location_name(self, obj):
-        """Get location name"""
-        if obj.location:
-            return obj.location.name
+
+    def get_clinic_name(self, obj):
+        if obj.clinic:
+            return obj.clinic.name
+        return None
+
+    def get_appointment_type_name(self, obj):
+        if obj.appointment_type:
+            return obj.appointment_type.name
         return None
 
 
 class AppointmentWriteSerializer(serializers.ModelSerializer):
     """
     Serializer for Appointment create/update.
-    
-    BUSINESS RULE: Status changes must use the /transition/ endpoint,
-    not direct PATCH/PUT. Status is read-only after creation.
+
+    Status changes must use the /transition/ endpoint.
     """
-    
+    patient_id = serializers.PrimaryKeyRelatedField(
+        queryset=Patient.objects.all(), source='patient',
+    )
+    practitioner_id = serializers.PrimaryKeyRelatedField(
+        queryset=Practitioner.objects.all(), source='practitioner',
+    )
+    clinic_id = serializers.PrimaryKeyRelatedField(
+        queryset=Clinic.objects.all(), source='clinic',
+        required=False, allow_null=True,
+    )
+    appointment_type_id = serializers.PrimaryKeyRelatedField(
+        queryset=AppointmentType.objects.all(), source='appointment_type',
+        required=False, allow_null=True,
+    )
+    encounter_id = serializers.PrimaryKeyRelatedField(
+        queryset=Encounter.objects.all(), source='encounter',
+        required=False, allow_null=True,
+    )
+    treatment_id = serializers.PrimaryKeyRelatedField(
+        queryset=Treatment.objects.all(), source='treatment',
+        required=False, allow_null=True,
+    )
+    treatment_plan_id = serializers.PrimaryKeyRelatedField(
+        queryset=TreatmentPlan.objects.all(), source='treatment_plan',
+        required=False, allow_null=True,
+    )
+
     class Meta:
         model = Appointment
         fields = [
             'id',
             'patient_id',
             'practitioner_id',
-            'location_id',
+            'clinic_id',
+            'appointment_type_id',
             'encounter_id',
+            'treatment_id',
+            'treatment_plan_id',
             'source',
-            'external_id',
             'status',
             'scheduled_start',
             'scheduled_end',
+            'duration_planned',
+            'duration_real',
             'notes',
             'cancellation_reason',
             'no_show_reason',
-            'is_deleted',
-            'deleted_at',
-            'created_at',
-            'updated_at',
         ]
-        read_only_fields = [
-            'id',
-            'is_deleted',
-            'deleted_at',
-            'created_at',
-            'updated_at',
-        ]
-    
+        read_only_fields = ['id']
+
     def validate_patient_id(self, value):
-        """
-        BUSINESS RULE: Patient is required for all appointments.
-        """
         if not value:
             raise serializers.ValidationError(
                 'La cita requiere un paciente asignado'
             )
         return value
-    
-    def validate_source(self, value):
-        """Validate source enum"""
-        valid_sources = [choice[0] for choice in AppointmentSourceChoices.choices]
-        if value not in valid_sources:
-            raise serializers.ValidationError(
-                f"Valor inválido. Opciones: {', '.join(valid_sources)}"
-            )
-        return value
-    
+
     def validate_status(self, value):
-        """
-        BUSINESS RULE: Status can only be set on creation.
-        For updates, use the /transition/ endpoint.
-        """
-        # Allow setting status on creation
+        """Status can only be set on creation. Use /transition/ for updates."""
         if not self.instance:
-            valid_statuses = [choice[0] for choice in AppointmentStatusChoices.choices]
+            valid_statuses = [c[0] for c in AppointmentStatusChoices.choices]
             if value not in valid_statuses:
                 raise serializers.ValidationError(
                     f"Valor inválido. Opciones: {', '.join(valid_statuses)}"
                 )
             return value
-        
-        # Block direct status change on update
+
         if self.instance and value != self.instance.status:
             raise serializers.ValidationError(
                 'No se puede cambiar el estado directamente. '
                 'Use el endpoint /appointments/{id}/transition/ para cambiar el estado.'
             )
-        
         return value
-    
-    def validate_external_id(self, value):
-        """Validate external_id uniqueness for calendly appointments"""
-        if value:
-            # Check if external_id already exists (excluding current instance)
-            qs = Appointment.objects.filter(external_id=value)
-            if self.instance:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise serializers.ValidationError(
-                    "Ya existe una cita con este external_id"
-                )
-        return value
-    
-    def validate(self, attrs):
-        """
-        Model-level validation using Appointment.clean()
-        
-        This will check:
-        - Patient is required
-        - No overlapping appointments
-        - Valid time range
-        """
-        # Create a temporary instance for validation
-        instance = self.instance or Appointment()
-        
-        # Update instance with attrs
-        for key, value in attrs.items():
-            setattr(instance, key, value)
-        
-        # Run model validation
-        try:
-            instance.clean()
-        except ValidationError as e:
-            raise serializers.ValidationError(e.message_dict)
-        
-        return attrs
-    
+
     def validate(self, attrs):
         """Cross-field validation"""
-        source = attrs.get('source', getattr(self.instance, 'source', None))
-        external_id = attrs.get('external_id', getattr(self.instance, 'external_id', None))
-        status = attrs.get('status', getattr(self.instance, 'status', None))
+        status_val = attrs.get('status', getattr(self.instance, 'status', None))
         cancellation_reason = attrs.get('cancellation_reason', getattr(self.instance, 'cancellation_reason', None))
         no_show_reason = attrs.get('no_show_reason', getattr(self.instance, 'no_show_reason', None))
-        
-        # Validate external_id for calendly source
-        if source == AppointmentSourceChoices.CALENDLY:
-            if not external_id:
-                raise serializers.ValidationError({
-                    'external_id': ['external_id es obligatorio para citas de Calendly']
-                })
-        
-        # Validate cancellation_reason if status is cancelled
-        if status == AppointmentStatusChoices.CANCELLED:
-            if not cancellation_reason:
-                raise serializers.ValidationError({
-                    'cancellation_reason': ['cancellation_reason es obligatorio si status=cancelled']
-                })
-        
-        # Validate no_show_reason if status is no_show
-        if status == AppointmentStatusChoices.NO_SHOW:
-            if not no_show_reason:
-                raise serializers.ValidationError({
-                    'no_show_reason': ['no_show_reason es obligatorio si status=no_show']
-                })
-        
-        # Validate status transitions (basic validation)
-        if self.instance:
-            old_status = self.instance.status
-            new_status = status
-            
-            # Define allowed transitions
-            allowed_transitions = {
-                AppointmentStatusChoices.SCHEDULED: [
-                    AppointmentStatusChoices.CONFIRMED,
-                    AppointmentStatusChoices.CANCELLED,
-                    AppointmentStatusChoices.NO_SHOW,
-                ],
-                AppointmentStatusChoices.CONFIRMED: [
-                    AppointmentStatusChoices.ATTENDED,
-                    AppointmentStatusChoices.CANCELLED,
-                    AppointmentStatusChoices.NO_SHOW,
-                ],
-                AppointmentStatusChoices.ATTENDED: [],  # Terminal state
-                AppointmentStatusChoices.NO_SHOW: [],  # Terminal state
-                AppointmentStatusChoices.CANCELLED: [],  # Terminal state
-            }
-            
-            # Check if transition is allowed (allow same status)
-            if new_status != old_status:
-                if new_status not in allowed_transitions.get(old_status, []):
-                    raise serializers.ValidationError({
-                        'status': [
-                            f"Transición inválida de {old_status} a {new_status}"
-                        ]
-                    })
-        
-        # Check if appointment is locked (linked to encounter or status=attended)
+
+        if status_val == AppointmentStatusChoices.CANCELLED and not cancellation_reason:
+            raise serializers.ValidationError({
+                'cancellation_reason': ['cancellation_reason es obligatorio si status=cancelled']
+            })
+
+        if status_val == AppointmentStatusChoices.NO_SHOW and not no_show_reason:
+            raise serializers.ValidationError({
+                'no_show_reason': ['no_show_reason es obligatorio si status=no_show']
+            })
+
+        # Lock checks on update
         if self.instance:
             user_roles = set(
                 self.context['request'].user.user_roles.values_list('role__name', flat=True)
             )
-            is_admin = 'Admin' in user_roles
-            
-            # Lock if linked to encounter
+            is_admin = RoleChoices.ADMIN in user_roles
+
             if self.instance.encounter_id and not is_admin:
                 raise serializers.ValidationError({
                     'encounter_id': [
                         'No se puede editar una cita que ya está vinculada a un encuentro (solo Admin)'
                     ]
                 })
-            
-            # Lock if status is attended (completed)
-            if self.instance.status == AppointmentStatusChoices.ATTENDED and not is_admin:
+
+            if self.instance.status == AppointmentStatusChoices.COMPLETED and not is_admin:
                 raise serializers.ValidationError({
                     'status': [
-                        'No se puede editar una cita con status=attended (solo Admin)'
+                        'No se puede editar una cita con status=completed (solo Admin)'
                     ]
                 })
-        
+
         return attrs
-    
+
     def validate_scheduled_start(self, value):
-        """Validate scheduled_start is not None"""
         if not value:
             raise serializers.ValidationError("scheduled_start es obligatorio")
         return value
-    
+
     def validate_scheduled_end(self, value):
-        """Validate scheduled_end is not None"""
         if not value:
             raise serializers.ValidationError("scheduled_end es obligatorio")
         return value
@@ -808,7 +768,7 @@ class EncounterDetailSerializer(serializers.ModelSerializer):
             'id',
             'patient',
             'practitioner',
-            'location',
+            'clinic',
             'type',
             'status',
             'occurred_at',
@@ -853,7 +813,7 @@ class EncounterDetailSerializer(serializers.ModelSerializer):
         
         photos = []
         for encounter_photo in obj.encounter_photos.filter(photo__is_deleted=False).select_related('photo'):
-            photo = encounter_photo.clinical_photo
+            photo = encounter_photo.photo
             try:
                 url = get_clinical_photo_url(photo)
             except Exception:
@@ -914,7 +874,7 @@ class EncounterWriteSerializer(serializers.ModelSerializer):
             'id',
             'patient',
             'practitioner',
-            'location',
+            'clinic',
             'type',
             'status',
             'occurred_at',
@@ -1098,3 +1058,141 @@ class CalendarEventSerializer(serializers.Serializer):
         
         else:
             raise ValueError(f"Unsupported instance type: {type(instance)}")
+
+
+# ============================================================================
+# Patient Insurance
+# ============================================================================
+
+class PatientInsuranceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for PatientInsurance with auto-close and overlap validation.
+
+    On create:
+    - If patient already has an active coverage, auto-close it
+      (valid_to = new.valid_from - 1 day, is_active=False).
+    - Validates no date overlap with existing records.
+    """
+
+    class Meta:
+        model = PatientInsurance
+        fields = [
+            'id', 'patient', 'provider_name', 'member_number',
+            'social_security_number', 'valid_from', 'valid_to',
+            'is_active', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    # ---- Cross-field validation ----
+
+    def validate(self, attrs):
+        valid_from = attrs.get('valid_from') or (self.instance and self.instance.valid_from)
+        valid_to = attrs.get('valid_to', self.instance.valid_to if self.instance else None)
+
+        if valid_to and valid_from and valid_to < valid_from:
+            raise serializers.ValidationError(
+                {'valid_to': 'valid_to cannot be before valid_from.'}
+            )
+
+        # Overlap check (R2)
+        patient = attrs.get('patient') or (self.instance and self.instance.patient)
+        if patient and valid_from:
+            self._check_overlap(patient, valid_from, valid_to)
+
+        return attrs
+
+    def _check_overlap(self, patient, new_from, new_to):
+        """
+        Ensure no date overlap with existing records.
+
+        On create: evaluate against ALL records **after** simulating auto-close
+        of the currently-active one (its valid_to becomes new_from - 1 day).
+        On update: exclude self.
+        """
+        from datetime import timedelta
+
+        qs = PatientInsurance.objects.filter(patient=patient)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        for existing in qs:
+            e_from = existing.valid_from
+
+            # On create, simulate auto-close for the active record
+            if not self.instance and existing.is_active:
+                e_to = new_from - timedelta(days=1)
+            else:
+                e_to = existing.valid_to  # may be None (open-ended)
+
+            # Two ranges overlap when: start1 <= end2 AND start2 <= end1
+            # For open-ended (None) treat as +infinity
+            end_check = e_to is None or new_from <= e_to
+            start_check = new_to is None or e_from <= new_to
+
+            if end_check and start_check:
+                raise serializers.ValidationError(
+                    {'valid_from': f'Date range overlaps with existing coverage {existing.id} ({e_from} — {e_to or "open"}).'}
+                )
+
+    # ---- Auto-close on create (R3) + temporal monotonicity ----
+
+    def create(self, validated_data):
+        from datetime import timedelta
+
+        patient = validated_data['patient']
+        new_from = validated_data['valid_from']
+
+        with transaction.atomic():
+            # R-temporal: new coverage must not go backwards in time
+            latest = (
+                PatientInsurance.objects
+                .filter(patient=patient)
+                .order_by('-valid_from')
+                .first()
+            )
+            if latest and new_from < latest.valid_from:
+                raise serializers.ValidationError(
+                    {'valid_from': (
+                        f'Cannot create coverage before the most recent one '
+                        f'({latest.valid_from}). Chronological order is enforced.'
+                    )}
+                )
+
+            # Close any currently-active coverage for this patient
+            prev = PatientInsurance.objects.select_for_update().filter(
+                patient=patient, is_active=True
+            ).first()
+
+            if prev:
+                prev.valid_to = new_from - timedelta(days=1)
+                prev.is_active = False
+                prev.save(update_fields=['valid_to', 'is_active', 'updated_at'])
+
+            return super().create(validated_data)
+
+    # ---- Hardened update (R2 / PATCH) ----
+
+    def update(self, instance, validated_data):
+        # Block manual is_active changes — only auto-close controls this
+        if 'is_active' in validated_data:
+            raise serializers.ValidationError(
+                {'is_active': 'Manual activation/deactivation is not allowed. '
+                              'is_active is managed automatically on create.'}
+            )
+
+        # Block valid_from changes if this is not the most recent coverage
+        if 'valid_from' in validated_data:
+            newer = (
+                PatientInsurance.objects
+                .filter(patient=instance.patient, valid_from__gt=instance.valid_from)
+                .exclude(pk=instance.pk)
+                .exists()
+            )
+            if newer:
+                raise serializers.ValidationError(
+                    {'valid_from': 'Cannot change valid_from on a historical '
+                                   'coverage. Only the most recent can be modified.'}
+                )
+
+        with transaction.atomic():
+            return super().update(instance, validated_data)

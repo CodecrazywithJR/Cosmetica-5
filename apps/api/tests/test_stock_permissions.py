@@ -10,13 +10,13 @@ Tests verify that:
 import pytest
 from decimal import Decimal
 from datetime import date, timedelta
-from django.contrib.auth.models import Group
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from apps.authz.models import User
+from apps.authz.models import User, Role, UserRole, RoleChoices
 from apps.products.models import Product
+from tests.conftest import TEST_PASSWORD
 from apps.stock.models import (
     StockLocation,
     StockBatch,
@@ -28,47 +28,60 @@ from apps.stock.models import (
 
 @pytest.fixture
 def reception_user(db):
-    """Create user in Reception group."""
+    """Create user with Reception role."""
     user = User.objects.create_user(
         email='reception@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
-    reception_group, _ = Group.objects.get_or_create(name='Reception')
-    user.groups.add(reception_group)
+    reception_role, _ = Role.objects.get_or_create(name=RoleChoices.RECEPTION)
+    UserRole.objects.create(user=user, role=reception_role)
     return user
 
 
 @pytest.fixture
 def marketing_user(db):
-    """Create user in Marketing group."""
+    """Create user with Marketing role."""
     user = User.objects.create_user(
         email='marketing@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
-    marketing_group, _ = Group.objects.get_or_create(name='Marketing')
-    user.groups.add(marketing_group)
+    marketing_role, _ = Role.objects.get_or_create(name=RoleChoices.MARKETING)
+    UserRole.objects.create(user=user, role=marketing_role)
     return user
 
 
 @pytest.fixture
 def clinicalops_user(db):
-    """Create user in ClinicalOps group."""
+    """Create user with Practitioner role (replaces ClinicalOps group)."""
     user = User.objects.create_user(
         email='clinicalops@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
-    clinicalops_group, _ = Group.objects.get_or_create(name='ClinicalOps')
-    user.groups.add(clinicalops_group)
+    practitioner_role, _ = Role.objects.get_or_create(name=RoleChoices.PRACTITIONER)
+    UserRole.objects.create(user=user, role=practitioner_role)
     return user
 
 
 @pytest.fixture
 def superuser(db):
-    """Create superuser."""
-    return User.objects.create_superuser(
+    """Create superuser with Admin role."""
+    user = User.objects.create_superuser(
         email='admin@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
+    admin_role, _ = Role.objects.get_or_create(name=RoleChoices.ADMIN)
+    UserRole.objects.create(user=user, role=admin_role)
+    return user
+
+
+@pytest.fixture
+def superuser_client(superuser, legal_entity):
+    """Superuser APIClient with mandatory X-Legal-Entity-ID header."""
+    from rest_framework.test import APIClient
+    c = APIClient()
+    c.force_authenticate(user=superuser)
+    c.credentials(HTTP_X_LEGAL_ENTITY_ID=str(legal_entity.id))
+    return c
 
 
 @pytest.fixture
@@ -133,7 +146,7 @@ class TestReceptionStockPermissions:
         
         response = client.get('/api/stock/locations/')
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert 'ClinicalOps' in response.data.get('detail', '')
+        assert 'Practitioner' in response.data.get('detail', '')
     
     def test_reception_cannot_create_stock_location(self, reception_user):
         """Reception user gets 403 when creating stock location."""
@@ -398,56 +411,38 @@ class TestClinicalOpsStockPermissions:
 class TestSuperuserStockPermissions:
     """Test that superusers CAN access all stock endpoints."""
     
-    def test_superuser_can_list_stock_locations(self, superuser, test_location):
+    def test_superuser_can_list_stock_locations(self, superuser_client, test_location):
         """Superuser can list stock locations."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
-        response = client.get('/api/stock/locations/')
+        response = superuser_client.get('/api/stock/locations/')
         assert response.status_code == status.HTTP_200_OK
     
-    def test_superuser_can_create_stock_location(self, superuser):
+    def test_superuser_can_create_stock_location(self, superuser_client):
         """Superuser can create stock location."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
         data = {
             'code': 'ADMIN-LOC',
             'name': 'Admin Location',
             'location_type': 'warehouse'
         }
-        response = client.post('/api/stock/locations/', data)
+        response = superuser_client.post('/api/stock/locations/', data)
         assert response.status_code == status.HTTP_201_CREATED
     
-    def test_superuser_can_list_batches(self, superuser, test_batch):
+    def test_superuser_can_list_batches(self, superuser_client, test_batch):
         """Superuser can list batches."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
-        response = client.get('/api/stock/batches/')
+        response = superuser_client.get('/api/stock/batches/')
         assert response.status_code == status.HTTP_200_OK
     
-    def test_superuser_can_access_expiring_soon(self, superuser):
+    def test_superuser_can_access_expiring_soon(self, superuser_client):
         """Superuser can access expiring-soon endpoint."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
-        response = client.get('/api/stock/batches/expiring-soon/')
+        response = superuser_client.get('/api/stock/batches/expiring-soon/')
         assert response.status_code == status.HTTP_200_OK
     
-    def test_superuser_can_list_stock_moves(self, superuser, test_stock_move):
+    def test_superuser_can_list_stock_moves(self, superuser_client, test_stock_move):
         """Superuser can list stock moves."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
-        response = client.get('/api/stock/moves/')
+        response = superuser_client.get('/api/stock/moves/')
         assert response.status_code == status.HTTP_200_OK
     
-    def test_superuser_can_create_stock_move(self, superuser, test_product, test_location, test_batch):
+    def test_superuser_can_create_stock_move(self, superuser_client, test_product, test_location, test_batch):
         """Superuser can create stock move."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
         data = {
             'product': str(test_product.id),
             'location': str(test_location.id),
@@ -456,14 +451,11 @@ class TestSuperuserStockPermissions:
             'quantity': '75.00',
             'reason': 'Admin purchase'
         }
-        response = client.post('/api/stock/moves/', data)
+        response = superuser_client.post('/api/stock/moves/', data)
         assert response.status_code == status.HTTP_201_CREATED
     
-    def test_superuser_can_consume_fefo(self, superuser, test_product, test_location, test_batch, test_stock_move):
+    def test_superuser_can_consume_fefo(self, superuser_client, test_product, test_location, test_batch, test_stock_move):
         """Superuser can consume stock via FEFO."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
         data = {
             'product': str(test_product.id),
             'location': str(test_location.id),
@@ -471,7 +463,7 @@ class TestSuperuserStockPermissions:
             'move_type': 'sale_out',
             'reason': 'Admin FEFO consumption'
         }
-        response = client.post('/api/stock/moves/consume-fefo/', data)
+        response = superuser_client.post('/api/stock/moves/consume-fefo/', data)
         # FEFO requires stock to exist - 400 is acceptable if insufficient stock
         # The key test is permissions (not 403)
         assert response.status_code in [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST]
@@ -479,20 +471,14 @@ class TestSuperuserStockPermissions:
             # Verify it's a business logic error, not permission error
             assert 'error' in response.data or 'detail' not in response.data or 'ClinicalOps' not in str(response.data)
     
-    def test_superuser_can_list_on_hand(self, superuser):
+    def test_superuser_can_list_on_hand(self, superuser_client):
         """Superuser can list on-hand stock."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
-        response = client.get('/api/stock/on-hand/')
+        response = superuser_client.get('/api/stock/on-hand/')
         assert response.status_code == status.HTTP_200_OK
     
-    def test_superuser_can_access_by_product(self, superuser, test_product):
+    def test_superuser_can_access_by_product(self, superuser_client, test_product):
         """Superuser can access by-product endpoint."""
-        client = APIClient()
-        client.force_authenticate(user=superuser)
-        
-        response = client.get(f'/api/stock/on-hand/by-product/{test_product.id}/')
+        response = superuser_client.get(f'/api/stock/on-hand/by-product/{test_product.id}/')
         assert response.status_code == status.HTTP_200_OK
 
 

@@ -8,11 +8,11 @@
  * 
  * Flow: View appointments → Filter by date/status → Update status → Manage daily schedule
  * 
- * Architecture (Opción B):
- * - Calendly = Booking engine (creates appointments via webhook)
+ * Architecture:
+ * - ERP = Sole scheduling engine
  * - Appointment model = Internal agenda (single source of truth for ERP)
  * - /agenda (this page) = Manage appointments
- * - /booking = Native appointment booking (to be replaced with Calendly API integration)
+ * - /booking = Native appointment booking
  * 
  * Features:
  * - Lists appointments from Appointment model
@@ -30,10 +30,12 @@
 import AppLayout from '@/components/layout/app-layout';
 import { DataState } from '@/components/data-state';
 import { useAppointments, useUpdateAppointmentStatus } from '@/lib/hooks/use-appointments';
+import { useCreateEncounterFromAppointment } from '@/lib/hooks/use-encounters';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Appointment } from '@/lib/types';
+import { routes, type Locale } from '@/lib/routing';
 
 /**
  * Helper: Get today's date in YYYY-MM-DD format
@@ -110,6 +112,16 @@ export default function AgendaPage() {
   });
 
   const updateStatus = useUpdateAppointmentStatus();
+  const createEncounter = useCreateEncounterFromAppointment();
+
+  const handleStartEncounter = async (appointmentId: string) => {
+    try {
+      const result = await createEncounter.mutateAsync(appointmentId);
+      router.push(routes.encounters.detail(locale as Locale, result.encounter_id));
+    } catch (err) {
+      console.error('Error creating encounter:', err);
+    }
+  };
 
   // Appointments from API - no mock data
   const appointments = useMemo(() => {
@@ -306,22 +318,41 @@ export default function AgendaPage() {
                           </button>
                         )}
                         {apt.status === 'confirmed' && (
-                          <button
-                            onClick={() => handleStatusChange(apt.id, 'checked_in')}
-                            className="btn-primary btn-sm"
-                            disabled={updateStatus.isPending}
-                          >
-                            {t('actions.checkIn')}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleStatusChange(apt.id, 'checked_in')}
+                              className="btn-primary btn-sm"
+                              disabled={updateStatus.isPending}
+                            >
+                              {t('actions.checkIn')}
+                            </button>
+                            <button
+                              onClick={() => handleStartEncounter(apt.id)}
+                              className="btn-secondary btn-sm"
+                              disabled={createEncounter.isPending}
+                              style={{ color: 'var(--primary)' }}
+                            >
+                              {t('actions.startEncounter', { defaultValue: 'Start Encounter' })}
+                            </button>
+                          </>
                         )}
                         {apt.status === 'checked_in' && (
-                          <button
-                            onClick={() => handleStatusChange(apt.id, 'completed')}
-                            className="btn-primary btn-sm"
-                            disabled={updateStatus.isPending}
-                          >
-                            {t('actions.complete')}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleStartEncounter(apt.id)}
+                              className="btn-primary btn-sm"
+                              disabled={createEncounter.isPending}
+                            >
+                              {t('actions.startEncounter', { defaultValue: 'Start Encounter' })}
+                            </button>
+                            <button
+                              onClick={() => handleStatusChange(apt.id, 'completed')}
+                              className="btn-secondary btn-sm"
+                              disabled={updateStatus.isPending}
+                            >
+                              {t('actions.complete')}
+                            </button>
+                          </>
                         )}
                         {(apt.status === 'scheduled' || apt.status === 'confirmed') && (
                           <button

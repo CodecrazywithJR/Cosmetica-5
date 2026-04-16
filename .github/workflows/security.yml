@@ -1,0 +1,201 @@
+name: Security & Quality
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-insecure-key-not-used-in-production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: apps/api
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run migrations
+        working-directory: apps/api
+        run: python manage.py migrate --no-input
+
+      - name: Run pytest
+        working-directory: apps/api
+        run: |
+          python -m pytest tests/ \
+            --no-header \
+            -p no:sugar \
+            -p no:cacheprovider \
+            --color=no \
+            --tb=short \
+            -q
+
+  bandit:
+    name: bandit (SAST)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit
+        working-directory: apps/api
+        run: |
+          bandit -r apps/ \
+            -ll \
+            --exclude apps/api/apps/*/migrations \
+            -f json \
+            -o bandit-report.json || true
+          bandit -r apps/ \
+            -ll \
+            --exclude apps/api/apps/*/migrations
+
+      - name: Upload bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: apps/api/bandit-report.json
+
+  pip-audit:
+    name: pip-audit (SCA)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        working-directory: apps/api
+        run: |
+          pip-audit --requirement requirements.txt \
+            --format json \
+            --output pip-audit-report.json || true
+          pip-audit --requirement requirements.txt
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: apps/api/pip-audit-report.json
+
+  semgrep:
+    name: semgrep (SAST rules)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install semgrep
+        run: pip install semgrep
+
+      - name: Run semgrep
+        working-directory: apps/api
+        run: |
+          semgrep --config=p/django \
+            --config=p/python \
+            --config=p/secrets \
+            --error \
+            --json \
+            --output semgrep-report.json \
+            apps/ || true
+          semgrep --config=p/django \
+            --config=p/python \
+            --config=p/secrets \
+            --error \
+            apps/
+
+      - name: Upload semgrep report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-report
+          path: apps/api/semgrep-report.json
+
+  detect-secrets:
+    name: detect-secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Run detect-secrets
+        run: |
+          detect-secrets scan --all-files \
+            --exclude-files '\.git/.*' \
+            --exclude-files '.*\.lock$' \
+            --exclude-files 'apps/api/apps/.*/migrations/.*' \
+            > .secrets.baseline
+          detect-secrets audit .secrets.baseline

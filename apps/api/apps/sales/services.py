@@ -163,7 +163,7 @@ def consume_stock_for_sale(sale, location: Optional[StockLocation] = None, creat
                 for move in line_moves:
                     move.sale = sale
                     move.sale_line = line
-                    move.save(update_fields=['sale', 'sale_line'])
+                    move.save(update_fields=['sale', 'sale_line'], skip_validation=True)
                 
                 moves.extend(line_moves)
                 
@@ -236,14 +236,13 @@ def consume_stock_for_sale(sale, location: Optional[StockLocation] = None, creat
         
         # Consistency checkpoint
         log_consistency_checkpoint(
-            checkpoint='stock_consumed_for_sale',
-            checks={
+            checkpoint_name='stock_consumed_for_sale',
+            entity_ids={'sale_id': str(sale.id)},
+            checks_passed={
                 'moves_created': len(moves) > 0,
                 'all_lines_processed': len(moves) == len(product_lines)
             },
-            entity_type='Sale',
-            entity_id=str(sale.id),
-            metadata={'location': location.code}
+            location=location.code
         )
         
         return moves
@@ -368,8 +367,14 @@ def refund_stock_for_sale(sale, created_by=None) -> List[StockMove]:
             f"Cannot refund sale: sale must be paid. Current status: {sale.get_status_display()}"
         )
     
-    # Get all original SALE_OUT moves for this sale
-    out_moves = StockMove.objects.filter(
+    # Get all original SALE_OUT moves for this sale.
+    # INTENTIONAL: StockMove.unfiltered is required here, NOT StockMove.objects.
+    # Reason: StockMove.objects uses TenantManager which filters by get_current_tenant().
+    # Some moves may have been created in contexts without an active tenant thread-local
+    # (e.g. Celery tasks, management commands, or direct model creation outside a request).
+    # Data isolation is guaranteed by the FK filter `sale=sale`; `sale` is always
+    # tenant-bound, so no cross-tenant data leakage is possible.
+    out_moves = StockMove.unfiltered.filter(
         sale=sale,
         move_type=StockMoveTypeChoices.SALE_OUT,
         quantity__lt=0  # OUT moves are negative
@@ -382,13 +387,15 @@ def refund_stock_for_sale(sale, created_by=None) -> List[StockMove]:
     
     # IDEMPOTENCY CHECK: Has refund already been processed?
     # If ANY of the original OUT moves already have a reversal, consider it done
-    existing_reversals = StockMove.objects.filter(
+    # INTENTIONAL: unfiltered for same reason as above — moves scoped via reversed_move FK chain.
+    existing_reversals = StockMove.unfiltered.filter(
         reversed_move__in=out_moves
     ).exists()
     
     if existing_reversals:
         # Already refunded - return existing reversal moves
-        return list(StockMove.objects.filter(reversed_move__in=out_moves))
+        # INTENTIONAL: unfiltered for same reason as above.
+        return list(StockMove.unfiltered.filter(reversed_move__in=out_moves))
     
     # CREATE REVERSAL MOVES: One REFUND_IN per original SALE_OUT
     refund_moves = []
@@ -576,7 +583,9 @@ def refund_partial_for_sale(sale, refund_payload: dict, created_by=None):
                 continue  # Service line - skip stock moves
             
             # Get original SALE_OUT moves for this sale_line (ordered deterministically)
-            out_moves = StockMove.objects.filter(
+            # INTENTIONAL: StockMove.unfiltered is required — see block comment above.
+            # Data isolation guaranteed by FK filter `sale_line=sale_line`.
+            out_moves = StockMove.unfiltered.filter(
                 sale_line=sale_line,
                 move_type=StockMoveTypeChoices.SALE_OUT,
                 quantity__lt=0  # OUT moves are negative
@@ -597,7 +606,8 @@ def refund_partial_for_sale(sale, refund_payload: dict, created_by=None):
                     break  # Already reversed enough
                 
                 # Check if this out_move already has partial reversals
-                already_reversed = StockMove.objects.filter(
+                # INTENTIONAL: unfiltered — scoped by source_move FK (which is tenant-bound).
+                already_reversed = StockMove.unfiltered.filter(
                     source_move=out_move,
                     move_type=StockMoveTypeChoices.REFUND_IN,
                     refund__status=SaleRefundStatusChoices.COMPLETED
@@ -612,7 +622,8 @@ def refund_partial_for_sale(sale, refund_payload: dict, created_by=None):
                 qty_from_this_move = min(qty_to_reverse - qty_reversed, available_to_reverse)
                 
                 # Check idempotency: does this refund already have a move for this source?
-                existing_move = StockMove.objects.filter(
+                # INTENTIONAL: unfiltered — scoped by refund and source_move FKs (both tenant-bound).
+                existing_move = StockMove.unfiltered.filter(
                     refund=refund,
                     source_move=out_move
                 ).first()

@@ -1,3 +1,4 @@
+TEST_PASSWORD = "testpass123"  # noqa: S105
 """
 Tests for Practitioner Availability Calculation (Sprint 2)
 
@@ -17,7 +18,7 @@ from rest_framework.test import APIClient
 import pytz
 
 from apps.authz.models import Practitioner, Role, UserRole, RoleChoices
-from apps.core.models import ClinicLocation
+from apps.core.models import Clinic
 from apps.clinical.models import Appointment, PractitionerBlock, Patient
 from apps.clinical.services import AvailabilityService
 
@@ -28,7 +29,7 @@ def create_user_with_role(email, role_name):
     """Helper function to create user with role"""
     user = User.objects.create_user(
         email=email,
-        password='test123',
+        password=TEST_PASSWORD,
         is_active=True
     )
     role, _ = Role.objects.get_or_create(
@@ -52,11 +53,12 @@ def test_patient(db):
 
 
 @pytest.fixture
-def test_location(db):
+def test_location(db, legal_entity):
     """Fixture for test clinic location"""
-    return ClinicLocation.objects.create(
+    return Clinic.objects.create(
         name='Test Clinic',
-        address_line1='123 Test St'
+        address_line1='123 Test St',
+        legal_entity=legal_entity,
     )
 
 

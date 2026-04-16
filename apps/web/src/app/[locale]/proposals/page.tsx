@@ -13,6 +13,7 @@ import { useProposals, useConvertProposalToSale, useCancelProposal } from '@/lib
 import { useState, useMemo } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { ClinicalChargeProposal } from '@/lib/types';
+import { routes, type Locale } from '@/lib/routing';
 
 export default function ProposalsPage() {
   const t = useTranslations('pos');
@@ -78,18 +79,18 @@ export default function ProposalsPage() {
   };
 
   const openConvertModal = (proposal: ClinicalChargeProposal) => {
-    setSelectedProposalId(proposal.id);
+    setSelectedProposalId(proposal.id as string);
     setShowConvertModal(true);
   };
 
   const openCancelModal = (proposal: ClinicalChargeProposal) => {
-    setSelectedProposalId(proposal.id);
+    setSelectedProposalId(proposal.id as string);
     setShowCancelModal(true);
   };
 
   return (
     <AppLayout>
-      <RBACGuard roles={[ROLES.ADMIN, ROLES.RECEPTION, ROLES.CLINICAL_OPS, ROLES.ACCOUNTING]}>
+      <RBACGuard roles={[ROLES.ADMIN, ROLES.RECEPTION, ROLES.ACCOUNTING]}>
         <div>
           <div className="page-header">
             <h1>{t('pos:title')}</h1>
@@ -101,8 +102,10 @@ export default function ProposalsPage() {
             >
               <option value="">{t('pos:filters.allStatuses')}</option>
               <option value="draft">{t('pos:proposal.status.draft')}</option>
-              <option value="converted">{t('pos:proposal.status.converted')}</option>
+              <option value="sent">{t('pos:proposal.status.sent')}</option>
+              <option value="accepted">{t('pos:proposal.status.accepted')}</option>
               <option value="cancelled">{t('pos:proposal.status.cancelled')}</option>
+              <option value="expired">{t('pos:proposal.status.expired')}</option>
             </select>
           </div>
 
@@ -178,14 +181,10 @@ export default function ProposalsPage() {
                                 </button>
                               </>
                             )}
-                            {proposal.status === 'converted' && proposal.converted_to_sale_id && (
-                              <a
-                                href={`/sales/${proposal.converted_to_sale_id}`}
-                                className="btn-secondary btn-sm"
-                                style={{ textDecoration: 'none' }}
-                              >
-                                {t('pos:actions.viewSale')}
-                              </a>
+                            {proposal.status === 'accepted' && (
+                              <span className="badge badge-accepted">
+                                {t('pos:proposal.status.accepted')}
+                              </span>
                             )}
                           </div>
                         </td>

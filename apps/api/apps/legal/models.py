@@ -176,6 +176,21 @@ class LegalEntity(models.Model):
         help_text=_('Optional text to appear at bottom of invoices (payment terms, legal notices, etc.)')
     )
     
+    # Contact
+    legal_email = models.EmailField(
+        max_length=255,
+        blank=True,
+        verbose_name=_('Legal email'),
+        help_text=_('Official contact email for this legal entity')
+    )
+
+    phone = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name=_('Phone'),
+        help_text=_('Main phone number for this legal entity')
+    )
+
     # Status
     is_active = models.BooleanField(
         default=True,

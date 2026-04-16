@@ -106,7 +106,8 @@
         "status": "Статус",
         "birthDate": "Дата нар.",
         "sex": "Стать",
-        "actions": "Дії"      },
+        "actions": "Дії"
+      },
       "warnings": {
         "incompleteConsents": "Потрібні юридичні згоди",
         "missingDocuments": "Документи очікують завантаження",
@@ -208,7 +209,8 @@
       "bannerTitle": "Потрібні юридичні згоди",
       "bannerMessage": "Цей пацієнт не прийняв необхідні юридичні згоди. Клінічні консультації не можуть бути створені доти, доки не будуть прийняті як політика конфіденційності, так і умови використання.",
       "reviewCta": "Переглянути та прийняти згоди"
-    },    "consentDocuments": {
+    },
+    "consentDocuments": {
       "missingDocumentsBanner": {
         "title": "Документи згоди очікують завантаження",
         "message": "До деяких згод ще не прикріплено відсканований файл. Ви можете завантажити їх з розділу документів, коли вони будуть доступні."
@@ -250,7 +252,8 @@
         "generic": "Деякі документи не вдалося обробити коректно"
       },
       "uploadWarningsTitle": "Попередження про документи"
-    },    "documentType": {
+    },
+    "documentType": {
       "dni": "Національне посвідчення",
       "passport": "Паспорт",
       "other": "Інше"
@@ -327,7 +330,8 @@
       "confirm": "Підтвердити",
       "checkIn": "Зареєструвати",
       "complete": "Завершити",
-      "cancel": "Скасувати"
+      "cancel": "Скасувати",
+      "startEncounter": "Consultation"
     },
     "summary": {
       "totalAppointments": "Всього зустрічей"
@@ -493,6 +497,264 @@
       "title": "Несанкціонований доступ",
       "description": "У вас немає прав доступу до цього розділу. Тільки адміністратори можуть керувати користувачами.",
       "action": "Перейти на головну"
+    }
+  },
+  "system": {
+    "badge": {
+      "system": "Система"
+    },
+    "header": {
+      "operating_in": "Робота в: {name}"
+    },
+    "actions": {
+      "select_legal_entity": "Обрати юридичну особу",
+      "switch_legal_entity": "Змінити юридичну особу",
+      "return_to_system": "Повернутися до системи"
+    },
+    "selector": {
+      "title": "Обрати юридичну особу",
+      "search_placeholder": "Пошук за назвою, країною або містом...",
+      "no_results": "Юридичних осіб не знайдено",
+      "create_first": "Створити першу юридичну особу",
+      "manage": "Керування юридичними особами"
+    },
+    "guard": {
+      "title": "Оберіть юридичну особу для роботи",
+      "description": "Як системний адміністратор, ви повинні обрати юридичну особу перед доступом до бізнес-функцій."
+    }
+  },
+  "proposals": {
+    "detail": {
+      "title": "Деталі пропозиції",
+      "info": "Інформація про пропозицію",
+      "patient": "Пацієнт",
+      "practitioner": "Лікар",
+      "created": "Створено",
+      "validUntil": "Дійсна до",
+      "sentAt": "Відправлено",
+      "acceptedAt": "Прийнято",
+      "cancellationReason": "Причина скасування",
+      "notes": "Нотатки",
+      "lines": "Лінії лікування",
+      "treatmentName": "Лікування",
+      "quantity": "К-сть",
+      "unitPrice": "Ціна за од.",
+      "lineTotal": "Всього",
+      "total": "Всього",
+      "noLines": "Немає ліній лікування.",
+      "saleCreated": "Продаж створено",
+      "readonlyMessage": {
+        "cancelled": "Цю пропозицію було скасовано.",
+        "expired": "Термін дії цієї пропозиції закінчився."
+      }
+    },
+    "status": {
+      "draft": "Чернетка",
+      "sent": "Відправлено",
+      "accepted": "Прийнято",
+      "cancelled": "Скасовано",
+      "expired": "Закінчилось"
+    },
+    "actions": {
+      "backToList": "Назад до пропозицій",
+      "send": "Відправити пропозицію",
+      "sending": "Відправка…",
+      "accept": "Прийняти пропозицію",
+      "accepting": "Прийняття…",
+      "confirmAccept": "Підтвердити прийняття",
+      "cancel": "Скасувати пропозицію",
+      "cancelling": "Скасування…",
+      "back": "Назад"
+    },
+    "modals": {
+      "acceptTitle": "Прийняти пропозицію",
+      "acceptDescription": "Прийняття цієї пропозиції створить продаж та плани лікування. Цю дію не можна скасувати.",
+      "legalEntityLabel": "ID юридичної особи",
+      "legalEntityPlaceholder": "Введіть UUID юридичної особи",
+      "cancelTitle": "Скасувати пропозицію",
+      "cancelDescription": "Цю дію не можна скасувати. Пропозицію буде остаточно скасовано.",
+      "cancellationReasonLabel": "Причина скасування",
+      "cancellationReasonPlaceholder": "Введіть причину скасування…",
+      "confirmCancel": "Підтвердити скасування"
+    },
+    "errors": {
+      "loadFailed": "Не вдалося завантажити пропозицію."
+    }
+  },
+  "patient360": {
+    "tabs": {
+      "overview": "Огляд",
+      "encounters": "Консультації",
+      "treatmentPlans": "Плани лікування",
+      "proposals": "Пропозиції",
+      "sales": "Продажі"
+    },
+    "comingSoon": "Незабаром",
+    "overview": {
+      "personalData": "Персональні дані",
+      "notes": "Нотатки",
+      "noNotes": "Нотатки відсутні.",
+      "activeCoverage": "Активне покриття",
+      "providerName": "Постачальник",
+      "memberNumber": "Номер учасника",
+      "socialSecurityNumber": "Номер соціального страхування",
+      "validFrom": "Діє з",
+      "financialKpis": "Фінансові KPI",
+      "proposalsDraft": "Чернетки пропозицій",
+      "proposalsSent": "Відправлені пропозиції",
+      "lastSaleDate": "Останній продаж",
+      "clinicalKpis": "Клінічні KPI",
+      "totalEncounters": "Всього консультацій",
+      "activeTreatmentPlans": "Активні плани лікування",
+      "errorLoading": "Не вдалося завантажити огляд пацієнта.",
+      "clinicalHistory": "Клінічна історія",
+      "allStatuses": "Всі статуси",
+      "dateFrom": "З",
+      "dateTo": "По",
+      "clearFilters": "Очистити",
+      "pageOf": "Сторінка {page} з {total}",
+      "results": "{count} результатів",
+      "previous": "Назад",
+      "next": "Вперед",
+      "viewEncounter": "Переглянути",
+      "errorLoadingEncounters": "Помилка завантаження консультацій.",
+      "noEncounters": "Консультації не знайдено.",
+      "financialHistory": "Фінансова історія",
+      "viewProposal": "Переглянути",
+      "errorLoadingProposals": "Помилка завантаження пропозицій.",
+      "noProposals": "Пропозиції не знайдено.",
+      "colDate": "Дата",
+      "colStatus": "Статус",
+      "colTotal": "Сума",
+      "colValidUntil": "Дійсне до",
+      "colPractitioner": "Спеціаліст"
+    },
+    "treatmentPlans": "Плани Лікування",
+    "noTreatmentPlans": "Плани лікування не знайдені."
+  },
+  "treatmentPlans": {
+    "status": {
+      "draft": "Чернетка",
+      "active": "Активний",
+      "completed": "Завершено",
+      "cancelled": "Скасовано"
+    },
+    "colDate": "Дата",
+    "colStatus": "Статус",
+    "colSessions": "Сеанси",
+    "colRemaining": "Залишилось",
+    "colProgress": "Прогрес",
+    "view": "Переглянути",
+    "errorLoading": "Не вдалося завантажити плани лікування."
+  },
+  "treatmentSession": {
+    "pageTitle": "Сеанс Лікування",
+    "header": {
+      "patient": "Пацієнт",
+      "package": "Пакет",
+      "practitioner": "Спеціаліст",
+      "performedAt": "Проведено"
+    },
+    "status": {
+      "draft": "Чернетка",
+      "completed": "Завершено",
+      "cancelled": "Скасовано"
+    },
+    "actions": {
+      "complete": "Завершити Сеанс",
+      "cancel": "Скасувати Сеанс",
+      "back": "Назад"
+    },
+    "confirm": {
+      "completeTitle": "Завершити Сеанс",
+      "completeMessage": "Підтвердити, що сеанс було проведено? Цю дію не можна скасувати.",
+      "cancelTitle": "Скасувати Сеанс",
+      "cancelMessage": "Скасувати цей сеанс? Цю дію не можна скасувати.",
+      "yes": "Підтвердити",
+      "no": "Назад"
+    },
+    "editor": {
+      "title": "Клінічні Нотатки",
+      "placeholder": "Написати клінічні нотатки до сеансу...",
+      "saving": "Збереження...",
+      "saved": "Збережено"
+    },
+    "photos": {
+      "title": "Фотографії",
+      "dropHere": "Перетягніть зображення сюди",
+      "uploadHint": "або натисніть для вибору файлів",
+      "noPhotos": "Фотографії ще не прикріплені."
+    },
+    "error": {
+      "loading": "Не вдалося завантажити сеанс лікування.",
+      "completing": "Не вдалося завершити сеанс.",
+      "cancelling": "Не вдалося скасувати сеанс."
+    }
+  },
+  "admin": {
+    "section": "Адміністрування",
+    "legalEntities": {
+      "title": "Юридичні особи",
+      "pageTitle": "Юридичні особи",
+      "createTitle": "Нова юридична особа",
+      "editTitle": "Редагувати юридичну особу",
+      "columns": {
+        "tradeName": "Торгова назва",
+        "legalName": "Юридична назва",
+        "country": "Країна",
+        "siret": "SIRET",
+        "active": "Активна",
+        "users": "Користувачі",
+        "actions": "Дії"
+      },
+      "empty": "Юридичні особи не знайдені.",
+      "emptyHint": "Створіть першу юридичну особу для початку роботи.",
+      "create": "Нова юридична особа",
+      "edit": "Редагувати",
+      "view": "Переглянути",
+      "form": {
+        "sectionIdentity": "Ідентифікація",
+        "sectionAddress": "Адреса",
+        "sectionContact": "Контакт",
+        "sectionAdmin": "Адміністратор",
+        "sectionStatus": "Статус",
+        "tradeName": "Торгова назва",
+        "legalName": "Юридична назва",
+        "siret": "SIRET",
+        "siren": "SIREN",
+        "vatNumber": "Номер ПДВ",
+        "countryCode": "Код країни",
+        "addressLine1": "Адреса рядок 1",
+        "addressLine2": "Адреса рядок 2",
+        "postalCode": "Поштовий індекс",
+        "city": "Місто",
+        "legalEmail": "Юридичний email",
+        "phone": "Телефон",
+        "currency": "Валюта",
+        "timezone": "Часовий пояс",
+        "isActive": "Активна",
+        "adminEmail": "Email адміністратора",
+        "adminFirstName": "Ім'я адміністратора",
+        "adminLastName": "Прізвище адміністратора"
+      },
+      "actions": {
+        "create": "Створити",
+        "save": "Зберегти",
+        "cancel": "Скасувати"
+      },
+      "messages": {
+        "created": "Юридичну особу успішно створено.",
+        "updated": "Юридичну особу успішно оновлено.",
+        "errorCreate": "Не вдалося створити юридичну особу.",
+        "errorUpdate": "Не вдалося оновити юридичну особу.",
+        "errorLoad": "Не вдалося завантажити юридичні особи.",
+        "tempPasswordNotice": "Для адміністратора згенеровано тимчасовий пароль. Скопіюйте його зараз — він більше не буде показаний.",
+        "goToList": "Перейти до юридичних осіб"
+      },
+      "status": {
+        "active": "Активна",
+        "inactive": "Неактивна"
+      }
     }
   }
 }

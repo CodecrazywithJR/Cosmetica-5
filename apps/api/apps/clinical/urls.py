@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     PatientViewSet,
     AppointmentViewSet,
+    PatientInsuranceViewSet,
     PatientMergeCandidatesView,
     PatientMergeView,
     EncounterViewSet,
@@ -20,6 +21,8 @@ from .views import (
 from .views_photos import ClinicalPhotoViewSet
 from .views_documents import DocumentViewSet
 from .views_consents import ConsentViewSet
+from apps.treatment_plans.views import TreatmentPlanViewSet
+from apps.treatment_plans.treatment_session_views import TreatmentSessionViewSet
 
 router = DefaultRouter()
 router.register(r'patients', PatientViewSet, basename='patient')
@@ -27,6 +30,9 @@ router.register(r'appointments', AppointmentViewSet, basename='appointment')
 router.register(r'encounters', EncounterViewSet, basename='encounter')
 router.register(r'treatments', TreatmentViewSet, basename='treatment')
 router.register(r'proposals', ClinicalChargeProposalViewSet, basename='clinical-charge-proposal')
+router.register(r'patient-insurances', PatientInsuranceViewSet, basename='patient-insurance')
+router.register(r'treatment-plans', TreatmentPlanViewSet, basename='treatment-plan')
+router.register(r'treatment-sessions', TreatmentSessionViewSet, basename='treatment-session')
 
 urlpatterns = [
     # Patient merge operations

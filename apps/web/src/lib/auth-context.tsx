@@ -33,13 +33,13 @@ interface BackendUser {
   last_name?: string;
   roles: string[];
   is_active: boolean;
+  is_superuser?: boolean;
   must_change_password?: boolean;
   practitioner_data?: {
     id: string;
     display_name: string;
     role_type: string;
     specialty: string;
-    calendly_url: string | null;
     is_active: boolean;
   } | null;
 }
@@ -51,13 +51,13 @@ export interface User {
   last_name?: string;
   roles: string[];
   role: Role;
+  is_superuser?: boolean;
   must_change_password?: boolean;
   practitioner_data?: {
     id: string;
     display_name: string;
     role_type: string;
     specialty: string;
-    calendly_url: string | null;
     is_active: boolean;
   } | null;
 }
@@ -66,6 +66,12 @@ interface AuthContextType {
   user: User | null;
   accessToken: string | null;
   isAuthenticated: boolean;
+  /** True while the initial silent token refresh is in-flight on mount.
+   * AppLayout must not redirect to /login while this is true. */
+  isInitializing: boolean;
+  /** True when a refresh attempt definitively failed (cookie expired/invalid).
+   * AppLayout uses this to distinguish "not yet checked" from "truly unauthenticated". */
+  authError: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -86,6 +92,7 @@ function transformUser(backendUser: BackendUser): User {
     last_name: backendUser.last_name,
     roles: backendUser.roles,
     role: (backendUser.roles[0] || 'reception') as Role,
+    is_superuser: backendUser.is_superuser || false,
     must_change_password: backendUser.must_change_password || false,
     practitioner_data: backendUser.practitioner_data,
   };
@@ -95,6 +102,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // True until the first silent refresh attempt finishes (success OR failure).
+  // Prevents AppLayout from redirecting to /login during the async init window.
+  const [isInitializing, setIsInitializing] = useState(true);
+  // True when the refresh attempt definitively failed. AppLayout uses this
+  // to distinguish "init not done yet" from "truly unauthenticated".
+  const [authError, setAuthError] = useState(false);
   // Ref so the closure inside setTokenProvider always has the latest token
   const accessTokenRef = useRef<string | null>(null);
   // BroadcastChannel for multi-tab sync (null on SSR)
@@ -107,7 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accessToken]);
 
   /**
-   * Clears local auth state and redirects.
+   * Clears local auth state. Does NOT navigate — navigation is handled
+   * exclusively by AppLayout based on (user === null && authError === true).
    * broadcast=false when the logout was triggered by another tab to prevent loops.
    */
   const performLocalLogout = useCallback((broadcast = true) => {
@@ -115,13 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     accessTokenRef.current = null;
     setUser(null);
     setIsAuthenticated(false);
+    setAuthError(true);
 
     if (broadcast && authChannelRef.current) {
       authChannelRef.current.postMessage({ type: 'LOGOUT' });
     }
-
-    router.push('/en/login');
-  }, [router]);
+  }, []);
 
   const logout = useCallback(() => {
     // Best-effort: tell backend to blacklist the refresh cookie
@@ -131,7 +144,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => { /* ignore network errors on logout */ });
 
     performLocalLogout(true);
-  }, [performLocalLogout]);
+
+    // Explicit user logout → navigate to login.
+    // This is the ONLY place in the entire auth system that navigates.
+    const pathLocale = typeof window !== 'undefined'
+      ? (window.location.pathname.split('/')[1] || 'en')
+      : 'en';
+    router.push(`/${pathLocale}/login`);
+  }, [performLocalLogout, router]);
 
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     try {
@@ -188,15 +208,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // Silent refresh via HttpOnly cookie
+    // Silent refresh via HttpOnly cookie.
+    // setIsInitializing(false) MUST always run, regardless of outcome,
+    // so AppLayout never gets stuck in the loading state.
     (async () => {
-      const ok = await refreshAccessToken();
-      if (ok && accessTokenRef.current) {
-        try {
-          await fetchAndSetUser(accessTokenRef.current);
-        } catch {
-          performLocalLogout(true);
+      try {
+        const ok = await refreshAccessToken();
+        if (ok && accessTokenRef.current) {
+          try {
+            await fetchAndSetUser(accessTokenRef.current);
+          } catch {
+            performLocalLogout(true);
+          }
         }
+      } finally {
+        setIsInitializing(false);
       }
     })();
 
@@ -239,6 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token: string = data.access;
     setAccessToken(token);
     accessTokenRef.current = token;
+    setAuthError(false);
 
     await fetchAndSetUser(token);
 
@@ -275,6 +302,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         accessToken,
         isAuthenticated,
+        isInitializing,
+        authError,
         login,
         logout,
         refreshUser,

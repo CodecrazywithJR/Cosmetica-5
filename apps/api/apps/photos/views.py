@@ -8,12 +8,13 @@ NOTE: Photos can always be uploaded/saved regardless of consent (business rule).
 from rest_framework import filters, parsers, viewsets
 from rest_framework.permissions import IsAuthenticated
 from apps.clinical.permissions import IsClinicalStaff
+from apps.core.tenant import TenantQuerySetMixin
 
 from .models import SkinPhoto
 from .serializers import SkinPhotoListSerializer, SkinPhotoSerializer
 
 
-class SkinPhotoViewSet(viewsets.ModelViewSet):
+class SkinPhotoViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """
     ViewSet for SkinPhoto CRUD operations.
     Supports multipart file uploads.
@@ -21,7 +22,7 @@ class SkinPhotoViewSet(viewsets.ModelViewSet):
     BUSINESS RULE: Only clinical staff (Admin, Practitioner) can access clinical photos.
     Reception cannot view or edit clinical photos.
     """
-    queryset = SkinPhoto.objects.select_related('patient', 'encounter').all()
+    queryset = SkinPhoto.objects.select_related('patient', 'encounter').filter(patient__is_deleted=False)
     permission_classes = [IsAuthenticated, IsClinicalStaff]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

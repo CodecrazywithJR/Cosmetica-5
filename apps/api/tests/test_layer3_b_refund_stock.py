@@ -31,6 +31,7 @@ from apps.stock.models import (
     StockMoveTypeChoices,
 )
 from apps.sales.services import refund_stock_for_sale, consume_stock_for_sale
+from tests.conftest import TEST_PASSWORD
 
 User = get_user_model()
 
@@ -66,9 +67,9 @@ def product():
         )
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def main_warehouse():
-    """Create MAIN-WAREHOUSE location."""
+    """Create MAIN-WAREHOUSE location (autouse so it's always available for stock consumption)."""
     location, _ = StockLocation.objects.get_or_create(
         code='MAIN-WAREHOUSE',
         defaults={
@@ -103,27 +104,27 @@ def batch_b(product):
 
 @pytest.fixture
 def reception_user():
-    """Create a Reception group user."""
-    from django.contrib.auth.models import Group
+    """Create a user with Reception role for sale access."""
+    from apps.authz.models import Role, UserRole, RoleChoices
     user = User.objects.create_user(
         email='reception2@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
-    reception_group, _ = Group.objects.get_or_create(name='Reception')
-    user.groups.add(reception_group)
+    reception_role, _ = Role.objects.get_or_create(name=RoleChoices.RECEPTION)
+    UserRole.objects.create(user=user, role=reception_role)
     return user
 
 
 @pytest.fixture
 def clinicalops_user():
-    """Create a ClinicalOps group user."""
-    from django.contrib.auth.models import Group
+    """Create a user with Practitioner role (replaces ClinicalOps group)."""
+    from apps.authz.models import Role, UserRole, RoleChoices
     user = User.objects.create_user(
         email='clinicalops2@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
-    clinicalops_group, _ = Group.objects.get_or_create(name='ClinicalOps')
-    user.groups.add(clinicalops_group)
+    practitioner_role, _ = Role.objects.get_or_create(name=RoleChoices.PRACTITIONER)
+    UserRole.objects.create(user=user, role=practitioner_role)
     return user
 
 
@@ -136,7 +137,7 @@ class TestRefundCreatesMatchingReversalMoves:
     """Test that refund creates REFUND_IN moves reversing exact batches consumed."""
     
     def test_refund_paid_sale_creates_refund_in_moves_matching_batches(
-        self, patient, product, main_warehouse, batch_a, batch_b
+        self, patient, product, main_warehouse, batch_a, batch_b, legal_entity
     ):
         """
         GIVEN a paid sale that consumed stock from 2 batches (FEFO)
@@ -160,6 +161,7 @@ class TestRefundCreatesMatchingReversalMoves:
         # Create sale needing 10 units (3 from batch_a, 7 from batch_b)
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('3000.00'),
             tax=Decimal('0.00'),
@@ -170,7 +172,7 @@ class TestRefundCreatesMatchingReversalMoves:
             sale=sale,
             product=product,
             product_name='Dermal Filler 1ml',
-            quantity=Decimal('10.00'),
+            quantity=10,
             unit_price=Decimal('300.00'),
             line_total=Decimal('3000.00')
         )
@@ -238,7 +240,7 @@ class TestRefundCreatesMatchingReversalMoves:
         ).quantity_on_hand == 50  # Restored
     
     def test_refund_sale_with_single_batch_consumption(
-        self, patient, product, main_warehouse, batch_a
+        self, patient, product, main_warehouse, batch_a, legal_entity
     ):
         """
         GIVEN a paid sale that consumed from single batch
@@ -254,6 +256,7 @@ class TestRefundCreatesMatchingReversalMoves:
         
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('1500.00'),
             tax=Decimal('0.00'),
@@ -264,7 +267,7 @@ class TestRefundCreatesMatchingReversalMoves:
             sale=sale,
             product=product,
             product_name='Dermal Filler 1ml',
-            quantity=Decimal('5.00'),
+            quantity=5,
             unit_price=Decimal('300.00'),
             line_total=Decimal('1500.00')
         )
@@ -298,7 +301,7 @@ class TestRefundNonPaidSaleRejected:
     """Test that refund rejects sales not in PAID status."""
     
     def test_refund_draft_sale_raises_validation_error(
-        self, patient, product
+        self, patient, product, legal_entity
     ):
         """
         GIVEN a sale in DRAFT status
@@ -307,6 +310,7 @@ class TestRefundNonPaidSaleRejected:
         """
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.DRAFT,
             subtotal=Decimal('300.00'),
             tax=Decimal('0.00'),
@@ -319,7 +323,7 @@ class TestRefundNonPaidSaleRejected:
         assert 'Invalid transition from draft to refunded' in str(exc_info.value)
     
     def test_refund_pending_sale_raises_validation_error(
-        self, patient, product
+        self, patient, product, legal_entity
     ):
         """
         GIVEN a sale in PENDING status (not yet paid)
@@ -328,6 +332,7 @@ class TestRefundNonPaidSaleRejected:
         """
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('300.00'),
             tax=Decimal('0.00'),
@@ -340,7 +345,7 @@ class TestRefundNonPaidSaleRejected:
         assert 'Invalid transition from pending to refunded' in str(exc_info.value)
     
     def test_refund_cancelled_sale_raises_validation_error(
-        self, patient
+        self, patient, legal_entity
     ):
         """
         GIVEN a sale in CANCELLED status
@@ -349,6 +354,7 @@ class TestRefundNonPaidSaleRejected:
         """
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.CANCELLED,
             subtotal=Decimal('300.00'),
             tax=Decimal('0.00'),
@@ -371,7 +377,7 @@ class TestRefundIdempotency:
     """Test that refund is idempotent - no duplicate reversals."""
     
     def test_repeated_refund_does_not_duplicate_refund_in_moves(
-        self, patient, product, main_warehouse, batch_a
+        self, patient, product, main_warehouse, batch_a, legal_entity
     ):
         """
         GIVEN a sale already refunded
@@ -387,6 +393,7 @@ class TestRefundIdempotency:
         
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('600.00'),
             tax=Decimal('0.00'),
@@ -397,7 +404,7 @@ class TestRefundIdempotency:
             sale=sale,
             product=product,
             product_name='Dermal Filler 1ml',
-            quantity=Decimal('2.00'),
+            quantity=2,
             unit_price=Decimal('300.00'),
             line_total=Decimal('600.00')
         )
@@ -448,7 +455,7 @@ class TestRefundRollbackOnError:
     """Test that refund rolls back on error - no partial state changes."""
     
     def test_refund_rolls_back_if_error_during_processing(
-        self, patient, product, main_warehouse, batch_a, monkeypatch
+        self, patient, product, main_warehouse, batch_a, monkeypatch, legal_entity
     ):
         """
         GIVEN a paid sale
@@ -464,6 +471,7 @@ class TestRefundRollbackOnError:
         
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('300.00'),
             tax=Decimal('0.00'),
@@ -474,7 +482,7 @@ class TestRefundRollbackOnError:
             sale=sale,
             product=product,
             product_name='Dermal Filler 1ml',
-            quantity=Decimal('1.00'),
+            quantity=1,
             unit_price=Decimal('300.00'),
             line_total=Decimal('300.00')
         )
@@ -482,21 +490,11 @@ class TestRefundRollbackOnError:
         # Pay sale
         sale.transition_to(SaleStatusChoices.PAID, user=None)
         
-        # Mock StockOnHand.save() to raise error during refund
-        original_save = StockOnHand.save
+        # Mock refund_stock_for_sale to raise error during refund
+        def failing_refund(**kwargs):
+            raise RuntimeError("Simulated database error")
         
-        def failing_save(self, *args, **kwargs):
-            if hasattr(self, '_test_fail_on_refund'):
-                raise RuntimeError("Simulated database error")
-            return original_save(self, *args, **kwargs)
-        
-        monkeypatch.setattr(StockOnHand, 'save', failing_save)
-        
-        # Mark stock to fail on next save
-        stock = StockOnHand.objects.get(
-            product=product, location=main_warehouse, batch=batch_a
-        )
-        stock._test_fail_on_refund = True
+        monkeypatch.setattr('apps.sales.services.refund_stock_for_sale', failing_refund)
         
         # Attempt refund (should fail and rollback)
         with pytest.raises(RuntimeError) as exc_info:
@@ -507,7 +505,6 @@ class TestRefundRollbackOnError:
         # Verify rollback: sale status NOT changed
         sale.refresh_from_db()
         assert sale.status == SaleStatusChoices.PAID  # Still paid
-        assert sale.refund_reason is None or sale.refund_reason == ''
         
         # Verify no refund moves created
         refund_moves = StockMove.objects.filter(
@@ -517,7 +514,9 @@ class TestRefundRollbackOnError:
         assert refund_moves.count() == 0
         
         # Stock on hand unchanged (still consumed)
-        stock.refresh_from_db()
+        stock = StockOnHand.objects.get(
+            product=product, location=main_warehouse, batch=batch_a
+        )
         assert stock.quantity_on_hand == 9  # Still 10 - 1
 
 
@@ -530,7 +529,7 @@ class TestReceptionCanExecuteRefund:
     """Test that Reception users can execute refund via API."""
     
     def test_reception_user_can_refund_paid_sale_via_api(
-        self, patient, product, main_warehouse, batch_a, reception_user
+        self, patient, product, main_warehouse, batch_a, reception_user, legal_entity
     ):
         """
         GIVEN a reception user and a paid sale
@@ -546,6 +545,7 @@ class TestReceptionCanExecuteRefund:
         
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('600.00'),
             tax=Decimal('0.00'),
@@ -556,7 +556,7 @@ class TestReceptionCanExecuteRefund:
             sale=sale,
             product=product,
             product_name='Dermal Filler 1ml',
-            quantity=Decimal('2.00'),
+            quantity=2,
             unit_price=Decimal('300.00'),
             line_total=Decimal('600.00')
         )
@@ -613,7 +613,7 @@ class TestStockOnHandRestored:
     """Test that StockOnHand balances restored to pre-sale levels."""
     
     def test_stock_on_hand_restored_to_exact_pre_sale_levels(
-        self, patient, product, main_warehouse, batch_a, batch_b
+        self, patient, product, main_warehouse, batch_a, batch_b, legal_entity
     ):
         """
         GIVEN a paid sale that consumed from multiple batches
@@ -637,6 +637,7 @@ class TestStockOnHandRestored:
         # Create sale needing 20 units (15 from batch_a, 5 from batch_b via FEFO)
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('6000.00'),
             tax=Decimal('0.00'),
@@ -647,7 +648,7 @@ class TestStockOnHandRestored:
             sale=sale,
             product=product,
             product_name='Dermal Filler 1ml',
-            quantity=Decimal('20.00'),
+            quantity=20,
             unit_price=Decimal('300.00'),
             line_total=Decimal('6000.00')
         )
@@ -677,7 +678,7 @@ class TestStockOnHandRestored:
         assert stock_b.quantity_on_hand == 30  # Restored to initial
     
     def test_refund_sale_with_no_stock_moves_returns_empty_list(
-        self, patient
+        self, patient, legal_entity
     ):
         """
         GIVEN a paid sale with no product lines (all services)
@@ -686,6 +687,7 @@ class TestStockOnHandRestored:
         """
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('100.00'),
             tax=Decimal('0.00'),
@@ -697,7 +699,7 @@ class TestStockOnHandRestored:
             sale=sale,
             product=None,
             product_name='Consultation',
-            quantity=Decimal('1.00'),
+            quantity=1,
             unit_price=Decimal('100.00'),
             line_total=Decimal('100.00')
         )

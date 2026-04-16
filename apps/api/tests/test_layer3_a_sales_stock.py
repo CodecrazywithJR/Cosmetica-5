@@ -32,6 +32,7 @@ from apps.stock.models import (
 )
 from apps.stock.services import InsufficientStockError
 from apps.sales.services import consume_stock_for_sale, get_default_stock_location
+from tests.conftest import TEST_PASSWORD
 
 User = get_user_model()
 
@@ -68,9 +69,9 @@ def product():
         )
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def main_warehouse():
-    """Create MAIN-WAREHOUSE location."""
+    """Create MAIN-WAREHOUSE location (autouse so it's always available for stock consumption)."""
     location, _ = StockLocation.objects.get_or_create(
         code='MAIN-WAREHOUSE',
         defaults={
@@ -105,27 +106,27 @@ def batch_expiring_soon(product):
 
 @pytest.fixture
 def reception_user():
-    """Create a Reception group user."""
-    from django.contrib.auth.models import Group
+    """Create a user with Reception role for sale access."""
+    from apps.authz.models import Role, UserRole, RoleChoices
     user = User.objects.create_user(
         email='reception@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
-    reception_group, _ = Group.objects.get_or_create(name='Reception')
-    user.groups.add(reception_group)
+    reception_role, _ = Role.objects.get_or_create(name=RoleChoices.RECEPTION)
+    UserRole.objects.create(user=user, role=reception_role)
     return user
 
 
 @pytest.fixture
 def clinicalops_user():
-    """Create a ClinicalOps group user."""
-    from django.contrib.auth.models import Group
+    """Create a user with Practitioner role (replaces ClinicalOps group)."""
+    from apps.authz.models import Role, UserRole, RoleChoices
     user = User.objects.create_user(
         email='clinicalops@test.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
-    clinicalops_group, _ = Group.objects.get_or_create(name='ClinicalOps')
-    user.groups.add(clinicalops_group)
+    practitioner_role, _ = Role.objects.get_or_create(name=RoleChoices.PRACTITIONER)
+    UserRole.objects.create(user=user, role=practitioner_role)
     return user
 
 
@@ -138,7 +139,7 @@ class TestSalePaidConsumesStockFEFO:
     """Test that transitioning sale to paid automatically consumes stock using FEFO."""
     
     def test_sale_paid_consumes_stock_fefo_allocation(
-        self, patient, product, main_warehouse, batch_expiring_soon, batch_fresh
+        self, patient, product, main_warehouse, batch_expiring_soon, batch_fresh, legal_entity
     ):
         """
         GIVEN a sale with product line and stock in multiple batches
@@ -162,6 +163,7 @@ class TestSalePaidConsumesStockFEFO:
         # Create sale with product line
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('250.00'),
             tax=Decimal('0.00'),
@@ -173,7 +175,7 @@ class TestSalePaidConsumesStockFEFO:
             sale=sale,
             product=product,  # Link to actual product
             product_name='Botox 50 Units',
-            quantity=Decimal('5.00'),
+            quantity=5,
             unit_price=Decimal('50.00'),
             discount=Decimal('0.00'),
             line_total=Decimal('250.00')
@@ -213,7 +215,7 @@ class TestSalePaidConsumesStockFEFO:
         assert stock_fresh.quantity_on_hand == 50  # Untouched (FEFO)
     
     def test_sale_paid_consumes_from_multiple_batches_when_needed(
-        self, patient, product, main_warehouse, batch_expiring_soon, batch_fresh
+        self, patient, product, main_warehouse, batch_expiring_soon, batch_fresh, legal_entity
     ):
         """
         GIVEN stock in multiple batches, first batch has insufficient quantity
@@ -237,6 +239,7 @@ class TestSalePaidConsumesStockFEFO:
         # Create sale needing 10 units (more than expiring batch has)
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('500.00'),
             tax=Decimal('0.00'),
@@ -248,7 +251,7 @@ class TestSalePaidConsumesStockFEFO:
             sale=sale,
             product=product,
             product_name='Botox 50 Units',
-            quantity=Decimal('10.00'),
+            quantity=10,
             unit_price=Decimal('50.00'),
             line_total=Decimal('500.00')
         )
@@ -280,7 +283,7 @@ class TestSalePaidConsumesStockFEFO:
         ).quantity_on_hand == 43  # 50 - 7
     
     def test_sale_with_service_lines_skips_stock_consumption(
-        self, patient, main_warehouse
+        self, patient, main_warehouse, legal_entity
     ):
         """
         GIVEN a sale with lines that have no product FK (services)
@@ -289,6 +292,7 @@ class TestSalePaidConsumesStockFEFO:
         """
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('100.00'),
             tax=Decimal('0.00'),
@@ -300,7 +304,7 @@ class TestSalePaidConsumesStockFEFO:
             sale=sale,
             product=None,  # No product link
             product_name='Consultation',
-            quantity=Decimal('1.00'),
+            quantity=1,
             unit_price=Decimal('100.00'),
             line_total=Decimal('100.00')
         )
@@ -322,7 +326,7 @@ class TestInsufficientStockPreventsPaid:
     """Test that insufficient stock prevents sale from being marked as paid."""
     
     def test_sale_paid_fails_without_sufficient_stock(
-        self, patient, product, main_warehouse, batch_fresh
+        self, patient, product, main_warehouse, batch_fresh, legal_entity
     ):
         """
         GIVEN a sale with product line but insufficient stock
@@ -340,6 +344,7 @@ class TestInsufficientStockPreventsPaid:
         # Create sale needing 10 units
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('500.00'),
             tax=Decimal('0.00'),
@@ -350,7 +355,7 @@ class TestInsufficientStockPreventsPaid:
             sale=sale,
             product=product,
             product_name='Botox 50 Units',
-            quantity=Decimal('10.00'),  # Need 10, have 2
+            quantity=10,  # Need 10, have 2
             unit_price=Decimal('50.00'),
             line_total=Decimal('500.00')
         )
@@ -376,7 +381,7 @@ class TestInsufficientStockPreventsPaid:
         ).quantity_on_hand == 2  # Unchanged
     
     def test_sale_paid_fails_without_any_stock(
-        self, patient, product, main_warehouse
+        self, patient, product, main_warehouse, legal_entity
     ):
         """
         GIVEN a sale with product line but zero stock
@@ -387,6 +392,7 @@ class TestInsufficientStockPreventsPaid:
         
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('250.00'),
             tax=Decimal('0.00'),
@@ -397,7 +403,7 @@ class TestInsufficientStockPreventsPaid:
             sale=sale,
             product=product,
             product_name='Botox 50 Units',
-            quantity=Decimal('5.00'),
+            quantity=5,
             unit_price=Decimal('50.00'),
             line_total=Decimal('250.00')
         )
@@ -421,7 +427,7 @@ class TestStockConsumptionIdempotency:
     """Test that stock consumption is idempotent - no duplicates on repeated calls."""
     
     def test_repeated_transition_to_paid_does_not_duplicate_stock_consumption(
-        self, patient, product, main_warehouse, batch_fresh
+        self, patient, product, main_warehouse, batch_fresh, legal_entity
     ):
         """
         GIVEN a sale already transitioned to paid (stock consumed)
@@ -439,6 +445,7 @@ class TestStockConsumptionIdempotency:
         # Create sale
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('250.00'),
             tax=Decimal('0.00'),
@@ -449,7 +456,7 @@ class TestStockConsumptionIdempotency:
             sale=sale,
             product=product,
             product_name='Botox 50 Units',
-            quantity=Decimal('5.00'),
+            quantity=5,
             unit_price=Decimal('50.00'),
             line_total=Decimal('250.00')
         )
@@ -490,7 +497,7 @@ class TestReceptionCanMarkSalePaid:
     """Test that Reception users can mark sales as paid (which triggers stock consumption)."""
     
     def test_reception_user_can_transition_sale_to_paid_via_api(
-        self, patient, product, main_warehouse, batch_fresh, reception_user
+        self, patient, product, main_warehouse, batch_fresh, reception_user, legal_entity
     ):
         """
         GIVEN a reception user and a sale with sufficient stock
@@ -508,6 +515,7 @@ class TestReceptionCanMarkSalePaid:
         # Create sale
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=legal_entity,
             status=SaleStatusChoices.PENDING,
             subtotal=Decimal('250.00'),
             tax=Decimal('0.00'),
@@ -518,7 +526,7 @@ class TestReceptionCanMarkSalePaid:
             sale=sale,
             product=product,
             product_name='Botox 50 Units',
-            quantity=Decimal('5.00'),
+            quantity=5,
             unit_price=Decimal('50.00'),
             line_total=Decimal('250.00')
         )

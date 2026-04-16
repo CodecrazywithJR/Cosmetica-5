@@ -22,6 +22,7 @@ urlpatterns = [
     
     # Public API (NO authentication required)
     path('public/', include('apps.website.urls')),
+    path('public/booking/', include('apps.clinical.urls_public_booking')),
     
     # Private API (authentication required)
     path('api/', include('apps.core.urls')),  # Core API (healthz, auth)
@@ -32,9 +33,11 @@ urlpatterns = [
     path('api/stock/', include('apps.stock.urls')),
     path('api/sales/', include('apps.sales.urls')),
     path('api/v1/pos/', include('apps.pos.urls')),  # POS with fuzzy patient search
-    path('api/integrations/', include('apps.integrations.urls')),
     # path('api/social/', include('apps.social.urls')),  # Social media - DISABLED: AUTH_USER_MODEL issue
-    
+
+    # System Plane (superuser only, no multi-tenant filtering)
+    path('api/v1/system/', include('apps.legal.urls')),
+
     # API Schema
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

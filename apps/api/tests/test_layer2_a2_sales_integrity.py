@@ -22,6 +22,7 @@ from apps.sales.models import Sale, SaleLine, SaleStatusChoices
 from apps.clinical.models import Patient
 from apps.clinical.models import Appointment
 from django.contrib.auth import get_user_model
+from tests.conftest import TEST_PASSWORD
 
 User = get_user_model()
 
@@ -34,12 +35,16 @@ def api_client():
 
 @pytest.fixture
 def user(db):
-    """Create test user."""
-    return User.objects.create_user(
+    """Create test user with Reception role for sale access."""
+    from apps.authz.models import Role, UserRole, RoleChoices
+    user = User.objects.create_user(
         username='testuser',
         email='test@example.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
+    reception_role, _ = Role.objects.get_or_create(name=RoleChoices.RECEPTION)
+    UserRole.objects.create(user=user, role=reception_role)
+    return user
 
 
 @pytest.fixture
@@ -63,18 +68,35 @@ def another_patient(db):
 
 
 @pytest.fixture
-def appointment(db, patient):
-    """Create test appointment."""
-    return Appointment.objects.create(
-        patient=patient,
-        scheduled_start='2025-01-15T10:00:00Z',
-        scheduled_end='2025-01-15T11:00:00Z',
-        status='scheduled'
+def practitioner(db):
+    """Create test practitioner."""
+    from apps.authz.models import Practitioner
+    pract_user = User.objects.create_user(
+        email='sales_pract@test.com',
+        password=TEST_PASSWORD,
+        is_active=True,
+    )
+    return Practitioner.objects.create(
+        user=pract_user,
+        display_name='Dr. Sales Test',
     )
 
 
 @pytest.fixture
-def draft_sale(db, patient):
+def appointment(db, patient, practitioner):
+    """Create test appointment."""
+    return Appointment.objects.create(
+        patient=patient,
+        practitioner=practitioner,
+        scheduled_start='2025-01-15T10:00:00Z',
+        scheduled_end='2025-01-15T11:00:00Z',
+        status='scheduled',
+        source='erp'
+    )
+
+
+@pytest.fixture
+def draft_sale(db, patient, legal_entity):
     """Create draft sale."""
     return Sale.objects.create(
         patient=patient,
@@ -83,11 +105,12 @@ def draft_sale(db, patient):
         tax=Decimal('10.00'),
         discount=Decimal('5.00'),
         total=Decimal('105.00'),
+        legal_entity=legal_entity,
     )
 
 
 @pytest.fixture
-def paid_sale(db, patient):
+def paid_sale(db, patient, legal_entity):
     """Create paid (closed) sale."""
     return Sale.objects.create(
         patient=patient,
@@ -96,7 +119,19 @@ def paid_sale(db, patient):
         tax=Decimal('10.00'),
         discount=Decimal('0.00'),
         total=Decimal('110.00'),
+        legal_entity=legal_entity,
     )
+
+
+@pytest.fixture(autouse=True)
+def main_warehouse(db, legal_entity):
+    """Ensure MAIN-WAREHOUSE StockLocation exists for stock operations."""
+    from apps.stock.models import StockLocation
+    loc, _ = StockLocation.objects.get_or_create(
+        code='MAIN-WAREHOUSE',
+        defaults={'name': 'Main Warehouse', 'is_active': True, 'legal_entity': legal_entity}
+    )
+    return loc
 
 
 # ============================================================================
@@ -247,7 +282,7 @@ class TestSaleLineDiscountConstraint:
 class TestSaleTotalCalculation:
     """Test that Sale.total = subtotal + tax - discount."""
     
-    def test_sale_total_consistency_validation(self, patient):
+    def test_sale_total_consistency_validation(self, patient, legal_entity):
         """Sale with inconsistent total should fail validation."""
         sale = Sale(
             patient=patient,
@@ -256,6 +291,7 @@ class TestSaleTotalCalculation:
             tax=Decimal('10.00'),
             discount=Decimal('5.00'),
             total=Decimal('999.00'),  # Invalid: should be 105.00
+            legal_entity=legal_entity,
         )
         
         with pytest.raises(ValidationError) as exc_info:
@@ -264,7 +300,7 @@ class TestSaleTotalCalculation:
         assert 'total' in exc_info.value.message_dict
         assert 'mismatch' in str(exc_info.value)
     
-    def test_sale_total_calculation_correct(self, patient):
+    def test_sale_total_calculation_correct(self, patient, legal_entity):
         """Sale with correct total should succeed."""
         sale = Sale(
             patient=patient,
@@ -273,6 +309,7 @@ class TestSaleTotalCalculation:
             tax=Decimal('10.00'),
             discount=Decimal('5.00'),
             total=Decimal('105.00'),  # Correct
+            legal_entity=legal_entity,
         )
         
         sale.full_clean()  # Should not raise
@@ -295,7 +332,7 @@ class TestSaleTotalEqualsLinesSum:
         SaleLine.objects.create(
             sale=draft_sale,
             product_name='Product A',
-            quantity=Decimal('2.00'),
+            quantity=2,
             unit_price=Decimal('10.00'),
             discount=Decimal('0.00'),
             line_total=Decimal('20.00')
@@ -303,7 +340,7 @@ class TestSaleTotalEqualsLinesSum:
         SaleLine.objects.create(
             sale=draft_sale,
             product_name='Product B',
-            quantity=Decimal('1.00'),
+            quantity=1,
             unit_price=Decimal('15.00'),
             discount=Decimal('5.00'),
             line_total=Decimal('10.00')
@@ -369,7 +406,7 @@ class TestClosedSaleImmutability:
 class TestSaleAppointmentPatientCoherence:
     """Test that sale.appointment.patient == sale.patient."""
     
-    def test_sale_appointment_patient_mismatch_fails_model(self, patient, another_patient, appointment):
+    def test_sale_appointment_patient_mismatch_fails_model(self, patient, another_patient, appointment, legal_entity):
         """Sale with mismatched appointment.patient should fail."""
         # appointment belongs to 'patient', but sale has 'another_patient'
         sale = Sale(
@@ -380,6 +417,7 @@ class TestSaleAppointmentPatientCoherence:
             tax=Decimal('0.00'),
             discount=Decimal('0.00'),
             total=Decimal('100.00'),
+            legal_entity=legal_entity,
         )
         
         with pytest.raises(ValidationError) as exc_info:
@@ -388,7 +426,7 @@ class TestSaleAppointmentPatientCoherence:
         assert 'appointment' in exc_info.value.message_dict
         assert 'patient mismatch' in str(exc_info.value)
     
-    def test_sale_with_matching_appointment_patient_succeeds(self, patient, appointment):
+    def test_sale_with_matching_appointment_patient_succeeds(self, patient, appointment, legal_entity):
         """Sale with matching appointment.patient should succeed."""
         sale = Sale(
             patient=patient,
@@ -398,6 +436,7 @@ class TestSaleAppointmentPatientCoherence:
             tax=Decimal('0.00'),
             discount=Decimal('0.00'),
             total=Decimal('100.00'),
+            legal_entity=legal_entity,
         )
         
         sale.full_clean()  # Should not raise
@@ -421,7 +460,7 @@ class TestSaleStatusTransitions:
         
         assert draft_sale.status == SaleStatusChoices.PENDING
     
-    def test_valid_transition_pending_to_paid(self, patient):
+    def test_valid_transition_pending_to_paid(self, patient, legal_entity):
         """Pending -> Paid should succeed."""
         sale = Sale.objects.create(
             patient=patient,
@@ -430,6 +469,7 @@ class TestSaleStatusTransitions:
             tax=Decimal('0.00'),
             discount=Decimal('0.00'),
             total=Decimal('100.00'),
+            legal_entity=legal_entity,
         )
         
         sale.transition_to(SaleStatusChoices.PAID)
@@ -460,7 +500,7 @@ class TestInvalidTransitions:
         
         assert 'Invalid transition' in str(exc_info.value)
     
-    def test_cannot_transition_from_cancelled(self, patient):
+    def test_cannot_transition_from_cancelled(self, patient, legal_entity):
         """Cancelled is terminal, no transitions allowed."""
         sale = Sale.objects.create(
             patient=patient,
@@ -469,6 +509,7 @@ class TestInvalidTransitions:
             tax=Decimal('0.00'),
             discount=Decimal('0.00'),
             total=Decimal('100.00'),
+            legal_entity=legal_entity,
         )
         
         with pytest.raises(ValidationError) as exc_info:

@@ -11,7 +11,7 @@ import pytest
 from rest_framework import status
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
+from apps.authz.models import Role, UserRole, RoleChoices
 from apps.clinical.models import (
     Patient,
     Appointment,
@@ -22,21 +22,20 @@ from apps.clinical.models import (
     PatientMergeLog,
 )
 from apps.sales.models import Sale
+from tests.conftest import TEST_PASSWORD
 
 User = get_user_model()
 
 
 @pytest.fixture
 def clinical_ops_user(db):
-    """User in ClinicalOps group."""
+    """User with Practitioner role (replaces ClinicalOps group)."""
     user = User.objects.create_user(
         email='clinops@test.com',
-        password='testpass123',
+        password=TEST_PASSWORD,
     )
-    user.is_staff = True
-    user.save()
-    group, _ = Group.objects.get_or_create(name='ClinicalOps')
-    user.groups.add(group)
+    practitioner_role, _ = Role.objects.get_or_create(name=RoleChoices.PRACTITIONER)
+    UserRole.objects.create(user=user, role=practitioner_role)
     return user
 
 
@@ -51,15 +50,13 @@ def clinical_ops_client(clinical_ops_user):
 
 @pytest.fixture
 def marketing_user(db):
-    """User in Marketing group (should be denied)."""
+    """User with Marketing role (should be denied)."""
     user = User.objects.create_user(
         email='marketing@test.com',
-        password='testpass123',
+        password=TEST_PASSWORD,
     )
-    user.is_staff = True
-    user.save()
-    group, _ = Group.objects.get_or_create(name='Marketing')
-    user.groups.add(group)
+    marketing_role, _ = Role.objects.get_or_create(name=RoleChoices.MARKETING)
+    UserRole.objects.create(user=user, role=marketing_role)
     return user
 
 
@@ -216,7 +213,7 @@ class TestPatientMergeValidations:
 class TestPatientMergeRelationships:
     """Test FK reassignment during merge."""
     
-    def test_merge_moves_sales(self, clinical_ops_client, clinical_ops_user):
+    def test_merge_moves_sales(self, clinical_ops_client, clinical_ops_user, legal_entity):
         """Merge reassigns Sales from source to target."""
         source = Patient.objects.create(
             first_name='Source',
@@ -234,7 +231,8 @@ class TestPatientMergeRelationships:
         # Create sale for source patient (minimal fields)
         sale = Sale.objects.create(
             patient=source,
-            status='draft'
+            status='draft',
+            legal_entity=legal_entity
         )
         
         payload = {
@@ -272,9 +270,21 @@ class TestPatientMergeRelationships:
             full_name_normalized='target patient'
         )
         
+        # Create practitioner for appointment
+        from apps.authz.models import Practitioner
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        merge_pract_user = User.objects.create_user(
+            email='merge_pract@test.com', password='pass', is_active=True,
+        )
+        merge_practitioner = Practitioner.objects.create(
+            user=merge_pract_user, display_name='Dr. MergeTest',
+        )
+
         # Create appointment (minimal fields)
         appointment = Appointment.objects.create(
             patient=source,
+            practitioner=merge_practitioner,
             source='manual',
             status='confirmed',  # Valid status
             scheduled_start=timezone.now(),

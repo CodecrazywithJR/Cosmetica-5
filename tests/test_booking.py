@@ -1,3 +1,4 @@
+TEST_PASSWORD = "testpass123"  # noqa: S105
 """
 Sprint 3 Tests: Appointment Booking from Available Slots
 
@@ -12,7 +13,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from apps.authz.models import User, Practitioner, Role, UserRole, RoleChoices
 from apps.clinical.models import Appointment, PractitionerBlock, Patient
-from apps.core.models import ClinicLocation
+from apps.core.models import Clinic
 import pytz
 
 
@@ -20,7 +21,7 @@ def create_user_with_role(email, role_name):
     """Helper function to create user with role"""
     user = User.objects.create_user(
         email=email,
-        password='test123',
+        password=TEST_PASSWORD,
         is_active=True
     )
     role, _ = Role.objects.get_or_create(
@@ -93,13 +94,14 @@ def patient(db):
 
 
 @pytest.fixture
-def location(db):
+def location(db, legal_entity):
     """Test clinic location"""
-    return ClinicLocation.objects.create(
+    return Clinic.objects.create(
         name='Test Clinic',
         address_line1='123 Test St',
         city='Test City',
-        is_active=True
+        is_active=True,
+        legal_entity=legal_entity,
     )
 
 

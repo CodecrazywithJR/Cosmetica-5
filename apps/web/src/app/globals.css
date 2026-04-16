@@ -348,9 +348,19 @@
     color: #2e7d32;
   }
 
-  .badge-converted {
+  .badge-sent {
     background-color: #e3f2fd;
     color: #1565c0;
+  }
+
+  .badge-accepted {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  .badge-expired {
+    background-color: #fff3e0;
+    color: #e65100;
   }
 
   .badge-paid {

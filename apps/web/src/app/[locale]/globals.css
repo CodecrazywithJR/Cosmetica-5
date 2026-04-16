@@ -335,7 +335,7 @@
 
   .badge-no_show {
     background-color: #fbe9e7;
-    color: #d84315;
+    color: #bf360c;
   }
 
   .badge-draft {
@@ -348,9 +348,19 @@
     color: #2e7d32;
   }
 
-  .badge-converted {
+  .badge-sent {
     background-color: #e3f2fd;
     color: #1565c0;
+  }
+
+  .badge-accepted {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  .badge-expired {
+    background-color: #fff3e0;
+    color: #bf360c;
   }
 
   .badge-paid {
@@ -360,7 +370,7 @@
 
   .badge-refunded {
     background-color: #fff3e0;
-    color: #e65100;
+    color: #bf360c;
   }
 
   /* Forms */
@@ -535,4 +545,264 @@
   .justify-between {
     justify-content: space-between;
   }
+}
+
+/* ================================================================
+   Superuser Header Bar — System/Business Plane indicator
+   ================================================================ */
+
+.superuser-header-bar {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  color: #e0e7ff;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  border-bottom: 2px solid #6366f1;
+  margin-bottom: 16px;
+  border-radius: 6px;
+}
+
+.superuser-header-system {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.superuser-badge-system {
+  background: #4f46e5;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.superuser-header-business {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  width: 100%;
+}
+
+.superuser-operating-in {
+  font-weight: 500;
+}
+
+.superuser-dropdown-trigger {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #e0e7ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.superuser-dropdown-trigger:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.superuser-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #1e1b4b;
+  border: 1px solid #6366f1;
+  border-radius: 6px;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.superuser-dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #e0e7ff;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.superuser-dropdown-item:hover {
+  background: rgba(99, 102, 241, 0.3);
+}
+
+/* ================================================================
+   Legal Entity Selector Modal
+   ================================================================ */
+
+.le-selector-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.le-selector-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+}
+
+.le-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.le-selector-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.le-selector-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #6b7280;
+  line-height: 1;
+}
+
+.le-selector-close:hover {
+  color: #111827;
+}
+
+.le-selector-search {
+  padding: 12px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.le-selector-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.le-selector-search input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.le-selector-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+}
+
+.le-selector-loading,
+.le-selector-error,
+.le-selector-empty {
+  padding: 24px 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.le-selector-error p {
+  margin: 0 0 12px;
+  color: #dc2626;
+}
+
+.le-selector-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.le-selector-item:hover {
+  background: #f3f4f6;
+}
+
+.le-selector-item-name {
+  font-weight: 600;
+  color: #111827;
+  font-size: 14px;
+}
+
+.le-selector-item-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.le-selector-item-trade {
+  font-style: italic;
+}
+
+.le-selector-item-country {
+  background: #e5e7eb;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+/* ================================================================
+   System Plane Guard — blocks business routes for superuser
+   ================================================================ */
+
+.system-plane-guard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.system-plane-guard-content {
+  text-align: center;
+  max-width: 420px;
+}
+
+.system-plane-guard-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.system-plane-guard-content h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.system-plane-guard-content p {
+  margin: 0 0 20px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.btn-sm {
+  padding: 4px 12px !important;
+  font-size: 13px !important;
 }

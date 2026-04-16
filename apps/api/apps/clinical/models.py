@@ -6,6 +6,16 @@ import uuid
 from django.db import models
 from django.conf import settings
 
+from apps.core.tenant_model import TenantModel
+from apps.core.managers import TenantManager
+
+# Re-export so Django discovers the model via this module
+from apps.clinical.audit_access_log import ClinicalAccessLog, ClinicalAccessAction  # noqa: F401
+
+# FK reference constants (avoid S1192 duplicate literals)
+FK_PRACTITIONER = 'authz.Practitioner'
+FK_CLINIC = 'core.Clinic'
+
 
 # ============================================================================
 # Enums
@@ -104,38 +114,25 @@ class PhotoVisibilityChoices(models.TextChoices):
 
 
 class AppointmentSourceChoices(models.TextChoices):
-    """Appointment source"""
-    CALENDLY = 'calendly', 'Calendly'
+    """Appointment source (how the appointment was booked)"""
+    ERP = 'erp', 'ERP'
+    PUBLIC_API = 'public_api', 'Public API'
     MANUAL = 'manual', 'Manual'
-    PUBLIC_LEAD = 'public_lead', 'Public Lead'
 
 
-class ProposalStatusChoices(models.TextChoices):
-    """
-    Clinical charge proposal status.
-    
-    - DRAFT: Proposal created, can still be modified
-    - CONVERTED: Proposal converted to Sale (terminal state)
-    - CANCELLED: Proposal cancelled (terminal state)
-    """
-    DRAFT = 'draft', 'Draft'
-    CONVERTED = 'converted', 'Converted to Sale'
-    CANCELLED = 'cancelled', 'Cancelled'
+# ProposalStatusChoices moved to apps.proposals.models
+from apps.proposals.models import ProposalStatusChoices  # noqa: F401 — backward compat
 
 
 class AppointmentStatusChoices(models.TextChoices):
     """
     Appointment status with allowed transitions:
-    - scheduled -> confirmed | cancelled
-    - confirmed -> checked_in | cancelled | no_show
-    - checked_in -> completed | cancelled
+    - scheduled -> confirmed | cancelled | no_show
+    - confirmed -> checked_in
+    - checked_in -> completed
     - completed, cancelled, no_show are terminal states
-    
-    Note: 'scheduled' is the initial state for new appointments.
-    Legacy 'draft' state is kept for backward compatibility.
     """
-    SCHEDULED = 'scheduled', 'Scheduled'  # Initial state (replaces draft)
-    DRAFT = 'draft', 'Draft'  # Legacy - kept for backward compatibility
+    SCHEDULED = 'scheduled', 'Scheduled'
     CONFIRMED = 'confirmed', 'Confirmed'
     CHECKED_IN = 'checked_in', 'Checked In'
     COMPLETED = 'completed', 'Completed'
@@ -184,7 +181,7 @@ class PractitionerBlockKindChoices(models.TextChoices):
 # Models
 # ============================================================================
 
-class ReferralSource(models.Model):
+class ReferralSource(TenantModel):
     """
     Referral sources (how patients found the clinic).
     
@@ -214,7 +211,43 @@ class ReferralSource(models.Model):
         return self.label
 
 
-class Patient(models.Model):
+# ============================================================================
+# Patient soft-delete queryset and manager
+# ============================================================================
+
+class PatientQuerySet(models.QuerySet):
+    """QuerySet helpers for Patient live/deleted subsets."""
+
+    def alive(self):
+        """Return only non-deleted patients."""
+        return self.filter(is_deleted=False)
+
+    def deleted(self):
+        """Return only soft-deleted patients."""
+        return self.filter(is_deleted=True)
+
+
+class PatientManager(TenantManager):
+    """
+    Default manager for Patient.
+
+    Combines:
+      1. Tenant isolation (inherited from TenantManager via legal_entity filter).
+      2. Soft-delete exclusion — is_deleted=False records only.
+
+    Use Patient.unfiltered for admin/data-migration access to all rows.
+    """
+
+    def get_queryset(self):
+        from apps.core.tenant_context import get_current_tenant
+        qs = PatientQuerySet(self.model, using=self._db).filter(is_deleted=False)
+        tenant = get_current_tenant()
+        if tenant is not None:
+            return qs.filter(legal_entity=tenant)
+        return qs
+
+
+class Patient(TenantModel):
     """
     Patient records with demographics, contact info, and merge support.
     
@@ -364,6 +397,10 @@ class Patient(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    # Managers — override TenantModel defaults
+    objects = PatientManager()
+    unfiltered = models.Manager()
+
     class Meta:
         db_table = 'patient'
         verbose_name = 'Patient'
@@ -435,6 +472,66 @@ class PatientGuardian(models.Model):
     
     def __str__(self):
         return f"{self.full_name} (Guardian of {self.patient})"
+
+
+# ============================================================================
+# Patient Insurance
+# ============================================================================
+
+class PatientInsurance(models.Model):
+    """
+    Historical record of a patient's medical insurance coverage.
+
+    Business rules:
+    - R1: Only one active coverage per patient (enforced by DB constraint).
+    - R2: No overlapping date ranges per patient.
+    - R3: When creating a new active coverage, automatically close the
+           previous active one (valid_to = new.valid_from - 1 day, is_active=False).
+    - R4: valid_from is required.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(
+        'Patient',
+        on_delete=models.CASCADE,
+        related_name='insurances',
+    )
+    provider_name = models.CharField(max_length=255)
+    member_number = models.CharField(max_length=255, null=True, blank=True)
+    social_security_number = models.CharField(max_length=255, null=True, blank=True)
+    valid_from = models.DateField()
+    valid_to = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'patient_insurance'
+        verbose_name = 'Patient Insurance'
+        verbose_name_plural = 'Patient Insurances'
+        ordering = ['-valid_from']
+        indexes = [
+            models.Index(fields=['patient'], name='idx_insurance_patient'),
+            models.Index(fields=['is_active'], name='idx_insurance_active'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['patient'],
+                condition=models.Q(is_active=True),
+                name='unique_active_insurance_per_patient',
+            ),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        if self.valid_to and self.valid_from and self.valid_to < self.valid_from:
+            raise DjangoValidationError(
+                {'valid_to': 'valid_to cannot be before valid_from.'}
+            )
+
+    def __str__(self):
+        status = 'Active' if self.is_active else 'Inactive'
+        return f"{self.provider_name} ({status}) — {self.patient}"
 
 
 class PatientMergeLog(models.Model):
@@ -522,7 +619,43 @@ class PatientMergeLog(models.Model):
         return f"Merge: {self.source_patient} → {self.target_patient} ({self.merged_at.date()})"
 
 
-class Encounter(models.Model):
+# ============================================================================
+# Encounter soft-delete queryset and manager
+# ============================================================================
+
+class EncounterQuerySet(models.QuerySet):
+    """QuerySet helpers for Encounter live/deleted subsets."""
+
+    def alive(self):
+        """Return only non-deleted encounters."""
+        return self.filter(is_deleted=False)
+
+    def deleted(self):
+        """Return only soft-deleted encounters."""
+        return self.filter(is_deleted=True)
+
+
+class EncounterManager(TenantManager):
+    """
+    Default manager for Encounter.
+
+    Combines:
+      1. Tenant isolation (inherited from TenantManager via legal_entity filter).
+      2. Soft-delete exclusion — is_deleted=False records only.
+
+    Use Encounter.unfiltered for state-machine guard checks and data migrations.
+    """
+
+    def get_queryset(self):
+        from apps.core.tenant_context import get_current_tenant
+        qs = EncounterQuerySet(self.model, using=self._db).filter(is_deleted=False)
+        tenant = get_current_tenant()
+        if tenant is not None:
+            return qs.filter(legal_entity=tenant)
+        return qs
+
+
+class Encounter(TenantModel):
     """
     Clinical encounters (visits, consultations, procedures).
     
@@ -530,7 +663,7 @@ class Encounter(models.Model):
     - id: UUID PK
     - patient_id: FK -> patient
     - practitioner_id: FK -> practitioner nullable
-    - location_id: FK -> clinic_location nullable
+    - clinic_id: FK -> clinic nullable
     - type: enum
     - status: enum
     - occurred_at: datetime
@@ -545,18 +678,18 @@ class Encounter(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
         'Patient',
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='encounters'
     )
     practitioner = models.ForeignKey(
-        'authz.Practitioner',
+        FK_PRACTITIONER,
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
         related_name='encounters'
     )
-    location = models.ForeignKey(
-        'core.ClinicLocation',
+    clinic = models.ForeignKey(
+        FK_CLINIC,
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
@@ -616,6 +749,10 @@ class Encounter(models.Model):
     has_photos_cached = models.BooleanField(default=False)
     has_documents_cached = models.BooleanField(default=False)
     
+    # Managers — override TenantModel defaults
+    objects = EncounterManager()
+    unfiltered = models.Manager()
+
     class Meta:
         db_table = 'encounter'
         verbose_name = 'Encounter'
@@ -647,77 +784,226 @@ class Encounter(models.Model):
                 'patient': 'Encounter must have a patient assigned.'
             })
 
+    def save(self, *args, **kwargs):
+        """
+        Enforce encounter status transition machine.
 
-class Appointment(models.Model):
+        Allowed transitions (from → to):
+            draft → finalized
+            draft → cancelled
+
+        finalized and cancelled are terminal states.
+
+        Pass skip_validation=True to bypass the check (test fixtures only).
+        Pass update_fields=[...] without 'status' to save other fields on a
+        terminal encounter without triggering the transition guard.
+        """
+        skip_validation = kwargs.pop('skip_validation', False)
+        if not skip_validation and not self._state.adding and self.pk:
+            self._validate_status_transition(kwargs.get('update_fields'))
+        super().save(*args, **kwargs)
+
+    def _validate_status_transition(self, update_fields):
+        """Guard against invalid status transitions."""
+        if update_fields is not None and 'status' not in update_fields:
+            return
+        _old = (
+            Encounter.unfiltered
+            .filter(pk=self.pk)
+            .values('status')
+            .first()
+        )
+        if not _old or _old['status'] == self.status:
+            return
+        _ALLOWED = {
+            EncounterStatusChoices.DRAFT: {
+                EncounterStatusChoices.FINALIZED,
+                EncounterStatusChoices.CANCELLED,
+            },
+        }
+        valid_next = _ALLOWED.get(_old['status'], set())
+        if self.status not in valid_next:
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            raise DjangoValidationError({
+                'status': (
+                    f"Invalid encounter status transition from "
+                    f"'{_old['status']}' to '{self.status}'. "
+                    f"Allowed from '{_old['status']}': "
+                    f"{sorted(valid_next) if valid_next else 'none (terminal state)'}."
+                )
+            })
+
+
+# ============================================================================
+# AppointmentType
+# ============================================================================
+
+class AppointmentType(TenantModel):
     """
-    Scheduled appointments (Calendly + manual).
-    
-    Fields from DOMAIN_MODEL.md:
-    - id: UUID PK
-    - patient_id: FK -> patient nullable
-    - practitioner_id: FK -> practitioner nullable
-    - location_id: FK -> clinic_location nullable
-    - encounter_id: FK -> encounter nullable
-    - source: enum (calendly|manual)
-    - external_id: nullable unique (Calendly)
-    - status: enum
-    - scheduled_start, scheduled_end: datetime
-    - notes nullable
-    - cancellation_reason, no_show_reason nullable
-    - Soft delete fields
-    - created_at, updated_at
+    Catalog of appointment types.
+
+    Examples: INITIAL_CONSULT, FOLLOW_UP, TREATMENT_SESSION, CHECKUP,
+    EMERGENCY, ESTHETIC_EVALUATION.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    
-    # BUSINESS RULE: Patient is REQUIRED (no appointments without patient)
+    name = models.CharField(max_length=100)
+    default_duration_minutes = models.PositiveIntegerField(default=30)
+    color = models.CharField(max_length=20, blank=True, default='#3B82F6')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'appointment_type'
+        verbose_name = 'Appointment Type'
+        verbose_name_plural = 'Appointment Types'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['legal_entity', 'name'],
+                name='unique_appointment_type_name_per_tenant',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['is_active'], name='idx_apt_type_active'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class AppointmentQuerySet(models.QuerySet):
+    """QuerySet helpers for Appointment live/deleted subsets."""
+
+    def alive(self):
+        """Return only non-deleted appointments."""
+        return self.filter(is_deleted=False)
+
+    def deleted(self):
+        """Return only soft-deleted appointments."""
+        return self.filter(is_deleted=True)
+
+
+class AppointmentManager(TenantManager):
+    """
+    Default manager for Appointment.
+
+    Combines:
+      1. Tenant isolation (inherited from TenantManager via legal_entity filter).
+      2. Soft-delete exclusion — is_deleted=False records only.
+
+    Use Appointment.unfiltered for admin access to all rows (e.g. include_deleted).
+    """
+
+    def get_queryset(self):
+        from apps.core.tenant_context import get_current_tenant
+        qs = AppointmentQuerySet(self.model, using=self._db).filter(is_deleted=False)
+        tenant = get_current_tenant()
+        if tenant is not None:
+            return qs.filter(legal_entity=tenant)
+        return qs
+
+
+class Appointment(TenantModel):
+    """
+    Scheduled appointments — ERP is the sole scheduling engine.
+
+    State machine:
+        scheduled → confirmed | cancelled | no_show
+        confirmed → checked_in | cancelled | no_show
+        checked_in → completed
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     patient = models.ForeignKey(
         'Patient',
-        on_delete=models.PROTECT,  # Changed from SET_NULL - cannot delete patient with appointments
-        related_name='appointments'
+        on_delete=models.PROTECT,
+        related_name='appointments',
     )
     practitioner = models.ForeignKey(
-        'authz.Practitioner',
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name='appointments'
+        FK_PRACTITIONER,
+        on_delete=models.PROTECT,
+        related_name='appointments',
     )
-    location = models.ForeignKey(
-        'core.ClinicLocation',
-        on_delete=models.SET_NULL,
-        blank=True,
+    clinic = models.ForeignKey(
+        FK_CLINIC,
+        on_delete=models.PROTECT,
+        related_name='appointments',
         null=True,
-        related_name='appointments'
+        blank=True,
+    )
+    appointment_type = models.ForeignKey(
+        'AppointmentType',
+        on_delete=models.PROTECT,
+        related_name='appointments',
+        null=True,
+        blank=True,
     )
     encounter = models.ForeignKey(
         'Encounter',
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
-        related_name='appointments'
+        related_name='appointments',
+    )
+    treatment_plan = models.ForeignKey(
+        'treatment_plans.TreatmentPlan',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='appointments',
+        help_text='Treatment plan this appointment belongs to (package sessions)',
+    )
+    treatment = models.ForeignKey(
+        'Treatment',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='appointments',
+        help_text='Treatment expected for this appointment',
     )
     source = models.CharField(
         max_length=20,
-        choices=AppointmentSourceChoices.choices
+        choices=AppointmentSourceChoices.choices,
+        default=AppointmentSourceChoices.ERP,
     )
-    external_id = models.CharField(max_length=255, unique=True, blank=True, null=True)
     status = models.CharField(
         max_length=20,
-        choices=AppointmentStatusChoices.choices
+        choices=AppointmentStatusChoices.choices,
+        default=AppointmentStatusChoices.SCHEDULED,
     )
     scheduled_start = models.DateTimeField()
     scheduled_end = models.DateTimeField()
+    duration_planned = models.PositiveIntegerField(
+        help_text='Planned duration in minutes',
+        default=30,
+    )
+    duration_real = models.PositiveIntegerField(
+        help_text='Actual duration in minutes (filled on completion)',
+        blank=True,
+        null=True,
+    )
     notes = models.TextField(blank=True, null=True)
     cancellation_reason = models.TextField(blank=True, null=True)
     no_show_reason = models.TextField(blank=True, null=True)
-    
+
     # Soft delete
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(blank=True, null=True)
-    
+    deleted_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='deleted_appointments',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Managers — override TenantModel defaults
+    objects = AppointmentManager()
+    unfiltered = models.Manager()
+
     class Meta:
         db_table = 'appointment'
         verbose_name = 'Appointment'
@@ -727,23 +1013,28 @@ class Appointment(models.Model):
             models.Index(fields=['practitioner'], name='idx_appointment_practitioner'),
             models.Index(fields=['scheduled_start'], name='idx_appointment_start'),
             models.Index(fields=['status'], name='idx_appointment_status'),
-            models.Index(fields=['external_id'], name='idx_appointment_external_id'),
+            models.Index(fields=['clinic'], name='idx_appointment_clinic'),
             models.Index(fields=['is_deleted'], name='idx_appointment_deleted'),
         ]
+        # Database-level overbooking protection (GiST exclusion constraint).
+        # Managed via RunSQL in migration 0116 because it uses tstzrange()
+        # on plain DateTimeField columns (not Django RangeField).
+        # Constraint name: prevent_practitioner_overbooking
+        # Condition: same practitioner + overlapping time range +
+        #            status IN (scheduled, confirmed, checked_in) + is_deleted=false
     
     # BUSINESS RULE: Allowed status transitions
     _ALLOWED_TRANSITIONS = {
-        'scheduled': ['confirmed', 'cancelled'],  # Initial state
-        'draft': ['confirmed', 'cancelled'],  # Legacy - kept for backward compatibility
+        'scheduled': ['confirmed', 'cancelled', 'no_show'],
         'confirmed': ['checked_in', 'cancelled', 'no_show'],
-        'checked_in': ['completed', 'cancelled'],
+        'checked_in': ['completed'],
         'completed': [],  # Terminal state
         'cancelled': [],  # Terminal state
         'no_show': [],    # Terminal state
     }
-    
+
     # BUSINESS RULE: Active statuses that block practitioner availability
-    _ACTIVE_STATUSES = ['scheduled', 'draft', 'confirmed', 'checked_in']
+    _ACTIVE_STATUSES = ['scheduled', 'confirmed', 'checked_in']
     
     def __str__(self):
         return f"Appointment {self.scheduled_start.date()} - {self.patient}"
@@ -751,14 +1042,63 @@ class Appointment(models.Model):
     def save(self, *args, **kwargs):
         """
         Override save to enforce full_clean() validation.
-        
-        SECURITY: Prevents admin bypass of business rules.
-        Allow bypass during migrations/fixtures with force_insert.
+
+        - Auto-compute duration_planned from treatment or appointment_type.
+        - Treatment-plan hooks on create/completion.
         """
         # Skip validation during migrations (when loading fixtures)
-        if not kwargs.pop('skip_validation', False):
+        skip_validation = kwargs.pop('skip_validation', False)
+
+        self._compute_duration()
+
+        if not skip_validation:
             self.full_clean()
+
+        is_new = self._state.adding
+        old_status = self._get_old_status()
+
         super().save(*args, **kwargs)
+
+        self._handle_treatment_plan_effects(is_new, old_status)
+
+    def _compute_duration(self):
+        """Duration rule: treatment.duration_minutes → appointment_type.default_duration_minutes → 30."""
+        if not (self._state.adding or not self.duration_planned):
+            return
+        if self.treatment_id:
+            try:
+                self.duration_planned = self.treatment.duration_minutes
+            except Exception:
+                pass
+        elif self.appointment_type_id:
+            try:
+                self.duration_planned = self.appointment_type.default_duration_minutes
+            except Exception:
+                pass
+
+    def _get_old_status(self):
+        """Capture old status for completion tracking."""
+        if self._state.adding or not self.pk:
+            return None
+        return (
+            Appointment.objects
+            .filter(pk=self.pk)
+            .values_list('status', flat=True)
+            .first()
+        )
+
+    def _handle_treatment_plan_effects(self, is_new, old_status):
+        """Treatment-plan side-effects (post-save)."""
+        if not self.treatment_plan_id:
+            return
+        if is_new:
+            self.treatment_plan.activate()
+        if (
+            old_status
+            and old_status != AppointmentStatusChoices.COMPLETED
+            and self.status == AppointmentStatusChoices.COMPLETED
+        ):
+            self.treatment_plan.record_session_completed()
     
     @property
     def is_terminal_status(self):
@@ -768,26 +1108,27 @@ class Appointment(models.Model):
     def clean(self):
         """
         Model-level validation for business rules.
-        
+
         BUSINESS RULES:
-        1. Patient is required (no appointments without patient)
+        1. Patient is required
         2. scheduled_end must be after scheduled_start
-        3. No overlapping appointments for same practitioner in active statuses
+        3. No overlapping appointments for same practitioner
+        4. treatment_plan requires treatment
+        5. treatment_plan.proposal_line.treatment must equal treatment
+        6. Duration rule: treatment.duration_minutes or appointment_type.default_duration_minutes
         """
         from django.core.exceptions import ValidationError
-        from django.utils import timezone
-        
+
         errors = {}
-        
+
         # RULE 1: Patient is required
         if not self.patient_id:
             errors['patient'] = 'La cita requiere un paciente asignado'
-        
+
         # RULE 2: Valid time range
-        if self.scheduled_start and self.scheduled_end:
-            if self.scheduled_end <= self.scheduled_start:
-                errors['scheduled_end'] = 'La hora de fin debe ser posterior a la hora de inicio'
-        
+        if self.scheduled_start and self.scheduled_end and self.scheduled_end <= self.scheduled_start:
+            errors['scheduled_end'] = 'La hora de fin debe ser posterior a la hora de inicio'
+
         # RULE 3: No overlaps for same practitioner (only for active statuses)
         if self.practitioner_id and self.status in self._ACTIVE_STATUSES:
             overlaps = self._check_practitioner_overlap()
@@ -796,17 +1137,41 @@ class Appointment(models.Model):
                     f'El profesional ya tiene una cita en este horario. '
                     f'Estados que bloquean: {", ".join(self._ACTIVE_STATUSES)}'
                 )
-        
+
+        # RULE 4: treatment_plan requires treatment
+        if self.treatment_plan_id and not self.treatment_id:
+            errors['treatment'] = 'Un plan de tratamiento requiere un tratamiento asignado'
+
+        # RULE 5: treatment_plan.proposal_line.treatment must equal appointment treatment
+        self._validate_treatment_plan_match(errors)
+
         if errors:
             raise ValidationError(errors)
+
+    def _validate_treatment_plan_match(self, errors):
+        """RULE 5: treatment_plan.proposal_line.treatment must equal appointment treatment."""
+        if not (self.treatment_plan_id and self.treatment_id):
+            return
+        try:
+            plan_treatment_id = self.treatment_plan.proposal_line.treatment_id
+            if plan_treatment_id and plan_treatment_id != self.treatment_id:
+                errors['treatment'] = (
+                    'El tratamiento de la cita no coincide con el del plan de tratamiento'
+                )
+        except Exception:
+            pass  # plan or proposal_line not loaded yet, skip cross-check
     
     def _check_practitioner_overlap(self):
         """
-        Check for overlapping appointments with same practitioner.
-        
+        Application-level overlap check (early validation layer).
+
+        This runs BEFORE save() to provide user-friendly error messages.
+        The database ExclusionConstraint 'prevent_practitioner_overbooking'
+        is the final safety net against race conditions.
+
         Overlap occurs when:
         - Same practitioner
-        - Status is in active statuses (draft, confirmed, checked_in)
+        - Status is in active statuses (scheduled, confirmed, checked_in)
         - Time ranges overlap: (start1 < end2) AND (start2 < end1)
         - Not soft-deleted
         - Not the current instance (for updates)
@@ -819,9 +1184,14 @@ class Appointment(models.Model):
         if not self.practitioner_id or not self.scheduled_start or not self.scheduled_end:
             return Appointment.objects.none()
         
-        # Base query: same practitioner, active statuses, not deleted
-        qs = Appointment.objects.filter(
+        # Base query: same practitioner, same tenant, active statuses, not deleted.
+        # IMPORTANT: use Appointment.unfiltered + explicit legal_entity filter so this
+        # method is safe when called from Celery tasks or signal handlers where
+        # get_current_tenant() may return None.  Scoping through self.legal_entity
+        # guarantees the overlap check never reads across tenant boundaries.
+        qs = Appointment.unfiltered.filter(
             practitioner_id=self.practitioner_id,
+            legal_entity=self.legal_entity,
             status__in=self._ACTIVE_STATUSES,
             is_deleted=False
         )
@@ -841,40 +1211,29 @@ class Appointment(models.Model):
     def transition_status(self, new_status, user=None, reason=None):
         """
         Transition appointment to a new status with validation.
-        
-        BUSINESS RULES:
-        1. Only allowed transitions are permitted (see _ALLOWED_TRANSITIONS)
-        2. no_show can only be set after scheduled_start has passed
-        3. Terminal states cannot be changed
-        
-        Args:
-            new_status: New status value
-            user: User performing the transition (for audit)
-            reason: Reason for transition (for cancellation/no_show)
-        
-        Returns:
-            tuple: (success: bool, error_message: str | None)
-        
+
+        Auto-creates an Encounter when transitioning to checked_in (max 1).
+
         Raises:
             ValidationError: If transition is not allowed
         """
         from django.core.exceptions import ValidationError
         from django.utils import timezone
-        
+
         # Check if current status allows any transitions
         allowed = self._ALLOWED_TRANSITIONS.get(self.status, [])
         if not allowed:
             raise ValidationError(
                 f'El estado "{self.get_status_display()}" es terminal y no puede cambiarse'
             )
-        
+
         # Check if transition is allowed
         if new_status not in allowed:
             raise ValidationError(
-                f'Transición no permitida: {self.get_status_display()} → {self.get_status_display()}. '
+                f'Transición no permitida: {self.status} → {new_status}. '
                 f'Transiciones válidas: {", ".join(allowed)}'
             )
-        
+
         # RULE: no_show only after scheduled_start
         if new_status == 'no_show':
             now = timezone.now()
@@ -884,19 +1243,31 @@ class Appointment(models.Model):
                 )
             if reason:
                 self.no_show_reason = reason
-        
+
         # RULE: Store cancellation reason
         if new_status == 'cancelled' and reason:
             self.cancellation_reason = reason
-        
-        # Perform transition
-        old_status = self.status
+
         self.status = new_status
-        
+
+        # Auto-create encounter on checked_in (max 1 per appointment)
+        if new_status == AppointmentStatusChoices.CHECKED_IN and not self.encounter_id:
+            encounter = Encounter(
+                legal_entity=self.legal_entity,
+                patient=self.patient,
+                practitioner=self.practitioner,
+                clinic=self.clinic,
+                type=EncounterTypeChoices.COSMETIC_CONSULT,
+                status=EncounterStatusChoices.DRAFT,
+                occurred_at=timezone.now(),
+            )
+            encounter.save(skip_validation=True)
+            self.encounter = encounter
+
         return True, None
 
 
-class Consent(models.Model):
+class Consent(TenantModel):
     """
     Patient consents (photos, marketing, newsletter).
     
@@ -950,7 +1321,7 @@ class Consent(models.Model):
         return f"{self.patient} - {self.consent_type} ({self.status})"
 
 
-class ClinicalPhoto(models.Model):
+class ClinicalPhoto(TenantModel):
     """
     Clinical photos (immutable originals, can link to multiple encounters).
     
@@ -1312,7 +1683,7 @@ def log_clinical_audit(
 # Clinical Core v1: Treatment Catalog + Encounter-Treatment Linking
 # ============================================================================
 
-class Treatment(models.Model):
+class Treatment(TenantModel):
     """
     Treatment/Procedure catalog (master list of services).
     
@@ -1353,6 +1724,10 @@ class Treatment(models.Model):
     requires_stock = models.BooleanField(
         default=False,
         help_text='If true, check stock availability before booking'
+    )
+    duration_minutes = models.PositiveIntegerField(
+        default=30,
+        help_text='Standard duration of the treatment in minutes',
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1452,231 +1827,13 @@ class EncounterTreatment(models.Model):
 
 # ============================================================================
 # Clinical → Sales Integration (Fase 3)
+# Models moved to apps.proposals.models — backward-compatible imports below
 # ============================================================================
-
-class ClinicalChargeProposal(models.Model):
-    """
-    Intermediate model between Encounter and Sale.
-    
-    Represents a charge proposal derived from a finalized clinical encounter.
-    This is the explicit step before creating a Sale, allowing audit and review.
-    
-    Business Rules:
-    - Can only be created from FINALIZED encounters
-    - Immutable once created (or versionable if needed)
-    - Status transitions: draft → converted / cancelled
-    - One proposal per encounter (unique constraint)
-    - Cannot create Sale twice from same proposal (idempotency)
-    
-    Design Decision (ADR-005):
-    - WHY NOT automatic Sale creation: Need explicit audit trail + flexibility
-    - WHY Proposal: Separates clinical act from billing act
-    - FUTURE: May evolve into Quote system with approval workflow
-    """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    
-    # Core relationships
-    encounter = models.OneToOneField(
-        'Encounter',
-        on_delete=models.PROTECT,
-        related_name='charge_proposal',
-        help_text='Source encounter (must be FINALIZED)'
-    )
-    patient = models.ForeignKey(
-        'Patient',
-        on_delete=models.PROTECT,
-        related_name='charge_proposals',
-        help_text='Patient from encounter (denormalized for querying)'
-    )
-    practitioner = models.ForeignKey(
-        'authz.Practitioner',
-        on_delete=models.PROTECT,
-        related_name='charge_proposals',
-        help_text='Practitioner from encounter (denormalized)'
-    )
-    
-    # Status tracking
-    status = models.CharField(
-        max_length=20,
-        choices=ProposalStatusChoices.choices,
-        default=ProposalStatusChoices.DRAFT,
-        help_text='Proposal status (draft/converted/cancelled)'
-    )
-    
-    # Sale conversion tracking (idempotency)
-    converted_to_sale = models.ForeignKey(
-        'sales.Sale',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='source_proposal',
-        help_text='Sale created from this proposal (null if not yet converted)'
-    )
-    converted_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text='Timestamp when converted to sale'
-    )
-    
-    # Financial summary (calculated from lines)
-    total_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text='Total charge amount (sum of line totals, NO TAX)'
-    )
-    currency = models.CharField(
-        max_length=3,
-        default='EUR',
-        help_text='Currency code (ISO 4217)'
-    )
-    
-    # Metadata
-    notes = models.TextField(
-        blank=True,
-        null=True,
-        help_text='Internal notes about this proposal'
-    )
-    cancellation_reason = models.TextField(
-        blank=True,
-        null=True,
-        help_text='Reason for cancellation (if status=cancelled)'
-    )
-    
-    # Audit timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='created_proposals',
-        help_text='User who generated this proposal'
-    )
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        db_table = 'clinical_charge_proposal'
-        verbose_name = 'Clinical Charge Proposal'
-        verbose_name_plural = 'Clinical Charge Proposals'
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['-created_at'], name='idx_proposal_created'),
-            models.Index(fields=['status', '-created_at'], name='idx_proposal_status_created'),
-            models.Index(fields=['patient', '-created_at'], name='idx_proposal_patient_created'),
-            models.Index(fields=['encounter'], name='idx_proposal_encounter'),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(total_amount__gte=0),
-                name='proposal_total_non_negative'
-            ),
-        ]
-    
-    def __str__(self):
-        return f"Proposal {self.id} - {self.patient} ({self.status})"
-    
-    def recalculate_total(self):
-        """Recalculate total_amount from proposal lines."""
-        from decimal import Decimal
-        total = sum(
-            (line.line_total for line in self.lines.all()),
-            Decimal('0.00')
-        )
-        self.total_amount = total
-        return total
+from apps.proposals.models import Proposal as ClinicalChargeProposal  # noqa: F401
+from apps.proposals.models import ProposalLine as ClinicalChargeProposalLine  # noqa: F401
 
 
-class ClinicalChargeProposalLine(models.Model):
-    """
-    Line item in a clinical charge proposal.
-    
-    Derived from EncounterTreatment with immutable snapshot of pricing.
-    """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    
-    # Relationships
-    proposal = models.ForeignKey(
-        'ClinicalChargeProposal',
-        on_delete=models.CASCADE,
-        related_name='lines',
-        help_text='Parent proposal'
-    )
-    encounter_treatment = models.ForeignKey(
-        'EncounterTreatment',
-        on_delete=models.PROTECT,
-        related_name='proposal_lines',
-        help_text='Source encounter treatment'
-    )
-    treatment = models.ForeignKey(
-        'Treatment',
-        on_delete=models.PROTECT,
-        related_name='proposal_lines',
-        help_text='Treatment reference (denormalized for reporting)'
-    )
-    
-    # Pricing snapshot (immutable)
-    treatment_name = models.CharField(
-        max_length=255,
-        help_text='Treatment name at proposal creation time'
-    )
-    description = models.TextField(
-        blank=True,
-        null=True,
-        help_text='Combined: treatment description + encounter treatment notes'
-    )
-    quantity = models.PositiveIntegerField(
-        default=1,
-        help_text='Quantity of treatment performed'
-    )
-    unit_price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        help_text='Price per unit (snapshot from EncounterTreatment.effective_price)'
-    )
-    line_total = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        help_text='Line total: quantity * unit_price (NO discounts, NO tax)'
-    )
-    
-    # Audit
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        db_table = 'clinical_charge_proposal_line'
-        verbose_name = 'Clinical Charge Proposal Line'
-        verbose_name_plural = 'Clinical Charge Proposal Lines'
-        ordering = ['created_at']
-        indexes = [
-            models.Index(fields=['proposal'], name='idx_proposal_line_proposal'),
-            models.Index(fields=['encounter_treatment'], name='idx_proposal_line_enc_trt'),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(quantity__gt=0),
-                name='proposal_line_quantity_positive'
-            ),
-            models.CheckConstraint(
-                check=models.Q(unit_price__gte=0),
-                name='proposal_line_unit_price_non_negative'
-            ),
-            models.CheckConstraint(
-                check=models.Q(line_total__gte=0),
-                name='proposal_line_total_non_negative'
-            ),
-        ]
-    
-    def __str__(self):
-        return f"{self.treatment_name} x {self.quantity} = {self.line_total}"
-    
-    def save(self, *args, **kwargs):
-        """Auto-calculate line_total on save."""
-        if self.quantity and self.unit_price is not None:
-            self.line_total = self.quantity * self.unit_price
-        super().save(*args, **kwargs)
-
-
-class PractitionerBlock(models.Model):
+class PractitionerBlock(TenantModel):
     """
     Calendar blocks for practitioners (vacations, unavailability, etc).
     Used to mark time ranges when a practitioner is NOT available for appointments.
@@ -1687,7 +1844,7 @@ class PractitionerBlock(models.Model):
     
     # FK
     practitioner = models.ForeignKey(
-        'authz.Practitioner',
+        FK_PRACTITIONER,
         on_delete=models.CASCADE,
         related_name='calendar_blocks'
     )
@@ -1774,7 +1931,30 @@ class ClinicalMediaQuerySet(models.QuerySet):
         return self.filter(deleted_at__isnull=False)
 
 
-class ClinicalMedia(models.Model):
+class ClinicalMediaManager(TenantManager):
+    """Tenant-aware manager with soft-delete helpers."""
+
+    def get_queryset(self):
+        # Build a ClinicalMediaQuerySet and apply the inherited tenant filter.
+        # IMPORTANT: must call get_current_tenant() here rather than delegating
+        # to super(), because super() returns a plain TenantQuerySet instance
+        # rather than ClinicalMediaQuerySet.  The tenant logic is replicated
+        # explicitly so the correct QuerySet class is returned.
+        from apps.core.tenant_context import get_current_tenant
+        qs = ClinicalMediaQuerySet(self.model, using=self._db)
+        tenant = get_current_tenant()
+        if tenant is not None:
+            return qs.filter(legal_entity=tenant)
+        return qs
+
+    def active(self):
+        return self.get_queryset().active()
+
+    def deleted(self):
+        return self.get_queryset().deleted()
+
+
+class ClinicalMedia(TenantModel):
     """
     Clinical media (photos/images) associated with encounters.
     
@@ -1797,8 +1977,9 @@ class ClinicalMedia(models.Model):
         ('other', 'Other'),
     ]
     
-    # Custom manager
-    objects = ClinicalMediaQuerySet.as_manager()
+    # Custom tenant-aware manager
+    objects = ClinicalMediaManager()
+    unfiltered = models.Manager()
     
     # Core relationships
     encounter = models.ForeignKey(
@@ -1892,3 +2073,109 @@ class ClinicalMedia(models.Model):
             return round(self.file.size / (1024 * 1024), 2)
         except (AttributeError, FileNotFoundError):
             return None
+
+
+class PractitionerTreatment(models.Model):
+    """
+    Capability mapping: which practitioners can perform which treatments.
+
+    Tenant safety: Treatment is already tenant-scoped via TenantModel,
+    so the tenant boundary is enforced through the Treatment FK.
+    No additional legal_entity FK is needed on this join table.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    practitioner = models.ForeignKey(
+        FK_PRACTITIONER,
+        on_delete=models.CASCADE,
+        related_name='treatment_capabilities',
+    )
+    treatment = models.ForeignKey(
+        'Treatment',
+        on_delete=models.CASCADE,
+        related_name='practitioner_capabilities',
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Whether the practitioner currently performs this treatment',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'practitioner_treatment'
+        verbose_name = 'Practitioner Treatment Capability'
+        verbose_name_plural = 'Practitioner Treatment Capabilities'
+        unique_together = [('practitioner', 'treatment')]
+        indexes = [
+            models.Index(fields=['practitioner', 'is_active'], name='idx_pt_practitioner_active'),
+            models.Index(fields=['treatment', 'is_active'], name='idx_pt_treatment_active'),
+        ]
+
+    def __str__(self):
+        status = 'active' if self.is_active else 'inactive'
+        return f"{self.practitioner} → {self.treatment} ({status})"
+
+
+class WeekdayChoices(models.IntegerChoices):
+    MONDAY = 0, 'Monday'
+    TUESDAY = 1, 'Tuesday'
+    WEDNESDAY = 2, 'Wednesday'
+    THURSDAY = 3, 'Thursday'
+    FRIDAY = 4, 'Friday'
+    SATURDAY = 5, 'Saturday'
+    SUNDAY = 6, 'Sunday'
+
+
+class PractitionerSchedule(models.Model):
+    """
+    Per-clinic, per-weekday working hours for a practitioner.
+
+    Replaces the hardcoded 09:00–17:00 in AvailabilityService.
+    Multiple rows per (practitioner, clinic, weekday) are allowed when
+    start_time differs (e.g. split shifts: 09:00-12:00 + 14:00-18:00).
+
+    Tenant safety: Clinic and Practitioner (via User) both belong
+    to a LegalEntity.  No additional legal_entity FK is needed.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    practitioner = models.ForeignKey(
+        FK_PRACTITIONER,
+        on_delete=models.CASCADE,
+        related_name='schedules',
+    )
+    clinic = models.ForeignKey(
+        FK_CLINIC,
+        on_delete=models.CASCADE,
+        related_name='practitioner_schedules',
+    )
+    weekday = models.PositiveSmallIntegerField(
+        choices=WeekdayChoices.choices,
+        help_text='Day of week (0=Monday … 6=Sunday)',
+    )
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'practitioner_schedule'
+        verbose_name = 'Practitioner Schedule'
+        verbose_name_plural = 'Practitioner Schedules'
+        unique_together = [('practitioner', 'clinic', 'weekday', 'start_time')]
+        indexes = [
+            models.Index(fields=['practitioner', 'weekday'], name='idx_ps_pract_weekday'),
+            models.Index(fields=['clinic', 'weekday'], name='idx_ps_clinic_weekday'),
+            models.Index(fields=['is_active'], name='idx_ps_active'),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValidationError({'end_time': 'end_time must be after start_time.'})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        day = self.get_weekday_display()
+        return f"{self.practitioner} @ {self.clinic} — {day} {self.start_time:%H:%M}–{self.end_time:%H:%M}"

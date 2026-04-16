@@ -13489,3 +13489,92 @@ Todos los textos visibles utilizan el sistema de i18n existente:
 - ✅ Translations: 100% (6/6 languages complete)
 - ✅ Must Change Password Flow: 100% Complete
 
+19. ROLES UX — MATRIZ FINAL (BUSINESS PLANE)
+19.1 Jerarquía de roles
+Jerarquía de privilegios:
+Superuser > Admin > Practitioner > Reception
+Regla general:
+Si un usuario tiene varios roles, siempre se aplica el rol más alto.
+19.2 Superuser
+Acceso total a todos los módulos.
+Puede cambiar LegalEntity activa.
+Puede operar en cualquier tenant.
+No está limitado por el estado activo/inactivo del LegalEntity.
+Puede ver y editar cualquier módulo.
+19.3 Admin (dentro de su LegalEntity)
+Menú visible
+Dashboard
+Pacientes
+Agenda
+Encuentros
+POS
+Facturación
+Proveedores
+Compras
+Inventario
+Catálogo de Servicios
+Usuarios
+Configuración
+Reportes
+Permisos
+Gestiona usuarios del LegalEntity.
+Puede crear, editar y desactivar servicios del catálogo.
+Puede crear y gestionar órdenes de compra.
+Puede modificar stock manualmente.
+Puede ver y editar facturación.
+Puede ver y exportar reportes.
+Puede editar configuración del LegalEntity.
+Puede gestionar agenda.
+Puede crear y editar pacientes.
+Puede crear y editar encuentros clínicos.
+Puede usar POS.
+19.4 Practitioner (sin rol Admin)
+Menú visible
+Pacientes
+Agenda
+Encuentros
+Catálogo de Servicios
+POS
+Inventario (solo lectura)
+Permisos
+Puede crear y editar pacientes.
+Puede gestionar sus propias citas.
+Puede crear y editar encuentros clínicos.
+Puede usar POS para cerrar ventas.
+Puede ver catálogo de servicios.
+Puede ver stock.
+No puede:
+Ver usuarios.
+Ver facturación.
+Crear órdenes de compra.
+Modificar stock manualmente.
+Ver configuración.
+Ver reportes.
+19.5 Reception
+Menú visible
+Pacientes
+Agenda
+POS
+Catálogo de Servicios
+Inventario
+Permisos
+Puede crear y editar pacientes.
+Puede crear, mover y cancelar citas.
+Puede usar POS para cobrar.
+Puede ver catálogo de servicios.
+Puede registrar entradas de mercancía cuando llega un pedido ya realizado.
+Puede ver stock.
+No puede:
+Ver encuentros clínicos.
+Ver usuarios.
+Ver facturación.
+Crear órdenes de compra.
+Modificar stock manualmente.
+Ver configuración.
+Ver reportes.
+19.6 Regla transversal — LegalEntity inactiva
+Si LegalEntity.is_active = False:
+Admin → acceso solo lectura.
+Practitioner → acceso bloqueado.
+Reception → acceso bloqueado.
+Superuser → puede operar y reactivar.

@@ -3,10 +3,10 @@ Tests for Clinical Core Fase 2.2: Practitioners + Appointments + Appointment→E
 
 Test coverage:
 1. Practitioner model tests (role_type)
-2. Appointment model tests (new states: SCHEDULED, source: PUBLIC_LEAD)
+2. Appointment model tests (SCHEDULED state, ERP/PUBLIC_API sources)
 3. Appointment→Encounter integration (create_encounter_from_appointment)
 4. Permission tests (Practitioner + Appointment RBAC)
-5. E2E flow: create appointment → complete → create encounter → finalize
+5. E2E flow: create appointment → transitions → create encounter → finalize
 """
 import pytest
 from decimal import Decimal
@@ -31,7 +31,7 @@ from apps.clinical.models import (
     ReferralSource,
 )
 from apps.clinical.services import create_encounter_from_appointment
-from apps.core.models import ClinicLocation
+from apps.core.models import Clinic
 
 User = get_user_model()
 
@@ -41,14 +41,14 @@ User = get_user_model()
 # ============================================================================
 
 @pytest.fixture
-def clinic_location(db):
-    """Create a test clinic location."""
-    return ClinicLocation.objects.create(
+def clinic(db, legal_entity):
+    return Clinic.objects.create(
         name="Test Clinic",
         address_line1="123 Test St",
         city="Paris",
         postal_code="75001",
-        country_code="FR"
+        country_code="FR",
+        legal_entity=legal_entity,
     )
 
 
@@ -195,14 +195,14 @@ class TestPractitionerModel:
 
 
 # ============================================================================
-# Model Tests: Appointment (SCHEDULED state, PUBLIC_LEAD source)
+# Model Tests: Appointment (SCHEDULED state, ERP/PUBLIC_API sources)
 # ============================================================================
 
 @pytest.mark.django_db
 class TestAppointmentModel:
-    """Test Appointment model with new SCHEDULED state and PUBLIC_LEAD source."""
+    """Test Appointment model with SCHEDULED state and ERP/PUBLIC_API sources."""
     
-    def test_create_appointment_scheduled_state(self, patient, practitioner_user, clinic_location):
+    def test_create_appointment_scheduled_state(self, patient, practitioner_user, clinic):
         """Test creating appointment with SCHEDULED as initial state."""
         practitioner = practitioner_user.practitioner
         scheduled_start = timezone.now() + timedelta(days=1)
@@ -211,8 +211,8 @@ class TestAppointmentModel:
         appointment = Appointment.objects.create(
             patient=patient,
             practitioner=practitioner,
-            location=clinic_location,
-            source=AppointmentSourceChoices.MANUAL,
+            clinic=clinic,
+            source=AppointmentSourceChoices.ERP,
             status=AppointmentStatusChoices.SCHEDULED,
             scheduled_start=scheduled_start,
             scheduled_end=scheduled_end,
@@ -220,35 +220,39 @@ class TestAppointmentModel:
         )
         
         assert appointment.status == AppointmentStatusChoices.SCHEDULED
-        assert appointment.source == AppointmentSourceChoices.MANUAL
+        assert appointment.source == AppointmentSourceChoices.ERP
     
-    def test_create_appointment_public_lead_source(self, patient, clinic_location):
-        """Test creating appointment with PUBLIC_LEAD source."""
+    def test_create_appointment_public_api_source(self, patient, practitioner_user, clinic):
+        """Test creating appointment with PUBLIC_API source."""
+        practitioner = practitioner_user.practitioner
         scheduled_start = timezone.now() + timedelta(days=2)
         scheduled_end = scheduled_start + timedelta(hours=1)
         
         appointment = Appointment.objects.create(
             patient=patient,
-            location=clinic_location,
-            source=AppointmentSourceChoices.PUBLIC_LEAD,
+            practitioner=practitioner,
+            clinic=clinic,
+            source=AppointmentSourceChoices.PUBLIC_API,
             status=AppointmentStatusChoices.SCHEDULED,
             scheduled_start=scheduled_start,
             scheduled_end=scheduled_end,
-            notes="Lead from website form"
+            notes="Booking from website"
         )
         
-        assert appointment.source == AppointmentSourceChoices.PUBLIC_LEAD
+        assert appointment.source == AppointmentSourceChoices.PUBLIC_API
         assert appointment.status == AppointmentStatusChoices.SCHEDULED
     
-    def test_appointment_status_transitions_from_scheduled(self, patient, clinic_location):
+    def test_appointment_status_transitions_from_scheduled(self, patient, practitioner_user, clinic):
         """Test allowed transitions from SCHEDULED state."""
+        practitioner = practitioner_user.practitioner
         scheduled_start = timezone.now() + timedelta(days=1)
         scheduled_end = scheduled_start + timedelta(hours=1)
         
         appointment = Appointment.objects.create(
             patient=patient,
-            location=clinic_location,
-            source=AppointmentSourceChoices.MANUAL,
+            practitioner=practitioner,
+            clinic=clinic,
+            source=AppointmentSourceChoices.ERP,
             status=AppointmentStatusChoices.SCHEDULED,
             scheduled_start=scheduled_start,
             scheduled_end=scheduled_end
@@ -282,7 +286,7 @@ class TestAppointmentEncounterIntegration:
         self,
         patient,
         practitioner_user,
-        clinic_location
+        clinic
     ):
         """Test creating encounter from COMPLETED appointment."""
         practitioner = practitioner_user.practitioner
@@ -293,7 +297,7 @@ class TestAppointmentEncounterIntegration:
         appointment = Appointment.objects.create(
             patient=patient,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             source=AppointmentSourceChoices.MANUAL,
             status=AppointmentStatusChoices.COMPLETED,
             scheduled_start=scheduled_start,
@@ -312,7 +316,7 @@ class TestAppointmentEncounterIntegration:
         assert encounter is not None
         assert encounter.patient == patient
         assert encounter.practitioner == practitioner
-        assert encounter.location == clinic_location
+        assert encounter.clinic == clinic
         assert encounter.type == EncounterTypeChoices.MEDICAL_CONSULT
         assert encounter.status == EncounterStatusChoices.DRAFT
         assert encounter.chief_complaint == "Patient reports acne"
@@ -324,7 +328,7 @@ class TestAppointmentEncounterIntegration:
     def test_create_encounter_from_non_completed_appointment_fails(
         self,
         patient,
-        clinic_location,
+        clinic,
         practitioner_user
     ):
         """Test that creating encounter from non-COMPLETED appointment fails."""
@@ -333,7 +337,8 @@ class TestAppointmentEncounterIntegration:
         
         appointment = Appointment.objects.create(
             patient=patient,
-            location=clinic_location,
+            practitioner=practitioner_user.practitioner,
+            clinic=clinic,
             source=AppointmentSourceChoices.MANUAL,
             status=AppointmentStatusChoices.SCHEDULED,  # NOT completed
             scheduled_start=scheduled_start,
@@ -354,7 +359,7 @@ class TestAppointmentEncounterIntegration:
         self,
         patient,
         practitioner_user,
-        clinic_location
+        clinic
     ):
         """Test that creating encounter from appointment that already has one fails."""
         practitioner = practitioner_user.practitioner
@@ -364,7 +369,7 @@ class TestAppointmentEncounterIntegration:
         existing_encounter = Encounter.objects.create(
             patient=patient,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             type=EncounterTypeChoices.MEDICAL_CONSULT,
             status=EncounterStatusChoices.DRAFT,
             occurred_at=scheduled_start
@@ -374,7 +379,7 @@ class TestAppointmentEncounterIntegration:
         appointment = Appointment.objects.create(
             patient=patient,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             source=AppointmentSourceChoices.MANUAL,
             status=AppointmentStatusChoices.COMPLETED,
             scheduled_start=scheduled_start,
@@ -443,7 +448,7 @@ class TestAppointmentEncounterE2E:
         self,
         reception_client,
         practitioner_client,
-        clinic_location,
+        clinic,
         referral_source
     ):
         """Test complete flow from appointment creation to encounter finalization."""
@@ -460,56 +465,48 @@ class TestAppointmentEncounterE2E:
         # Get practitioner from practitioner_client
         practitioner = Practitioner.objects.first()
         
-        # Step 2: Reception creates appointment (SCHEDULED)
+        # Step 2: Create appointment
         scheduled_start = timezone.now() + timedelta(days=1)
         scheduled_end = scheduled_start + timedelta(hours=1)
+        appointment = Appointment.objects.create(
+            patient=patient,
+            practitioner=practitioner,
+            clinic=clinic,
+            source='manual',
+            status='scheduled',
+            scheduled_start=scheduled_start,
+            scheduled_end=scheduled_end,
+            notes='Initial consultation',
+        )
+        appointment_id = str(appointment.id)
         
-        response = reception_client.post('/api/v1/clinical/appointments/', {
-            'patient': str(patient.id),
-            'practitioner': str(practitioner.id),
-            'location': str(clinic_location.id),
-            'source': 'manual',
-            'status': 'scheduled',
-            'scheduled_start': scheduled_start.isoformat(),
-            'scheduled_end': scheduled_end.isoformat(),
-            'notes': 'Initial consultation'
-        })
-        assert response.status_code == status.HTTP_201_CREATED
-        appointment_id = response.data['id']
-        
-        # Step 3: Reception confirms appointment
-        response = reception_client.patch(f'/api/v1/clinical/appointments/{appointment_id}/', {
-            'status': 'confirmed'
-        })
+        # Step 3: Reception confirms appointment via transition endpoint
+        response = reception_client.post(
+            f'/api/v1/clinical/appointments/{appointment_id}/transition/',
+            {'status': 'confirmed'}
+        )
         assert response.status_code == status.HTTP_200_OK
         
         # Step 4: Reception checks in patient
-        response = reception_client.patch(f'/api/v1/clinical/appointments/{appointment_id}/', {
-            'status': 'checked_in'
-        })
+        response = reception_client.post(
+            f'/api/v1/clinical/appointments/{appointment_id}/transition/',
+            {'status': 'checked_in'}
+        )
         assert response.status_code == status.HTTP_200_OK
         
         # Step 5: Reception completes appointment
-        response = reception_client.patch(f'/api/v1/clinical/appointments/{appointment_id}/', {
-            'status': 'completed'
-        })
+        response = reception_client.post(
+            f'/api/v1/clinical/appointments/{appointment_id}/transition/',
+            {'status': 'completed'}
+        )
         assert response.status_code == status.HTTP_200_OK
         
-        # Step 6: Practitioner creates encounter from completed appointment (service-level)
+        # Step 6: Auto-encounter was created on checked_in — verify and use it
         appointment = Appointment.objects.get(id=appointment_id)
-        user = practitioner_client.handler._force_user  # Get authenticated user
+        assert appointment.encounter is not None, \
+            "Auto-encounter should have been created on checked_in transition"
+        encounter = appointment.encounter
         
-        # Create encounter using service
-        encounter = create_encounter_from_appointment(
-            appointment=appointment,
-            encounter_type='medical_consult',
-            created_by=user,
-            chief_complaint='Acne treatment',
-            assessment='Mild inflammatory acne',
-            plan='Topical treatment'
-        )
-        
-        assert encounter is not None
         assert encounter.status == 'draft'
         
         # Step 7: Practitioner adds treatments to encounter

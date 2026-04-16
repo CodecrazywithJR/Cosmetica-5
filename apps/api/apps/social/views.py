@@ -14,7 +14,12 @@ from .tasks import generate_instagram_pack
 class InstagramPostViewSet(viewsets.ModelViewSet):
     """
     Instagram posts management.
-    
+
+    GLOBAL MODEL — intentionally not tenant-scoped.
+    InstagramPost has no legal_entity field; it represents marketing
+    content shared across the whole platform (not per-clinic PHI).
+    Access is restricted by authentication (IsAuthenticated) only.
+
     Endpoints:
     - GET /api/social/posts/ - List posts
     - POST /api/social/posts/ - Create post
@@ -24,6 +29,7 @@ class InstagramPostViewSet(viewsets.ModelViewSet):
     - POST /api/social/posts/{id}/generate-pack/ - Generate publish pack
     - GET /api/social/posts/{id}/download-pack/ - Download pack
     """
+    # GLOBAL MODEL — intentionally not tenant-scoped (no legal_entity / PHI).
     queryset = InstagramPost.objects.all()
     serializer_class = InstagramPostSerializer
     permission_classes = [IsAuthenticated]
@@ -124,7 +130,11 @@ class InstagramPostViewSet(viewsets.ModelViewSet):
 class InstagramHashtagViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Hashtag library (read-only for suggestions).
+
+    GLOBAL MODEL — intentionally not tenant-scoped.
+    InstagramHashtag is a global tag catalogue with no per-clinic PHI.
     """
+    # GLOBAL MODEL — intentionally not tenant-scoped (tag catalogue, no PHI).
     queryset = InstagramHashtag.objects.all()
     serializer_class = InstagramHashtagSerializer
     permission_classes = [IsAuthenticated]

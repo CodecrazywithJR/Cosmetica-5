@@ -1,18 +1,18 @@
 """
-FASE 4.2: Demo script for admin-driven user creation with names and Calendly URL.
+Demo script for admin-driven user creation with names.
 
-This script demonstrates the "Opción A" workflow:
+This script demonstrates the user creation workflow:
 1. Admin creates User with first_name, last_name, email, password
-2. Admin creates Practitioner linked to User with calendly_url
-3. API returns complete user profile with names and Calendly URL
+2. Admin creates Practitioner linked to User
+3. API returns complete user profile with names
 
 Usage:
     docker compose exec api python scripts/demo_admin_user_creation.py
 
 Expected output:
     ✅ User created: Dr. Maria Garcia
-    ✅ Practitioner created with Calendly URL
-    ✅ Profile API returns: first_name, last_name, calendly_url
+    ✅ Practitioner created
+    ✅ Profile API returns: first_name, last_name
 """
 import sys
 import os
@@ -31,7 +31,7 @@ def demo_user_creation():
     """Demonstrate complete user creation workflow."""
     
     print("\n" + "=" * 60)
-    print("FASE 4.2: Admin-Driven User Creation Demo")
+    print("Admin-Driven User Creation Demo")
     print("=" * 60 + "\n")
     
     # Clean up previous demo user
@@ -61,7 +61,7 @@ def demo_user_creation():
         print(f"   - Is staff: {user.is_staff}")
         print()
         
-        # Step 2: Admin creates Practitioner with Calendly URL
+        # Step 2: Admin creates Practitioner
         print("Step 2: Admin creates Practitioner in /admin/authz/practitioner/add/")
         print("-" * 60)
         
@@ -70,7 +70,6 @@ def demo_user_creation():
             display_name=f"Dr. {user.first_name} {user.last_name}",
             role_type="physician",
             specialty="Dermatology",
-            calendly_url="https://calendly.com/drmariagarcia",
             is_active=True
         )
         
@@ -80,7 +79,6 @@ def demo_user_creation():
         print(f"   - Display name: {practitioner.display_name}")
         print(f"   - Role type: {practitioner.role_type}")
         print(f"   - Specialty: {practitioner.specialty}")
-        print(f"   - Calendly URL: {practitioner.calendly_url}")
         print(f"   - Is active: {practitioner.is_active}")
         print()
         
@@ -95,8 +93,7 @@ def demo_user_creation():
             'first_name': user.first_name,
             'last_name': user.last_name,
             'is_active': user.is_active,
-            'roles': [],  # Would be populated from UserRole
-            'practitioner_calendly_url': practitioner.calendly_url
+            'roles': [],
         }
         
         print("✅ Profile data returned by /api/auth/me/:")
@@ -111,9 +108,7 @@ def demo_user_creation():
             (user.first_name == "Maria", "✅ first_name is 'Maria'"),
             (user.last_name == "Garcia", "✅ last_name is 'Garcia'"),
             (user.email == demo_email, f"✅ email is '{demo_email}'"),
-            (practitioner.calendly_url == "https://calendly.com/drmariagarcia", "✅ calendly_url is set"),
             (hasattr(user, 'practitioner'), "✅ User has practitioner relationship"),
-            (user.practitioner.calendly_url is not None, "✅ calendly_url accessible via user.practitioner"),
         ]
         
         all_passed = True
@@ -125,14 +120,13 @@ def demo_user_creation():
         
         if all_passed:
             print("=" * 60)
-            print("✅ ALL CHECKS PASSED - FASE 4.2 Implementation Complete!")
+            print("✅ ALL CHECKS PASSED - Implementation Complete!")
             print("=" * 60)
             print()
             print("Admin can now:")
             print("  1. Create users with first_name/last_name in /admin/")
-            print("  2. Link practitioners with calendly_url")
+            print("  2. Link practitioners")
             print("  3. Frontend displays user names in UI")
-            print("  4. Schedule page uses practitioner's Calendly URL")
             print()
         else:
             print("=" * 60)

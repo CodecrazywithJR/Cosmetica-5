@@ -2,10 +2,8 @@
  * Encounters hooks - React hooks for encounter management
  */
 
-import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
-import { API_ROUTES } from '@/lib/api-config';
 
 export function useEncounter(id: string) {
   return useQuery({
@@ -18,40 +16,57 @@ export function useEncounter(id: string) {
 }
 
 export function useAddTreatment() {
-  const [loading, setLoading] = useState(false);
-  
-  const addTreatment = async (encounterId: number, data: any) => {
-    setLoading(true);
-    try {
-      console.log(`Add treatment to encounter ${encounterId}`, data);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const queryClient = useQueryClient();
 
-  return { addTreatment, loading };
+  return useMutation({
+    mutationFn: async (params: {
+      encounterId: string;
+      treatmentId: string;
+      quantity: number;
+      unitPrice?: number;
+      notes?: string;
+    }) => {
+      const response = await apiClient.post(
+        `/api/v1/clinical/encounters/${params.encounterId}/treatments/`,
+        {
+          treatment_id: params.treatmentId,
+          quantity: params.quantity,
+          unit_price: params.unitPrice,
+          notes: params.notes,
+        }
+      );
+      return (response as any).data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['encounters', variables.encounterId] });
+      queryClient.invalidateQueries({ queryKey: ['encounters'] });
+    },
+  });
 }
 
 export function useFinalizeEncounter() {
-  const [loading, setLoading] = useState(false);
-  
-  const finalize = async (encounterId: number) => {
-    setLoading(true);
-    try {
-      console.log(`Finalize encounter ${encounterId}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const queryClient = useQueryClient();
 
-  return { finalize, loading };
+  return useMutation({
+    mutationFn: async (encounterId: string) => {
+      const response = await apiClient.post(
+        `/api/v1/clinical/encounters/${encounterId}/finalize/`,
+        {}
+      );
+      return (response as any).data;
+    },
+    onSuccess: (_, encounterId) => {
+      queryClient.invalidateQueries({ queryKey: ['encounters', encounterId] });
+      queryClient.invalidateQueries({ queryKey: ['encounters'] });
+    },
+  });
 }
 
 export function useUpdateEncounter() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { chief_complaint?: string; assessment?: string; plan?: string; internal_notes?: string } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { chief_complaint?: string; assessment?: string; plan?: string; internal_notes?: string; proposed_treatment?: string; clinical_notes?: string } }) => {
       const response = await apiClient.patch(`/api/v1/clinical/encounters/${id}/`, data);
       return (response as any).data;
     },

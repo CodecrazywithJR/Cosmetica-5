@@ -37,6 +37,23 @@ from apps.clinical.models import (
     EncounterTypeChoices,
     Patient,
 )
+from apps.legal.models import LegalEntity
+
+TEST_PASSWORD = 'testpass123'  # noqa: S105
+
+
+def _get_smoke_test_legal_entity():
+    """Get or create a LegalEntity for smoke test TestCase setUp methods."""
+    le, _ = LegalEntity.objects.get_or_create(
+        siret='00000000000001',
+        defaults={
+            'trade_name': 'Smoke Test Clinic',
+            'legal_name': 'Smoke Test Clinic SAS',
+            'country_code': 'FR',
+            'is_active': True,
+        },
+    )
+    return le
 
 User = get_user_model()
 
@@ -158,22 +175,26 @@ class TestClinicalMediaRelationship(TestCase):
     
     def setUp(self):
         """Create minimal fixtures."""
+        le = _get_smoke_test_legal_entity()
         self.user = User.objects.create_user(
             email='doctor@test.com',
-            password='testpass123'
+            password=TEST_PASSWORD,
+            legal_entity=le,
         )
         
         self.patient = Patient.objects.create(
             first_name='Test',
             last_name='Patient',
-            email='patient@test.com'
+            email='patient@test.com',
+            legal_entity=le,
         )
         
         self.encounter = Encounter.objects.create(
             patient=self.patient,
             type=EncounterTypeChoices.MEDICAL_CONSULT,
             status=EncounterStatusChoices.DRAFT,
-            occurred_at=datetime.now(dt_timezone.utc)
+            occurred_at=datetime.now(dt_timezone.utc),
+            legal_entity=le,
         )
     
     def test_clinical_media_fk_points_to_clinical_encounter(self):
@@ -258,11 +279,13 @@ class TestEncounterAPIEndpoint(TestCase):
     def setUp(self):
         """Create authenticated client with practitioner role."""
         self.client = APIClient()
+        le = _get_smoke_test_legal_entity()
         
         # Create user with practitioner role (required for Encounter access)
         self.user = User.objects.create_user(
             email='doctor@test.com',
-            password='testpass123'
+            password=TEST_PASSWORD,
+            legal_entity=le,
         )
         
         # Create practitioner role
@@ -288,7 +311,8 @@ class TestEncounterAPIEndpoint(TestCase):
         self.patient = Patient.objects.create(
             first_name='Test',
             last_name='Patient',
-            email='patient@test.com'
+            email='patient@test.com',
+            legal_entity=le,
         )
     
     def test_encounter_list_endpoint_exists(self):
@@ -324,7 +348,8 @@ class TestEncounterAPIEndpoint(TestCase):
             patient=self.patient,
             type=EncounterTypeChoices.MEDICAL_CONSULT,
             status=EncounterStatusChoices.DRAFT,
-            occurred_at=datetime.now(dt_timezone.utc)
+            occurred_at=datetime.now(dt_timezone.utc),
+            legal_entity=_get_smoke_test_legal_entity(),
         )
         
         response = self.client.get('/api/v1/clinical/encounters/')

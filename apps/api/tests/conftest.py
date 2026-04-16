@@ -9,8 +9,92 @@ import pytest
 from rest_framework.test import APIClient
 from django.utils import timezone
 from apps.authz.models import User, Role, UserRole, Practitioner, RoleChoices
-from apps.core.models import ClinicLocation
+from apps.core.models import Clinic
 from apps.clinical.models import Patient, Appointment, Encounter
+
+TEST_PASSWORD = 'testpass123'  # noqa: S105
+
+
+def _get_test_legal_entity():
+    """Get or create a shared LegalEntity for non-superuser test fixtures."""
+    from apps.legal.models import LegalEntity
+    le, _ = LegalEntity.objects.get_or_create(
+        siret='00000000000001',
+        defaults={
+            'trade_name': 'Fixture Clinic',
+            'legal_name': 'Fixture Clinic SRL',
+            'country_code': 'FR',
+            'is_active': True,
+        },
+    )
+    return le
+
+
+# ============================================================================
+# Shared Tenant Fixture
+# ============================================================================
+
+@pytest.fixture
+def legal_entity(db):
+    """Shared LegalEntity for tenant-aware test fixtures."""
+    return _get_test_legal_entity()
+
+
+@pytest.fixture(autouse=True)
+def _auto_legal_entity_for_users(db, monkeypatch):
+    """Auto-assign legal_entity to non-superuser users created via create_user,
+    and to Patient/Appointment/Encounter objects created via ORM without a
+    legal_entity, so that TenantManager filters don't hide them from
+    tenant-scoped clients.
+    """
+    from apps.authz.models import UserManager
+    from apps.clinical.models import Patient, Appointment, Encounter
+
+    # ---- User.objects.create_user patch ----
+    _original_create_user = UserManager.create_user
+
+    def _patched_create_user(self, email=None, password=None, **extra_fields):
+        if email is None:
+            email = extra_fields.pop('username', None)
+        if 'username' in extra_fields:
+            extra_fields.pop('username')
+        if not extra_fields.get('is_superuser') and 'legal_entity' not in extra_fields:
+            extra_fields['legal_entity'] = _get_test_legal_entity()
+        return _original_create_user(self, email, password, **extra_fields)
+
+    monkeypatch.setattr(UserManager, 'create_user', _patched_create_user)
+
+    # ---- TenantModel.objects.create + get_or_create patch ----
+    from apps.clinical.models import ClinicalPhoto, Consent
+    from apps.treatment_plans.models import TreatmentPlan
+    from apps.treatment_plans.treatment_session_models import TreatmentSession
+    from apps.products.models import Product
+    from apps.stock.models import StockLocation, StockBatch, StockMove, StockOnHand
+    from apps.documents.models import Document
+    from apps.photos.models import SkinPhoto
+    for ModelClass in (Patient, Appointment, Encounter, ClinicalPhoto, Consent,
+                       TreatmentPlan, TreatmentSession,
+                       Document, SkinPhoto,
+                       Product, StockLocation, StockBatch, StockMove, StockOnHand):
+        _original_create = ModelClass.objects.create
+
+        def _patched_create(_orig=_original_create, **kwargs):
+            if 'legal_entity' not in kwargs or kwargs.get('legal_entity') is None:
+                kwargs['legal_entity'] = _get_test_legal_entity()
+            return _orig(**kwargs)
+
+        monkeypatch.setattr(ModelClass.objects, 'create', _patched_create)
+
+        _original_goc = ModelClass.objects.get_or_create
+
+        def _patched_goc(_orig=_original_goc, **kwargs):
+            defaults = kwargs.get('defaults', {})
+            if 'legal_entity' not in kwargs and 'legal_entity' not in defaults:
+                defaults['legal_entity'] = _get_test_legal_entity()
+                kwargs['defaults'] = defaults
+            return _orig(**kwargs)
+
+        monkeypatch.setattr(ModelClass.objects, 'get_or_create', _patched_goc)
 
 
 # ============================================================================
@@ -31,7 +115,7 @@ def admin_client(db):
     """
     user = User.objects.create_user(
         email='admin@test.com',
-        password='testpass123',
+        password=TEST_PASSWORD,
         is_staff=True,
         is_superuser=True,
         is_active=True
@@ -48,6 +132,10 @@ def admin_client(db):
     
     client = APIClient()
     client.force_authenticate(user=user)
+    # Superusers resolve their tenant from X-Legal-Entity-ID — required by
+    # the new mandatory-header enforcement in TenantQuerySetMixin.initial().
+    le = _get_test_legal_entity()
+    client.credentials(HTTP_X_LEGAL_ENTITY_ID=str(le.id))
     return client
 
 
@@ -59,8 +147,9 @@ def practitioner_client(db):
     """
     user = User.objects.create_user(
         email='practitioner@test.com',
-        password='testpass123',
-        is_active=True
+        password=TEST_PASSWORD,
+        is_active=True,
+        legal_entity=_get_test_legal_entity(),
     )
     
     # Create Practitioner role if not exists
@@ -82,6 +171,8 @@ def practitioner_client(db):
     
     client = APIClient()
     client.force_authenticate(user=user)
+    le = _get_test_legal_entity()
+    client.credentials(HTTP_X_LEGAL_ENTITY_ID=str(le.id))
     return client
 
 
@@ -93,8 +184,9 @@ def reception_client(db):
     """
     user = User.objects.create_user(
         email='reception@test.com',
-        password='testpass123',
-        is_active=True
+        password=TEST_PASSWORD,
+        is_active=True,
+        legal_entity=_get_test_legal_entity()
     )
     
     # Create Reception role if not exists
@@ -108,6 +200,8 @@ def reception_client(db):
     
     client = APIClient()
     client.force_authenticate(user=user)
+    le = _get_test_legal_entity()
+    client.credentials(HTTP_X_LEGAL_ENTITY_ID=str(le.id))
     return client
 
 
@@ -119,8 +213,9 @@ def accounting_client(db):
     """
     user = User.objects.create_user(
         email='accounting@test.com',
-        password='testpass123',
-        is_active=True
+        password=TEST_PASSWORD,
+        is_active=True,
+        legal_entity=_get_test_legal_entity()
     )
     
     # Create Accounting role if not exists
@@ -134,6 +229,8 @@ def accounting_client(db):
     
     client = APIClient()
     client.force_authenticate(user=user)
+    le = _get_test_legal_entity()
+    client.credentials(HTTP_X_LEGAL_ENTITY_ID=str(le.id))
     return client
 
 
@@ -145,8 +242,9 @@ def marketing_client(db):
     """
     user = User.objects.create_user(
         email='marketing@test.com',
-        password='testpass123',
-        is_active=True
+        password=TEST_PASSWORD,
+        is_active=True,
+        legal_entity=_get_test_legal_entity()
     )
     
     # Create Marketing role if not exists
@@ -160,6 +258,8 @@ def marketing_client(db):
     
     client = APIClient()
     client.force_authenticate(user=user)
+    le = _get_test_legal_entity()
+    client.credentials(HTTP_X_LEGAL_ENTITY_ID=str(le.id))
     return client
 
 
@@ -172,7 +272,7 @@ def admin_user(db):
     """Admin user (without authenticated client)."""
     user = User.objects.create_user(
         email='admin_user@test.com',
-        password='testpass123',
+        password=TEST_PASSWORD,
         is_staff=True,
         is_superuser=True,
         is_active=True
@@ -192,8 +292,9 @@ def practitioner_user(db):
     """Practitioner user (without authenticated client)."""
     user = User.objects.create_user(
         email='practitioner_user@test.com',
-        password='testpass123',
-        is_active=True
+        password=TEST_PASSWORD,
+        is_active=True,
+        legal_entity=_get_test_legal_entity(),
     )
     
     practitioner_role, _ = Role.objects.get_or_create(
@@ -210,16 +311,17 @@ def practitioner_user(db):
 # ============================================================================
 
 @pytest.fixture
-def clinic_location(db):
-    """Create a clinic location."""
-    return ClinicLocation.objects.create(
+def clinic(db, legal_entity):
+    """Create a clinic."""
+    return Clinic.objects.create(
         name='Main Clinic',
         address_line1='123 Test Street',
         city='Paris',
         postal_code='75001',
         country_code='FR',
         timezone='Europe/Paris',
-        is_active=True
+        is_active=True,
+        legal_entity=legal_entity,
     )
 
 
@@ -248,39 +350,42 @@ def patient(db, admin_user):
         phone_e164='+33600000000',
         country_code='FR',
         identity_confidence='medium',
-        created_by_user=admin_user
+        created_by_user=admin_user,
+        legal_entity=_get_test_legal_entity(),
     )
 
 
 @pytest.fixture
-def appointment(db, patient, practitioner, clinic_location):
+def appointment(db, patient, practitioner, clinic):
     """Create an appointment."""
     return Appointment.objects.create(
         patient=patient,
         practitioner=practitioner,
-        location=clinic_location,
+        clinic=clinic,
         source='manual',
         status='scheduled',
         scheduled_start=timezone.now() + timezone.timedelta(days=1),
         scheduled_end=timezone.now() + timezone.timedelta(days=1, hours=1),
-        notes='Test appointment'
+        notes='Test appointment',
+        legal_entity=_get_test_legal_entity(),
     )
 
 
 @pytest.fixture
-def encounter(db, patient, practitioner, clinic_location, admin_user):
+def encounter(db, patient, practitioner, clinic, admin_user):
     """Create an encounter."""
     return Encounter.objects.create(
         patient=patient,
         practitioner=practitioner,
-        location=clinic_location,
+        clinic=clinic,
         type='medical_consult',
         status='draft',
         occurred_at=timezone.now(),
         chief_complaint='Test complaint',
         assessment='Test assessment',
         plan='Test plan',
-        created_by_user=admin_user
+        created_by_user=admin_user,
+        legal_entity=_get_test_legal_entity(),
     )
 
 
@@ -307,7 +412,8 @@ def patient_factory(db, admin_user):
             'sex': 'female',
             'email': f'patient{len(created_patients)}@test.com',
             'identity_confidence': 'low',
-            'created_by_user': admin_user
+            'created_by_user': admin_user,
+            'legal_entity': _get_test_legal_entity(),
         }
         defaults.update(kwargs)
         
@@ -325,13 +431,13 @@ def patient_factory(db, admin_user):
 
 
 @pytest.fixture
-def appointment_factory(db, patient, practitioner, clinic_location):
+def appointment_factory(db, patient, practitioner, clinic):
     """
     Factory fixture for creating multiple appointments.
     
     Usage:
         apt1 = appointment_factory(status='confirmed')
-        apt2 = appointment_factory(source='calendly', external_id='cal_123')
+        apt2 = appointment_factory(source='erp')
     """
     created_appointments = []
     
@@ -339,11 +445,12 @@ def appointment_factory(db, patient, practitioner, clinic_location):
         defaults = {
             'patient': patient,
             'practitioner': practitioner,
-            'location': clinic_location,
-            'source': 'manual',
+            'clinic': clinic,
+            'source': 'erp',
             'status': 'scheduled',
             'scheduled_start': timezone.now() + timezone.timedelta(days=len(created_appointments) + 1),
             'scheduled_end': timezone.now() + timezone.timedelta(days=len(created_appointments) + 1, hours=1),
+            'legal_entity': _get_test_legal_entity(),
         }
         defaults.update(kwargs)
         
@@ -355,7 +462,7 @@ def appointment_factory(db, patient, practitioner, clinic_location):
 
 
 @pytest.fixture
-def encounter_factory(db, patient, practitioner, clinic_location, admin_user):
+def encounter_factory(db, patient, practitioner, clinic, admin_user):
     """
     Factory fixture for creating multiple encounters.
     
@@ -369,11 +476,12 @@ def encounter_factory(db, patient, practitioner, clinic_location, admin_user):
         defaults = {
             'patient': patient,
             'practitioner': practitioner,
-            'location': clinic_location,
+            'clinic': clinic,
             'type': 'medical_consult',
             'status': 'draft',
             'occurred_at': timezone.now() - timezone.timedelta(hours=len(created_encounters)),
-            'created_by_user': admin_user
+            'created_by_user': admin_user,
+            'legal_entity': _get_test_legal_entity(),
         }
         defaults.update(kwargs)
         

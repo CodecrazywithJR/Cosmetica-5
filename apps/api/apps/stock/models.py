@@ -15,6 +15,14 @@ from django.utils import timezone
 from decimal import Decimal
 import uuid
 
+from apps.core.tenant_model import TenantModel
+from apps.core.managers import TenantManager
+
+# Reusable verbose_name / FK reference constants (avoid S1192)
+LABEL_CREATED_AT = _('Created At')
+LABEL_UPDATED_AT = _('Updated At')
+FK_PRODUCT = 'products.Product'
+
 
 class StockLocationTypeChoices(models.TextChoices):
     """Location type choices."""
@@ -42,7 +50,7 @@ class StockMoveTypeChoices(models.TextChoices):
     TRANSFER_OUT = 'transfer_out', _('Transfer Out')
 
 
-class StockLocation(models.Model):
+class StockLocation(TenantModel):
     """
     Physical location where stock is stored.
     
@@ -60,8 +68,8 @@ class StockLocation(models.Model):
     )
     is_active = models.BooleanField(_('Active'), default=True)
     
-    created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
+    created_at = models.DateTimeField(LABEL_CREATED_AT, auto_now_add=True)
+    updated_at = models.DateTimeField(LABEL_UPDATED_AT, auto_now=True)
     
     class Meta:
         db_table = 'stock_locations'
@@ -77,7 +85,7 @@ class StockLocation(models.Model):
         return f"{self.name} ({self.code})"
 
 
-class StockBatch(models.Model):
+class StockBatch(TenantModel):
     """
     Batch/Lot tracking for products with expiry dates.
     
@@ -89,7 +97,7 @@ class StockBatch(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     product = models.ForeignKey(
-        'products.Product',
+        FK_PRODUCT,
         on_delete=models.CASCADE,
         related_name='batches',
         verbose_name=_('Product')
@@ -117,8 +125,8 @@ class StockBatch(models.Model):
         help_text=_('Additional batch information (supplier, quality checks, etc.)')
     )
     
-    created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
+    created_at = models.DateTimeField(LABEL_CREATED_AT, auto_now_add=True)
+    updated_at = models.DateTimeField(LABEL_UPDATED_AT, auto_now=True)
     
     class Meta:
         db_table = 'stock_batches'
@@ -167,7 +175,7 @@ class StockBatch(models.Model):
         return delta.days
 
 
-class StockMove(models.Model):
+class StockMove(TenantModel):
     """
     Stock movement - auditable transactions.
     
@@ -182,7 +190,7 @@ class StockMove(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     product = models.ForeignKey(
-        'products.Product',
+        FK_PRODUCT,
         on_delete=models.CASCADE,
         related_name='stock_moves',
         verbose_name=_('Product')
@@ -279,7 +287,7 @@ class StockMove(models.Model):
     
     reason = models.TextField(_('Reason'), blank=True)
     
-    created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
+    created_at = models.DateTimeField(LABEL_CREATED_AT, auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -304,6 +312,17 @@ class StockMove(models.Model):
                 )
             self.full_clean()
         super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """
+        Block physical deletion of stock moves.
+
+        SECURITY: Stock movements are the financial and inventory audit trail.
+        Deleting a move would break StockOnHand consistency and cannot be undone.
+        """
+        raise ValidationError(
+            'Stock movements are immutable and cannot be deleted.'
+        )
     
     class Meta:
         db_table = 'stock_moves'
@@ -392,7 +411,7 @@ class StockMove(models.Model):
         return self.quantity < 0
 
 
-class StockOnHand(models.Model):
+class StockOnHand(TenantModel):
     """
     Current stock level per product/location/batch.
     
@@ -406,7 +425,7 @@ class StockOnHand(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     product = models.ForeignKey(
-        'products.Product',
+        FK_PRODUCT,
         on_delete=models.CASCADE,
         related_name='stock_on_hand',
         verbose_name=_('Product')
@@ -430,7 +449,7 @@ class StockOnHand(models.Model):
         help_text=_('Current available quantity')
     )
     
-    updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
+    updated_at = models.DateTimeField(LABEL_UPDATED_AT, auto_now=True)
     
     class Meta:
         db_table = 'stock_on_hand'

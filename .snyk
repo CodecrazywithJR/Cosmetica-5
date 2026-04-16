@@ -1,0 +1,24 @@
+# =============================================================================
+# Snyk Configuration — Dependency Vulnerability Monitoring
+# =============================================================================
+# Docs: https://docs.snyk.io/snyk-cli/test-for-vulnerabilities/
+#
+# Usage:
+#   snyk test                              # scan dependencies
+#   snyk monitor                           # continuous monitoring
+#   snyk container test <image>            # scan Docker image
+#
+# Install: npm install -g snyk && snyk auth
+# CI: set SNYK_TOKEN as environment variable
+
+version: v1.5#
+
+# Ignore policies (add vulnerability IDs to suppress known/accepted risks)
+# ignore:
+#   SNYK-PYTHON-EXAMPLE-12345:
+#     - '*':
+#         reason: 'Accepted risk — no fix available'
+#         expires: 2026-06-12T00:00:00.000Z
+
+# Patch policies
+patch: {}

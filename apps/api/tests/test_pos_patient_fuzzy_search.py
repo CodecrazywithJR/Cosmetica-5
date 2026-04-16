@@ -14,12 +14,12 @@ import pytest
 from datetime import date
 from decimal import Decimal
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 
 from apps.clinical.models import Patient
+from tests.conftest import TEST_PASSWORD
 from apps.pos.utils import (
     normalize_phone_to_e164,
     mask_phone,
@@ -41,14 +41,15 @@ class TestPOSPatientFuzzySearch(TestCase):
         # Create users with different permissions
         self.reception_user = User.objects.create_user(
             email='reception@clinic.com',
-            password='testpass123'
+            password=TEST_PASSWORD
         )
-        reception_group, _ = Group.objects.get_or_create(name='Reception')
-        self.reception_user.groups.add(reception_group)
+        from apps.authz.models import Role, UserRole, RoleChoices
+        reception_role, _ = Role.objects.get_or_create(name=RoleChoices.RECEPTION)
+        UserRole.objects.create(user=self.reception_user, role=reception_role)
         
         self.unauthorized_user = User.objects.create_user(
             email='unauthorized@example.com',
-            password='testpass123'
+            password=TEST_PASSWORD
         )
         
         # Create test patients

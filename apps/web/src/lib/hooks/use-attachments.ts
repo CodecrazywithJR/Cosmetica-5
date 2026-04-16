@@ -2,7 +2,6 @@
  * Attachments hooks - For photos and documents
  */
 
-import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 
@@ -56,31 +55,39 @@ export function useDeletePhoto() {
 }
 
 export function useUploadDocument() {
-  const [loading, setLoading] = useState(false);
-  
-  const uploadDocument = async (encounterId: number, file: File) => {
-    setLoading(true);
-    try {
-      console.log(`Upload document to encounter ${encounterId}`, file.name);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const queryClient = useQueryClient();
 
-  return { uploadDocument, loading };
+  return useMutation({
+    mutationFn: async ({ encounterId, file }: { encounterId: string; file: File }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await apiClient.post(
+        `/api/v1/clinical/encounters/${encounterId}/documents/`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return (response as any).data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['encounters', variables.encounterId] });
+    },
+  });
 }
 
 export function useDeleteDocument() {
-  const [loading, setLoading] = useState(false);
-  
-  const deleteDocument = async (documentId: number) => {
-    setLoading(true);
-    try {
-      console.log(`Delete document ${documentId}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const queryClient = useQueryClient();
 
-  return { deleteDocument, loading };
+  return useMutation({
+    mutationFn: async (documentId: string) => {
+      await apiClient.delete(`/api/v1/clinical/documents/${documentId}/`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['encounters'] });
+    },
+  });
 }

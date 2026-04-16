@@ -1,6 +1,5 @@
 """
-Update test user email from yo@ejemplo.com to ricardoparlon@gmail.com
-for real Calendly integration testing.
+Update test user email from yo@ejemplo.com to ricardoparlon@gmail.com.
 
 Usage:
     docker compose exec api python manage.py shell < update_user_email.py
@@ -15,7 +14,7 @@ django.setup()
 from apps.authz.models import User
 
 def update_user_email():
-    """Update existing test user email for real Calendly integration."""
+    """Update existing test user email."""
     
     old_email = "yo@ejemplo.com"
     new_email = "ricardoparlon@gmail.com"
@@ -39,7 +38,6 @@ def update_user_email():
         # Check Practitioner
         if hasattr(user, 'practitioner'):
             print(f"  - Practitioner ID: {user.practitioner.id}")
-            print(f"  - Calendly URL: {user.practitioner.calendly_url}")
         else:
             print("  - No practitioner associated")
         
@@ -48,12 +46,12 @@ def update_user_email():
         user.save()
         
         print(f"\n✅ SUCCESS: Email updated from {old_email} to {new_email}")
-        print(f"   Password remains: Libertad (unchanged)")
-        print(f"   All other fields preserved")
+        print("   Password remains: Libertad (unchanged)")
+        print("   All other fields preserved")
         
         # Verify update
         updated_user = User.objects.get(email=new_email)
-        print(f"\n✓ Verification:")
+        print("\n\u2713 Verification:")
         print(f"  - New email: {updated_user.email}")
         print(f"  - User ID: {updated_user.id}")
         print(f"  - Can authenticate: {updated_user.check_password('Libertad')}")

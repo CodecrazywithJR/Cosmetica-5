@@ -5,6 +5,8 @@ from django.core.exceptions import ValidationError
 from decimal import Decimal
 import uuid
 
+from apps.core.managers import TenantManager
+
 
 class SaleStatusChoices(models.TextChoices):
     """
@@ -34,6 +36,10 @@ class Sale(models.Model):
     - if appointment exists and patient exists, they must match
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Tenant-aware managers
+    objects = TenantManager()
+    unfiltered = models.Manager()
     
     # Relationships
     legal_entity = models.ForeignKey(
@@ -107,7 +113,7 @@ class Sale(models.Model):
     currency = models.CharField(
         _('Currency'),
         max_length=3,
-        default='USD',
+        default='EUR',
         help_text=_('ISO 4217 currency code')
     )
     
@@ -157,11 +163,33 @@ class Sale(models.Model):
     
     def save(self, *args, **kwargs):
         """
-        Override save to enforce full_clean() validation.
-        
-        SECURITY: Prevents admin bypass of business rules.
+        Override save to enforce full_clean() validation and status immutability.
+
+        SECURITY: Prevents admin bypass and direct status mutations on closed sales.
+        Use transition_to() to change sale status legally.
         """
-        if not kwargs.pop('skip_validation', False):
+        skip_validation = kwargs.pop('skip_validation', False)
+        if not skip_validation:
+            # Guard: block direct status mutation on terminal sales (PAID / REFUNDED).
+            # transition_to() is still allowed because it only ever sets statuses that
+            # are valid per get_valid_transitions(), which this check also honours.
+            if not self._state.adding and self.pk:
+                old_status = (
+                    Sale.unfiltered
+                    .filter(pk=self.pk)
+                    .values_list('status', flat=True)
+                    .first()
+                )
+                if (
+                    old_status in (SaleStatusChoices.PAID, SaleStatusChoices.REFUNDED)
+                    and old_status != self.status
+                ):
+                    valid_next = self.get_valid_transitions().get(old_status, [])
+                    if self.status not in valid_next:
+                        raise ValidationError(
+                            'Sale status cannot be modified directly after payment. '
+                            'Use transition_to() to change sale status.'
+                        )
             self.full_clean()
         super().save(*args, **kwargs)
     
@@ -305,9 +333,9 @@ class Sale(models.Model):
             )
         
         old_status = self.status
-        self.status = new_status
         
-        # Set reason fields
+        # Set reason fields and run side effects BEFORE changing status
+        # so that service functions can validate current status
         if new_status == SaleStatusChoices.CANCELLED and reason:
             self.cancellation_reason = reason
         elif new_status == SaleStatusChoices.REFUNDED:
@@ -320,8 +348,7 @@ class Sale(models.Model):
             try:
                 refund_stock_for_sale(sale=self, created_by=user)
             except Exception as e:
-                # Rollback status change if stock refund fails
-                self.status = old_status
+                # Rollback reason if stock refund fails
                 self.refund_reason = None
                 raise  # Re-raise the exception (ValidationError, etc.)
                 
@@ -335,10 +362,12 @@ class Sale(models.Model):
             try:
                 consume_stock_for_sale(sale=self, created_by=user)
             except Exception as e:
-                # Rollback status change if stock consumption fails
-                self.status = old_status
+                # Rollback if stock consumption fails
                 self.paid_at = None
                 raise  # Re-raise the exception (InsufficientStockError, etc.)
+        
+        # Change status AFTER side effects succeed
+        self.status = new_status
         
         self.save()
         

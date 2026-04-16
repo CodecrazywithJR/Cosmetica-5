@@ -17,7 +17,11 @@ class SkinPhotoSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SkinPhoto
-        fields = '__all__'
+        fields = [
+            'id', 'patient', 'encounter', 'image', 'thumbnail',
+            'body_part', 'tags', 'description', 'taken_at',
+            'created_at', 'updated_at', 'thumbnail_generated',
+        ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'thumbnail', 'thumbnail_generated']
     
     def validate(self, attrs):

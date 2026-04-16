@@ -341,7 +341,8 @@
       "confirm": "Confirm",
       "checkIn": "Check In",
       "complete": "Complete",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "startEncounter": "Start Encounter"
     },
     "errors": {
       "title": "Unable to load agenda",
@@ -556,6 +557,264 @@
       "loadInitialData": "Error loading initial data. Please reload the page.",
       "loadAvailability": "Error loading availability. Please try again.",
       "noPermissionView": "You do not have permission to view this practitioner's availability."
+    }
+  },
+  "system": {
+    "badge": {
+      "system": "System"
+    },
+    "header": {
+      "operating_in": "Operating in: {name}"
+    },
+    "actions": {
+      "select_legal_entity": "Select Legal Entity",
+      "switch_legal_entity": "Switch Legal Entity",
+      "return_to_system": "Return to System"
+    },
+    "selector": {
+      "title": "Select Legal Entity",
+      "search_placeholder": "Search by name, country or city...",
+      "no_results": "No legal entities found",
+      "create_first": "Create First Legal Entity",
+      "manage": "Manage Legal Entities"
+    },
+    "guard": {
+      "title": "Select a Legal Entity to operate",
+      "description": "As a system administrator, you must select a legal entity before accessing business features."
+    }
+  },
+  "proposals": {
+    "detail": {
+      "title": "Proposal Detail",
+      "info": "Proposal Information",
+      "patient": "Patient",
+      "practitioner": "Practitioner",
+      "created": "Created",
+      "validUntil": "Valid Until",
+      "sentAt": "Sent",
+      "acceptedAt": "Accepted",
+      "cancellationReason": "Cancellation Reason",
+      "notes": "Notes",
+      "lines": "Treatment Lines",
+      "treatmentName": "Treatment",
+      "quantity": "Qty",
+      "unitPrice": "Unit Price",
+      "lineTotal": "Total",
+      "total": "Total",
+      "noLines": "No treatment lines.",
+      "saleCreated": "Sale created",
+      "readonlyMessage": {
+        "cancelled": "This proposal has been cancelled.",
+        "expired": "This proposal has expired."
+      }
+    },
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "accepted": "Accepted",
+      "cancelled": "Cancelled",
+      "expired": "Expired"
+    },
+    "actions": {
+      "backToList": "Back to Proposals",
+      "send": "Send Proposal",
+      "sending": "Sending…",
+      "accept": "Accept Proposal",
+      "accepting": "Accepting…",
+      "confirmAccept": "Confirm Accept",
+      "cancel": "Cancel Proposal",
+      "cancelling": "Cancelling…",
+      "back": "Back"
+    },
+    "modals": {
+      "acceptTitle": "Accept Proposal",
+      "acceptDescription": "Accepting this proposal will create a Sale and Treatment Plans. This action cannot be undone.",
+      "legalEntityLabel": "Legal Entity ID",
+      "legalEntityPlaceholder": "Enter legal entity UUID",
+      "cancelTitle": "Cancel Proposal",
+      "cancelDescription": "This action cannot be undone. The proposal will be permanently cancelled.",
+      "cancellationReasonLabel": "Cancellation Reason",
+      "cancellationReasonPlaceholder": "Enter reason for cancellation…",
+      "confirmCancel": "Confirm Cancel"
+    },
+    "errors": {
+      "loadFailed": "Failed to load proposal."
+    }
+  },
+  "patient360": {
+    "tabs": {
+      "overview": "Overview",
+      "encounters": "Encounters",
+      "treatmentPlans": "Treatment Plans",
+      "proposals": "Proposals",
+      "sales": "Sales"
+    },
+    "comingSoon": "Coming soon",
+    "overview": {
+      "personalData": "Personal Data",
+      "notes": "Notes",
+      "noNotes": "No notes recorded.",
+      "activeCoverage": "Active Coverage",
+      "providerName": "Provider",
+      "memberNumber": "Member Number",
+      "socialSecurityNumber": "Social Security Number",
+      "validFrom": "Valid From",
+      "financialKpis": "Financial KPIs",
+      "proposalsDraft": "Draft Proposals",
+      "proposalsSent": "Sent Proposals",
+      "lastSaleDate": "Last Sale Date",
+      "clinicalKpis": "Clinical KPIs",
+      "totalEncounters": "Total Encounters",
+      "activeTreatmentPlans": "Active Treatment Plans",
+      "errorLoading": "Failed to load patient overview.",
+      "clinicalHistory": "Clinical History",
+      "allStatuses": "All statuses",
+      "dateFrom": "From",
+      "dateTo": "To",
+      "clearFilters": "Clear",
+      "pageOf": "Page {page} of {total}",
+      "results": "{count} results",
+      "previous": "Previous",
+      "next": "Next",
+      "viewEncounter": "View",
+      "errorLoadingEncounters": "Failed to load encounters.",
+      "noEncounters": "No encounters found.",
+      "financialHistory": "Financial History",
+      "viewProposal": "View",
+      "errorLoadingProposals": "Failed to load proposals.",
+      "noProposals": "No proposals found.",
+      "colDate": "Date",
+      "colStatus": "Status",
+      "colTotal": "Total",
+      "colValidUntil": "Valid Until",
+      "colPractitioner": "Practitioner"
+    },
+    "treatmentPlans": "Treatment Plans",
+    "noTreatmentPlans": "No treatment plans found."
+  },
+  "treatmentPlans": {
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "colDate": "Date",
+    "colStatus": "Status",
+    "colSessions": "Sessions",
+    "colRemaining": "Remaining",
+    "colProgress": "Progress",
+    "view": "View",
+    "errorLoading": "Failed to load treatment plans."
+  },
+  "treatmentSession": {
+    "pageTitle": "Treatment Session",
+    "header": {
+      "patient": "Patient",
+      "package": "Package",
+      "practitioner": "Practitioner",
+      "performedAt": "Performed at"
+    },
+    "status": {
+      "draft": "Draft",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "actions": {
+      "complete": "Complete Session",
+      "cancel": "Cancel Session",
+      "back": "Back"
+    },
+    "confirm": {
+      "completeTitle": "Complete Session",
+      "completeMessage": "Confirm this session was performed? This action cannot be undone.",
+      "cancelTitle": "Cancel Session",
+      "cancelMessage": "Cancel this session? This action cannot be undone.",
+      "yes": "Confirm",
+      "no": "Go Back"
+    },
+    "editor": {
+      "title": "Clinical Notes",
+      "placeholder": "Write clinical notes for this session...",
+      "saving": "Saving...",
+      "saved": "Saved"
+    },
+    "photos": {
+      "title": "Photos",
+      "dropHere": "Drop images here",
+      "uploadHint": "or click to select files",
+      "noPhotos": "No photos attached yet."
+    },
+    "error": {
+      "loading": "Failed to load treatment session.",
+      "completing": "Failed to complete session.",
+      "cancelling": "Failed to cancel session."
+    }
+  },
+  "admin": {
+    "section": "Administration",
+    "legalEntities": {
+      "title": "Legal Entities",
+      "pageTitle": "Legal Entities",
+      "createTitle": "New Legal Entity",
+      "editTitle": "Edit Legal Entity",
+      "columns": {
+        "tradeName": "Trade Name",
+        "legalName": "Legal Name",
+        "country": "Country",
+        "siret": "SIRET",
+        "active": "Active",
+        "users": "Users",
+        "actions": "Actions"
+      },
+      "empty": "No legal entities found.",
+      "emptyHint": "Create your first legal entity to get started.",
+      "create": "New Legal Entity",
+      "edit": "Edit",
+      "view": "View",
+      "form": {
+        "sectionIdentity": "Identity",
+        "sectionAddress": "Address",
+        "sectionContact": "Contact",
+        "sectionAdmin": "Admin User",
+        "sectionStatus": "Status",
+        "tradeName": "Trade Name",
+        "legalName": "Legal Name",
+        "siret": "SIRET",
+        "siren": "SIREN",
+        "vatNumber": "VAT Number",
+        "countryCode": "Country Code",
+        "addressLine1": "Address Line 1",
+        "addressLine2": "Address Line 2",
+        "postalCode": "Postal Code",
+        "city": "City",
+        "legalEmail": "Legal Email",
+        "phone": "Phone",
+        "currency": "Currency",
+        "timezone": "Timezone",
+        "isActive": "Active",
+        "adminEmail": "Admin Email",
+        "adminFirstName": "Admin First Name",
+        "adminLastName": "Admin Last Name"
+      },
+      "actions": {
+        "create": "Create Entity",
+        "save": "Save Changes",
+        "cancel": "Cancel"
+      },
+      "messages": {
+        "created": "Legal entity created successfully.",
+        "updated": "Legal entity updated successfully.",
+        "errorCreate": "Failed to create legal entity.",
+        "errorUpdate": "Failed to update legal entity.",
+        "errorLoad": "Failed to load legal entities.",
+        "tempPasswordNotice": "A temporary password was generated for the admin user. Please copy it now — it will not be shown again.",
+        "goToList": "Go to Legal Entities"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      }
     }
   }
 }

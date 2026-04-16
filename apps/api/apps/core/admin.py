@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AppSettings, ClinicLocation
+from .models import AppSettings, Clinic
 
 
 @admin.register(AppSettings)
@@ -8,9 +8,9 @@ class AppSettingsAdmin(admin.ModelAdmin):
     readonly_fields = ['id', 'created_at', 'updated_at']
 
 
-@admin.register(ClinicLocation)
-class ClinicLocationAdmin(admin.ModelAdmin):
-    list_display = ['name', 'city', 'country_code', 'is_active', 'created_at']
-    list_filter = ['is_active', 'country_code']
+@admin.register(Clinic)
+class ClinicAdmin(admin.ModelAdmin):
+    list_display = ['name', 'legal_entity', 'city', 'country_code', 'is_active', 'created_at']
+    list_filter = ['legal_entity', 'is_active', 'country_code']
     search_fields = ['name', 'city', 'postal_code']
     readonly_fields = ['id', 'created_at', 'updated_at']

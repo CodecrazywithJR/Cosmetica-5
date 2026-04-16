@@ -27,7 +27,7 @@ from apps.clinical.models import (
     ReferralSource,
 )
 from apps.authz.models import Practitioner, Role, UserRole
-from apps.core.models import ClinicLocation
+from apps.core.models import Clinic
 
 User = get_user_model()
 
@@ -37,14 +37,15 @@ User = get_user_model()
 # ============================================================================
 
 @pytest.fixture
-def clinic_location(db):
+def clinic(db, legal_entity):
     """Create a test clinic location."""
-    return ClinicLocation.objects.create(
+    return Clinic.objects.create(
         name="Test Clinic",
         address_line1="123 Test St",
         city="Paris",
         postal_code="75001",
-        country_code="FR"
+        country_code="FR",
+        legal_entity=legal_entity,
     )
 
 
@@ -201,14 +202,14 @@ class TestTreatmentModel:
 class TestEncounterTreatmentModel:
     """Test EncounterTreatment linking model."""
     
-    def test_create_encounter_treatment(self, patient, practitioner_user, clinic_location):
+    def test_create_encounter_treatment(self, patient, practitioner_user, clinic):
         """Test creating an encounter-treatment link."""
         practitioner = practitioner_user.practitioner
         
         encounter = Encounter.objects.create(
             patient=patient,
             practitioner=practitioner,
-            location=clinic_location,
+            clinic=clinic,
             type=EncounterTypeChoices.AESTHETIC_PROCEDURE,
             status=EncounterStatusChoices.DRAFT,
             occurred_at=timezone.now()
@@ -304,11 +305,11 @@ class TestEncounterTreatmentModel:
         
         assert encounter_treatment.total_price == Decimal("1050.00")  # 3 * 350
     
-    def test_unique_treatment_per_encounter(self, patient, clinic_location):
+    def test_unique_treatment_per_encounter(self, patient, clinic):
         """Test that the same treatment cannot be added twice to an encounter."""
         encounter = Encounter.objects.create(
             patient=patient,
-            location=clinic_location,
+            clinic=clinic,
             type=EncounterTypeChoices.MEDICAL_CONSULT,
             status=EncounterStatusChoices.DRAFT,
             occurred_at=timezone.now()
@@ -484,7 +485,7 @@ class TestClinicalE2E:
         self,
         reception_user,
         practitioner_user,
-        clinic_location,
+        clinic,
         referral_source,
         api_client
     ):
@@ -510,7 +511,7 @@ class TestClinicalE2E:
         response = api_client.post('/api/v1/clinical/appointments/', {
             'patient': patient_id,
             'practitioner': str(practitioner.id),
-            'location': str(clinic_location.id),
+            'clinic_id': str(clinic.id),
             'source': 'manual',
             'status': 'draft',
             'scheduled_start': scheduled_start.isoformat(),
@@ -548,7 +549,7 @@ class TestClinicalE2E:
         response = api_client.post('/api/v1/clinical/encounters/', {
             'patient': patient_id,
             'practitioner': str(practitioner.id),
-            'location': str(clinic_location.id),
+            'clinic': str(clinic.id),
             'type': 'aesthetic_procedure',
             'status': 'draft',
             'occurred_at': timezone.now().isoformat(),

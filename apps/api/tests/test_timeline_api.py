@@ -2,7 +2,7 @@
 Tests for Patient Timeline API endpoint.
 
 Endpoint tested:
-- GET /api/v1/patients/{id}/timeline/ (aggregated timeline of patient events)
+- GET /api/v1/clinical/patients/{id}/timeline/ (aggregated timeline of patient events)
 
 Business Rules:
 - Timeline aggregates: Encounters, Appointments, Consents, Photos
@@ -17,11 +17,11 @@ from datetime import timedelta
 
 @pytest.mark.django_db
 class TestPatientTimeline:
-    """Test GET /api/v1/patients/{id}/timeline/ endpoint"""
+    """Test GET /api/v1/clinical/patients/{id}/timeline/ endpoint"""
     
     def test_timeline_basic(self, admin_client, patient):
         """Admin can retrieve patient timeline"""
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -47,7 +47,7 @@ class TestPatientTimeline:
             occurred_at=timezone.now() - timedelta(days=2)
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -67,16 +67,18 @@ class TestPatientTimeline:
         # Create appointments
         apt1 = appointment_factory(
             patient=patient,
-            status='attended',
-            scheduled_start=timezone.now() - timedelta(days=10)
+            status='completed',
+            scheduled_start=timezone.now() - timedelta(days=10),
+            scheduled_end=timezone.now() - timedelta(days=10) + timedelta(hours=1)
         )
         apt2 = appointment_factory(
             patient=patient,
             status='scheduled',
-            scheduled_start=timezone.now() + timedelta(days=5)
+            scheduled_start=timezone.now() + timedelta(days=5),
+            scheduled_end=timezone.now() + timedelta(days=5) + timedelta(hours=1)
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -109,7 +111,7 @@ class TestPatientTimeline:
             revoked_at=django_timezone.now() - timedelta(days=3),
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -144,7 +146,7 @@ class TestPatientTimeline:
             taken_at=timezone.now() - timedelta(days=1),
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -173,7 +175,7 @@ class TestPatientTimeline:
             occurred_at=timezone.now() - timedelta(days=2)
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -211,7 +213,7 @@ class TestPatientTimeline:
         # Filter for last 10 days
         date_from = (timezone.now() - timedelta(days=10)).isoformat()
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/?date_from={date_from}')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/?date_from={date_from}')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -231,7 +233,7 @@ class TestPatientTimeline:
         appointment_factory(patient=patient)
         
         # Filter for encounters only
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/?event_type=encounter')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/?event_type=encounter')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -254,7 +256,7 @@ class TestPatientTimeline:
             deleted_at=timezone.now()
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -269,7 +271,7 @@ class TestPatientTimeline:
     
     def test_timeline_empty_patient(self, admin_client, patient):
         """Timeline for patient with no events returns empty list"""
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -285,7 +287,7 @@ class TestPatientTimeline:
         import uuid
         fake_id = uuid.uuid4()
         
-        response = admin_client.get(f'/api/v1/patients/{fake_id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{fake_id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Cannot distinguish between endpoint not implemented and patient not found")
@@ -299,7 +301,7 @@ class TestPatientTimelinePermissions:
     
     def test_timeline_admin_allowed(self, admin_client, patient):
         """Admin can view patient timeline"""
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -308,7 +310,7 @@ class TestPatientTimelinePermissions:
     
     def test_timeline_practitioner_allowed(self, practitioner_client, patient):
         """Practitioner can view patient timeline"""
-        response = practitioner_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = practitioner_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -317,7 +319,7 @@ class TestPatientTimelinePermissions:
     
     def test_timeline_reception_limited_or_forbidden(self, reception_client, patient):
         """Reception may have limited access or be forbidden from timeline"""
-        response = reception_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = reception_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -327,7 +329,7 @@ class TestPatientTimelinePermissions:
     
     def test_timeline_accounting_forbidden(self, accounting_client, patient):
         """Accounting cannot view detailed timeline (clinical data)"""
-        response = accounting_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = accounting_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -336,7 +338,7 @@ class TestPatientTimelinePermissions:
     
     def test_timeline_marketing_forbidden(self, marketing_client, patient):
         """Marketing cannot view patient timeline"""
-        response = marketing_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = marketing_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -345,7 +347,7 @@ class TestPatientTimelinePermissions:
     
     def test_timeline_unauthenticated_denied(self, api_client, patient):
         """Unauthenticated requests return 401"""
-        response = api_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = api_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -361,7 +363,7 @@ class TestPatientTimelineEventFormat:
         """Each timeline event has required fields: event_type, timestamp, id"""
         encounter_factory(patient=patient, occurred_at=timezone.now() - timedelta(days=1))
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -390,7 +392,7 @@ class TestPatientTimelineEventFormat:
             occurred_at=timezone.now() - timedelta(days=1)
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -415,7 +417,7 @@ class TestPatientTimelineEventFormat:
                 occurred_at=timezone.now() - timedelta(days=i)
             )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -437,7 +439,7 @@ class TestPatientTimelineEdgeCases:
     
     def test_timeline_with_invalid_patient_id(self, admin_client):
         """Timeline with invalid UUID format returns 404 or 400"""
-        response = admin_client.get('/api/v1/patients/not-a-uuid/timeline/')
+        response = admin_client.get('/api/v1/clinical/patients/not-a-uuid/timeline/')
         
         # Could be 404 (pattern doesn't match) or 400 (invalid UUID)
         assert response.status_code in [400, 404]
@@ -458,7 +460,7 @@ class TestPatientTimelineEdgeCases:
             granted_at=same_date,
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")
@@ -484,7 +486,7 @@ class TestPatientTimelineEdgeCases:
             taken_at=None,  # Null date
         )
         
-        response = admin_client.get(f'/api/v1/patients/{patient.id}/timeline/')
+        response = admin_client.get(f'/api/v1/clinical/patients/{patient.id}/timeline/')
         
         if response.status_code == 404:
             pytest.skip("Patient timeline endpoint not yet implemented")

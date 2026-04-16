@@ -92,9 +92,9 @@ services:
       mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
       mc mb local/${MINIO_CLINICAL_BUCKET:-derma-photos} --ignore-existing;
       mc mb local/${MINIO_MARKETING_BUCKET:-marketing} --ignore-existing;
-      mc anonymous set download local/${MINIO_CLINICAL_BUCKET:-derma-photos};
+      mc anonymous set none local/${MINIO_CLINICAL_BUCKET:-derma-photos};
       mc anonymous set download local/${MINIO_MARKETING_BUCKET:-marketing};
-      echo 'MinIO buckets initialized: ${MINIO_CLINICAL_BUCKET:-derma-photos} (clinical), ${MINIO_MARKETING_BUCKET:-marketing} (public)';
+      echo 'MinIO buckets initialized: ${MINIO_CLINICAL_BUCKET:-derma-photos} (clinical, private), ${MINIO_MARKETING_BUCKET:-marketing} (public)';
       "
     networks:
       - emr-network-prod

@@ -1,0 +1,19 @@
+# =============================================================================
+# Bandit Configuration — Python SAST Scanner
+# =============================================================================
+# Docs: https://bandit.readthedocs.io/
+
+[bandit]
+# Directories to scan
+targets = apps/api
+
+# Exclude test and migration files (not production code)
+exclude = tests,migrations,conftest.py
+
+# Skip low-confidence findings to reduce noise
+# B101: assert usage (expected in tests, but tests are excluded)
+# B104: binding to 0.0.0.0 (handled at infrastructure level)
+skips = B101,B104
+
+# Output format
+# Use -f json in CI for machine-readable reports

@@ -1,25 +1,36 @@
 """
 Pytest configuration for the entire test suite.
 
-This file configures test database to use SQLite for faster tests.
+Delegates database configuration to config.settings (PostgreSQL).
 """
 import os
+import pytest
 import django
 from django.conf import settings
 
 
 def pytest_configure():
     """Configure Django settings for tests."""
-    # Override DATABASE settings to use SQLite for tests
-    if not settings.configured:
-        settings.configure()
-    
-    # Force SQLite for tests (faster, no Docker dependency)
-    settings.DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': ':memory:',  # In-memory database for speed
-        }
-    }
-    
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     django.setup()
+
+
+def _get_test_legal_entity():
+    """Get or create a shared LegalEntity for test fixtures."""
+    from apps.legal.models import LegalEntity
+    le, _ = LegalEntity.objects.get_or_create(
+        siret='00000000000001',
+        defaults={
+            'trade_name': 'Fixture Clinic',
+            'legal_name': 'Fixture Clinic SRL',
+            'country_code': 'FR',
+            'is_active': True,
+        },
+    )
+    return le
+
+
+@pytest.fixture
+def legal_entity(db):
+    """Shared LegalEntity for tenant-aware test fixtures."""
+    return _get_test_legal_entity()

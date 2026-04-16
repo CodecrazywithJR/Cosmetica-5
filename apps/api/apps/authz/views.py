@@ -10,9 +10,10 @@ from apps.authz.serializers import (
     PractitionerWriteSerializer,
 )
 from apps.authz.permissions import PractitionerPermission
+from apps.core.tenant import TenantQuerySetMixin
 
 
-class PractitionerViewSet(viewsets.ModelViewSet):
+class PractitionerViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """
     ViewSet for Practitioner endpoints.
     
@@ -36,8 +37,16 @@ class PractitionerViewSet(viewsets.ModelViewSet):
     permission_classes = [PractitionerPermission]
     
     def get_queryset(self):
-        """Filter by is_active, role_type, and search."""
-        queryset = Practitioner.objects.select_related('user').all()
+        """Filter by is_active, role_type, and search.
+
+        Practitioner has no legal_entity FK of its own; tenant isolation
+        is enforced through the linked User (user__legal_entity).
+        """
+        from apps.core.tenant_context import get_current_tenant
+        tenant = get_current_tenant()
+        queryset = Practitioner.objects.select_related('user').filter(
+            user__legal_entity=tenant
+        )
         
         # Filter by is_active (default: only active)
         include_inactive = self.request.query_params.get('include_inactive', 'false').lower() == 'true'

@@ -5,12 +5,15 @@
 
 'use client';
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState } from 'react';
 import { useAuth, ROLES } from '@/lib/auth-context';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
 import Link from 'next/link';
 import { LanguageSwitcher } from '@/components/language-switcher';
+import SystemPlaneGuard from '@/components/system-plane-guard';
+import LegalEntitySelector from '@/components/legal-entity-selector';
+import { useActiveLegalEntity } from '@/lib/active-legal-entity-context';
 import { routes, type Locale } from '@/lib/routing';
 import { APP_NAME } from '@/lib/constants';
 
@@ -19,16 +22,42 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const { user, logout, hasAnyRole, hasRole } = useAuth();
+  const { user, logout, hasAnyRole, hasRole, isInitializing, authError } = useAuth();
+  const {
+    isSuperuser,
+    isBusinessPlane,
+    activeLegalEntity,
+    clearLegalEntity,
+  } = useActiveLegalEntity();
   const pathname = usePathname();
   const router = useRouter();
   const t = useTranslations('nav');
   const tUsers = useTranslations('users');
   const tCommon = useTranslations('common');
+  const tAdmin = useTranslations('admin');
+  const tSystem = useTranslations('system');
   const locale = useLocale() as Locale;
+  const [showLESelector, setShowLESelector] = useState(false);
 
-  if (!user) {
+  // While the initial silent token refresh is in-flight, render nothing.
+  // While the initial silent token refresh is in-flight, render nothing.
+  // This prevents a redirect to /login caused by the brief window where
+  // user===null before the async refresh resolves (e.g. on locale switch).
+  if (isInitializing) {
+    return null;
+  }
+
+  // Only redirect to login when:
+  // 1) isInitializing is false (refresh attempt completed)
+  // 2) user is null (not authenticated)
+  // 3) authError is true (refresh definitively failed, not just "not checked yet")
+  if (!user && authError) {
     router.push(routes.login(locale));
+    return null;
+  }
+
+  // Still loading user after successful token refresh — do not redirect, just wait
+  if (!user) {
     return null;
   }
 
@@ -107,6 +136,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
     },
   ];
 
+  // Admin section — visible to superuser OR ADMIN role
+  const showAdmin = user.is_superuser || hasRole(ROLES.ADMIN);
+  const adminNavigation = showAdmin
+    ? [
+        {
+          name: tAdmin('legalEntities.title'),
+          href: routes.legalEntities.list(locale),
+          icon: BuildingIcon,
+        },
+      ]
+    : [];
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
@@ -135,9 +176,63 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </Link>
               );
             })}
+
+          {/* Admin section */}
+          {adminNavigation.length > 0 && (
+            <>
+              <div style={{ borderTop: '1px solid var(--gray-200, #e5e7eb)', margin: '12px 0 8px', opacity: 0.5 }} />
+              <div style={{ padding: '4px 16px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--gray-400, #9ca3af)' }}>
+                {tAdmin('section')}
+              </div>
+              {adminNavigation.map((item) => {
+                const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`sidebar-item ${isActive ? 'active' : ''}`}
+                  >
+                    <item.icon className="sidebar-icon" />
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         <div className="sidebar-footer">
+          {/* Superuser LE indicator — replaces the old header bar */}
+          {isSuperuser && isBusinessPlane && activeLegalEntity && (
+            <div style={{
+              padding: '10px 12px',
+              marginBottom: 10,
+              background: 'var(--gray-50, #f9fafb)',
+              borderRadius: 8,
+              border: '1px solid var(--gray-200, #e5e7eb)',
+              fontSize: 13,
+            }}>
+              <div style={{ fontWeight: 600, color: 'var(--gray-700, #374151)', marginBottom: 6, lineHeight: 1.3 }}>
+                {activeLegalEntity.legal_name}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  className="btn-secondary btn-sm"
+                  style={{ flex: 1, fontSize: 12, padding: '4px 8px' }}
+                  onClick={() => setShowLESelector(true)}
+                >
+                  {tSystem('actions.switch_legal_entity')}
+                </button>
+                <button
+                  className="btn-secondary btn-sm"
+                  style={{ flex: 1, fontSize: 12, padding: '4px 8px' }}
+                  onClick={clearLegalEntity}
+                >
+                  {tSystem('actions.return_to_system')}
+                </button>
+              </div>
+            </div>
+          )}
           <LanguageSwitcher />
           <button onClick={logout} className="btn-secondary w-full" style={{ marginTop: '12px' }}>
             {t('actions.logout')}
@@ -146,7 +241,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">{children}</main>
+      <main className="main-content">
+        <SystemPlaneGuard>
+          {children}
+        </SystemPlaneGuard>
+      </main>
+
+      {/* LE selector modal — triggered from sidebar */}
+      {showLESelector && (
+        <LegalEntitySelector onClose={() => setShowLESelector(false)} />
+      )}
     </div>
   );
 }
@@ -315,6 +419,24 @@ function UsersShieldIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222"
+      />
+    </svg>
+  );
+}
+
+function BuildingIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
       />
     </svg>
   );

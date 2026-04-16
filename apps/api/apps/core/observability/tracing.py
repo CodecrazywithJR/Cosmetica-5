@@ -21,6 +21,11 @@ except ImportError:
     OTEL_AVAILABLE = False
     tracer = None
 
+    class SpanKind:  # noqa: N801 — stub so OTEL_AVAILABLE can be mocked in tests
+        SERVER = 'server'
+        CLIENT = 'client'
+        INTERNAL = 'internal'
+
 
 @contextmanager
 def trace_span(

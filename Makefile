@@ -152,6 +152,40 @@ build: ## Build Docker images
 rebuild: ## Rebuild Docker images (no cache)
 	@cd infra && docker compose build --no-cache
 
+##@ Security Scanning
+
+security: security-bandit security-audit security-semgrep security-secrets ## Run all security scans
+
+security-bandit: ## Run Bandit SAST scanner
+	@echo "$(BLUE)🔒 Running Bandit (Python SAST)...$(NC)"
+	@cd infra && docker compose exec api bandit -r apps/ -c /app/../.bandit 2>/dev/null || \
+		bandit -r apps/api -c .bandit
+	@echo "$(GREEN)✅ Bandit scan complete$(NC)"
+
+security-audit: ## Run pip-audit dependency scan
+	@echo "$(BLUE)🔒 Running pip-audit (dependency vulnerabilities)...$(NC)"
+	@cd infra && docker compose exec api pip-audit -r requirements.txt 2>/dev/null || \
+		pip-audit -r apps/api/requirements.txt
+	@echo "$(GREEN)✅ pip-audit scan complete$(NC)"
+
+security-semgrep: ## Run Semgrep static analysis
+	@echo "$(BLUE)🔒 Running Semgrep (advanced SAST)...$(NC)"
+	@semgrep scan --config .semgrep.yml
+	@echo "$(GREEN)✅ Semgrep scan complete$(NC)"
+
+security-secrets: ## Run detect-secrets scan
+	@echo "$(BLUE)🔒 Running detect-secrets...$(NC)"
+	@detect-secrets scan --baseline .secrets.baseline
+	@echo "$(GREEN)✅ detect-secrets scan complete$(NC)"
+
+security-trivy: ## Run Trivy filesystem scan
+	@echo "$(BLUE)🔒 Running Trivy (filesystem vulnerabilities)...$(NC)"
+	@trivy fs . --severity HIGH,CRITICAL
+	@echo "$(GREEN)✅ Trivy scan complete$(NC)"
+
+security-gate: test-backend security ## Full security gate (tests + all scans)
+	@echo "$(GREEN)✅ All security gates passed$(NC)"
+
 ##@ Utilities
 
 ps: ## Show running containers

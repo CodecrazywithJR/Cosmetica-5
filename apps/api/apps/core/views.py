@@ -394,10 +394,6 @@ class CurrentUserView(APIView):
             'roles': roles,
         }
         
-        # FASE 4.0: Include Calendly URL if user is a practitioner
-        if hasattr(user, 'practitioner'):
-            profile_data['practitioner_calendly_url'] = user.practitioner.calendly_url
-        
         # Serialize and return
         serializer = UserProfileSerializer(profile_data)
         return Response(serializer.data, status=status.HTTP_200_OK)

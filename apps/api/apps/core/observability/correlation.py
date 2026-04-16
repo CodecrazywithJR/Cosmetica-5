@@ -77,7 +77,7 @@ class RequestCorrelationMiddleware(MiddlewareMixin):
         if hasattr(request, 'user') and request.user.is_authenticated:
             _request_context.user_id = str(request.user.id)
             _request_context.user_roles = list(
-                request.user.groups.values_list('name', flat=True)
+                request.user.user_roles.values_list('role__name', flat=True)
             )
         else:
             _request_context.user_id = None

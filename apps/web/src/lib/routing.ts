@@ -15,7 +15,7 @@ export const routes = {
   
   // Agenda/Appointments
   agenda: (locale: Locale) => `/${locale}`,
-  schedule: (locale: Locale) => `/${locale}/schedule`,  // Calendly booking page
+  schedule: (locale: Locale) => `/${locale}/schedule`,  // Booking page
   
   // Patients - nested structure
   patients: {
@@ -39,6 +39,19 @@ export const routes = {
   // Legacy flat encounter routes
   encounterDetail: (locale: Locale, id: string) => `/${locale}/encounters/${id}`,
   
+  // Treatment Sessions - clinical workspace
+  treatmentSessions: {
+    detail: (locale: Locale, id: string) => `/${locale}/clinical/treatment-sessions/${id}`,
+  },
+
+  // Legal Entities - admin management
+  legalEntities: {
+    list: (locale: Locale) => `/${locale}/admin/legal-entities`,
+    create: (locale: Locale) => `/${locale}/admin/legal-entities/new`,
+    detail: (locale: Locale, id: string) => `/${locale}/admin/legal-entities/${id}`,
+    edit: (locale: Locale, id: string) => `/${locale}/admin/legal-entities/${id}/edit`,
+  },
+
   // Proposals - nested structure
   proposals: {
     list: (locale: Locale) => `/${locale}/proposals`,
@@ -55,8 +68,8 @@ export const routes = {
   adminUserNew: (locale: Locale) => `/${locale}/admin/users/new`,
   adminAgenda: (locale: Locale) => `/${locale}/admin/agenda`,
   
-  // Booking route REMOVED (PHASE 2 - AGENDA_SURGERY.md)
-  // booking: (locale: Locale) => `/${locale}/booking`,
+  // Booking route (native booking system)
+  booking: (locale: Locale) => `/${locale}/booking`,
   
   // Users - nested structure (used by admin pages)
   users: {
@@ -70,7 +83,7 @@ export const routes = {
   // TODO: Implement sales module pages when ready
   sales: {
     list: (locale: Locale) => `/${locale}`,  // Redirect to home for now
-    detail: (locale: Locale, id: number) => `/${locale}`,
+    detail: (locale: Locale, id: number | string) => `/${locale}`,
     create: (locale: Locale) => `/${locale}`,
   },
   

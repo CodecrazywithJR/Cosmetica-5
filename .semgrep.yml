@@ -1,0 +1,147 @@
+# =============================================================================
+# Semgrep Configuration — Advanced Static Security Scanner
+# =============================================================================
+# Docs: https://semgrep.dev/docs/
+#
+# Usage:
+#   semgrep scan                           # uses this config
+#   semgrep scan --config auto             # uses Semgrep Registry rules
+#   semgrep scan --config p/django         # Django-specific rules
+
+rules:
+  # ---------------------------------------------------------------------------
+  # SQL Injection — raw queries without parameterization
+  # ---------------------------------------------------------------------------
+  - id: django-raw-sql-injection
+    patterns:
+      - pattern: |
+          $MODEL.objects.raw($QUERY % ...)
+      - pattern: |
+          $MODEL.objects.raw($QUERY.format(...))
+      - pattern: |
+          $MODEL.objects.raw(f"...")
+    message: >
+      Potential SQL injection via raw query string formatting.
+      Use parameterized queries: Model.objects.raw(sql, [params]).
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-89"
+      owasp: "A03:2021 - Injection"
+      category: security
+
+  # ---------------------------------------------------------------------------
+  # Django — Unsafe mark_safe usage
+  # ---------------------------------------------------------------------------
+  - id: django-mark-safe-user-input
+    patterns:
+      - pattern: |
+          mark_safe($USER_INPUT)
+      - pattern-not: |
+          mark_safe("...")
+    message: >
+      mark_safe() called with a variable. Only use mark_safe() on
+      trusted, hardcoded strings — never on user-controlled data.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      cwe: "CWE-79"
+      owasp: "A03:2021 - Injection"
+      category: security
+
+  # ---------------------------------------------------------------------------
+  # Hardcoded secrets / credentials
+  # ---------------------------------------------------------------------------
+  - id: hardcoded-secret-assignment
+    patterns:
+      - pattern: |
+          $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: ".*(SECRET|PASSWORD|TOKEN|API_KEY|PRIVATE_KEY).*"
+      - pattern-not: |
+          $VAR = ""
+      - pattern-not: |
+          $VAR = "changeme"
+      - pattern-not: |
+          $VAR = os.environ[...]
+      - pattern-not: |
+          $VAR = os.getenv(...)
+      - pattern-not: |
+          $VAR = env(...)
+    message: >
+      Possible hardcoded secret in variable '$VAR'.
+      Use environment variables or a secrets manager.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-798"
+      owasp: "A07:2021 - Identification and Authentication Failures"
+      category: security
+
+  # ---------------------------------------------------------------------------
+  # Dangerous subprocess usage
+  # ---------------------------------------------------------------------------
+  - id: subprocess-shell-true
+    pattern: |
+      subprocess.run(..., shell=True, ...)
+    message: >
+      subprocess.run with shell=True can lead to command injection.
+      Pass command as a list without shell=True.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-78"
+      owasp: "A03:2021 - Injection"
+      category: security
+
+  # ---------------------------------------------------------------------------
+  # Django — DEBUG=True in production settings
+  # ---------------------------------------------------------------------------
+  - id: django-debug-true
+    pattern: |
+      DEBUG = True
+    paths:
+      include:
+        - "**/settings/prod*"
+        - "**/settings/production*"
+    message: >
+      DEBUG = True found in what appears to be a production settings file.
+      This exposes sensitive information.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-215"
+      owasp: "A05:2021 - Security Misconfiguration"
+      category: security
+
+  # ---------------------------------------------------------------------------
+  # Pickle deserialization (untrusted data)
+  # ---------------------------------------------------------------------------
+  - id: unsafe-pickle-load
+    patterns:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+    message: >
+      pickle.load/loads can execute arbitrary code.
+      Never unpickle data from untrusted sources.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-502"
+      owasp: "A08:2021 - Software and Data Integrity Failures"
+      category: security
+
+# ---------------------------------------------------------------------------
+# Global path configuration
+# ---------------------------------------------------------------------------
+paths:
+  include:
+    - apps/api
+  exclude:
+    - tests
+    - "*/migrations/*"
+    - "*.pyc"
+    - __pycache__
+    - .venv
+    - node_modules

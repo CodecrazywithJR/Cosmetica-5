@@ -16,6 +16,7 @@ from django.contrib.auth import get_user_model
 from apps.sales.models import Sale, SaleLine, SaleStatusChoices, SaleRefund, SaleRefundLine
 from apps.products.models import Product
 from apps.stock.models import StockLocation, StockBatch, StockOnHand
+from tests.conftest import TEST_PASSWORD
 
 User = get_user_model()
 
@@ -28,12 +29,16 @@ def api_client():
 
 @pytest.fixture
 def user(db):
-    """Test user."""
-    return User.objects.create_user(
+    """Test user with Reception role for sale permissions."""
+    from apps.authz.models import Role, UserRole, RoleChoices
+    user = User.objects.create_user(
         username='testuser',
         email='test@example.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
+    reception_role, _ = Role.objects.get_or_create(name=RoleChoices.RECEPTION)
+    UserRole.objects.create(user=user, role=reception_role)
+    return user
 
 
 @pytest.fixture
@@ -44,64 +49,69 @@ def auth_client(api_client, user):
 
 
 @pytest.fixture
-def product(db):
+def product(db, legal_entity):
     """Test product."""
     return Product.objects.create(
         name='Test Product',
-        code='PROD-001',
-        is_stockable=True
+        sku='PROD-001',
+        price=Decimal('100.00'),
+        legal_entity=legal_entity,
     )
 
 
 @pytest.fixture
-def location(db):
+def location(db, legal_entity):
     """Test location."""
     return StockLocation.objects.create(
-        code='MAIN',
+        code='MAIN-WAREHOUSE',
         name='Main Warehouse',
-        is_active=True
+        is_active=True,
+        legal_entity=legal_entity,
     )
 
 
 @pytest.fixture
-def stock_with_inventory(db, product, location):
+def stock_with_inventory(db, product, location, legal_entity):
     """Product with stock available."""
     batch = StockBatch.objects.create(
         product=product,
         batch_number='BATCH-001',
-        quantity_received=100,
-        is_active=True
+        legal_entity=legal_entity,
     )
     
     StockOnHand.objects.create(
         product=product,
         location=location,
         batch=batch,
-        quantity_on_hand=100
+        quantity_on_hand=100,
+        legal_entity=legal_entity,
     )
     
     return product
 
 
 @pytest.fixture
-def sale(db, user):
+def sale(db, user, legal_entity):
     """Test sale in DRAFT status."""
     return Sale.objects.create(
         status=SaleStatusChoices.DRAFT,
         subtotal=Decimal('0.00'),
         total=Decimal('0.00'),
-        currency='USD'
+        currency='USD',
+        legal_entity=legal_entity,
     )
 
 
 @pytest.fixture
 def paid_sale_with_lines(db, user, stock_with_inventory, location):
     """Sale in PAID status with integer quantity lines."""
+    from tests.conftest import _get_test_legal_entity
     sale = Sale.objects.create(
         status=SaleStatusChoices.DRAFT,
         subtotal=Decimal('600.00'),
         total=Decimal('600.00'),
-        currency='USD'
+        currency='USD',
+        legal_entity=_get_test_legal_entity(),
     )
     
     # Line 1: 2 units @ $100 = $200
@@ -109,7 +119,7 @@ def paid_sale_with_lines(db, user, stock_with_inventory, location):
         sale=sale,
         product=stock_with_inventory,
         product_name=stock_with_inventory.name,
-        product_code=stock_with_inventory.code,
+        product_code=stock_with_inventory.sku,
         quantity=2,  # INTEGER
         unit_price=Decimal('100.00'),
         discount=Decimal('0.00'),
@@ -121,7 +131,7 @@ def paid_sale_with_lines(db, user, stock_with_inventory, location):
         sale=sale,
         product=stock_with_inventory,
         product_name=stock_with_inventory.name,
-        product_code=stock_with_inventory.code,
+        product_code=stock_with_inventory.sku,
         quantity=4,  # INTEGER
         unit_price=Decimal('100.00'),
         discount=Decimal('0.00'),
@@ -129,6 +139,7 @@ def paid_sale_with_lines(db, user, stock_with_inventory, location):
     )
     
     # Transition to PAID (consumes stock)
+    sale.transition_to(SaleStatusChoices.PENDING, user=user)
     sale.transition_to(SaleStatusChoices.PAID, user=user)
     
     return sale
@@ -256,7 +267,7 @@ class TestPartialRefundIntegerQuantity:
         }
         
         response = auth_client.post(
-            f'/api/sales/{paid_sale_with_lines.id}/refunds/',
+            f'/api/sales/sales/{paid_sale_with_lines.id}/refunds/',
             data,
             format='json'
         )
@@ -285,7 +296,7 @@ class TestPartialRefundIntegerQuantity:
         }
         
         response = auth_client.post(
-            f'/api/sales/{paid_sale_with_lines.id}/refunds/',
+            f'/api/sales/sales/{paid_sale_with_lines.id}/refunds/',
             data,
             format='json'
         )
@@ -299,10 +310,6 @@ class TestPartialRefundIntegerQuantity:
         
         assert refund_line.qty_refunded == 2  # Integer
         assert refund_line.amount_refunded == Decimal('200.00')  # Decimal
-        
-        # Verify we can still refund the remaining quantity
-        remaining = original_qty - 2
-        assert remaining > 0
     
     def test_partial_refund_validates_over_refund_with_integers(
         self, auth_client, paid_sale_with_lines
@@ -323,7 +330,7 @@ class TestPartialRefundIntegerQuantity:
         }
         
         response = auth_client.post(
-            f'/api/sales/{paid_sale_with_lines.id}/refunds/',
+            f'/api/sales/sales/{paid_sale_with_lines.id}/refunds/',
             data,
             format='json'
         )
@@ -367,7 +374,7 @@ class TestModelLevelIntegerEnforcement:
         sale_line = sale.lines.first()
         
         refund = SaleRefund.objects.create(
-            original_sale=sale,
+            sale=sale,
             reason='Direct model test'
         )
         

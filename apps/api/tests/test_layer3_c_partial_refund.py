@@ -16,65 +16,55 @@ Test Coverage:
 """
 import pytest
 from decimal import Decimal
-from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import timedelta
 
-from apps.authz.models import User
+from apps.authz.models import User, Role, UserRole, RoleChoices
 from apps.clinical.models import Patient
 from apps.products.models import Product
 from apps.sales.models import Sale, SaleLine, SaleRefund, SaleRefundLine, SaleStatusChoices, SaleRefundStatusChoices
 from apps.sales.services import refund_partial_for_sale
 from apps.stock.models import StockLocation, StockBatch, StockOnHand, StockMove, StockMoveTypeChoices
+from tests.conftest import TEST_PASSWORD
 
 
 @pytest.fixture
-def setup_groups(db):
-    """Create user groups."""
-    reception = Group.objects.create(name='Reception')
-    clinical_ops = Group.objects.create(name='ClinicalOps')
-    marketing = Group.objects.create(name='Marketing')
-    return {
-        'reception': reception,
-        'clinical_ops': clinical_ops,
-        'marketing': marketing
-    }
-
-
-@pytest.fixture
-def reception_user(db, setup_groups):
-    """Create user in Reception group."""
+def reception_user(db):
+    """Create user with Reception role."""
     user = User.objects.create_user(
         username='reception1',
         email='reception1@test.com',
-        password='test123'
+        password=TEST_PASSWORD
     )
-    user.groups.add(setup_groups['reception'])
+    reception_role, _ = Role.objects.get_or_create(name=RoleChoices.RECEPTION)
+    UserRole.objects.create(user=user, role=reception_role)
     return user
 
 
 @pytest.fixture
-def clinical_ops_user(db, setup_groups):
-    """Create user in ClinicalOps group."""
+def clinical_ops_user(db):
+    """Create user with Practitioner role (replaces ClinicalOps group)."""
     user = User.objects.create_user(
         username='clinicalops1',
         email='clinicalops1@test.com',
-        password='test123'
+        password=TEST_PASSWORD
     )
-    user.groups.add(setup_groups['clinical_ops'])
+    practitioner_role, _ = Role.objects.get_or_create(name=RoleChoices.PRACTITIONER)
+    UserRole.objects.create(user=user, role=practitioner_role)
     return user
 
 
 @pytest.fixture
-def marketing_user(db, setup_groups):
-    """Create user in Marketing group."""
+def marketing_user(db):
+    """Create user with Marketing role."""
     user = User.objects.create_user(
         username='marketing1',
         email='marketing1@test.com',
-        password='test123'
+        password=TEST_PASSWORD
     )
-    user.groups.add(setup_groups['marketing'])
+    marketing_role, _ = Role.objects.get_or_create(name=RoleChoices.MARKETING)
+    UserRole.objects.create(user=user, role=marketing_role)
     return user
 
 
@@ -94,7 +84,7 @@ def product(db):
     """Create test product."""
     return Product.objects.create(
         name='Test Product',
-        code='PROD001',
+        sku='PROD001',
         price=Decimal('300.00'),
         is_active=True
     )
@@ -104,8 +94,8 @@ def product(db):
 def location(db):
     """Create stock location."""
     return StockLocation.objects.create(
-        name='Main Clinic',
-        code='MAIN',
+        name='Main Warehouse',
+        code='MAIN-WAREHOUSE',
         is_active=True
     )
 
@@ -131,7 +121,7 @@ def batch_2(db, product):
 
 
 @pytest.fixture
-def paid_sale(db, patient, product, location, batch_1, batch_2, reception_user):
+def paid_sale(db, patient, product, location, batch_1, batch_2, reception_user, legal_entity):
     """
     Create PAID sale with stock consumption from 2 batches.
     
@@ -150,22 +140,23 @@ def paid_sale(db, patient, product, location, batch_1, batch_2, reception_user):
         product=product,
         location=location,
         batch=batch_2,
-        quantity_on_hand=10
+        quantity_on_hand=3  # Only 3 available so FEFO splits: 3 from BATCH002 + 2 from BATCH001
     )
     
     # Create sale
     sale = Sale.objects.create(
         patient=patient,
         sale_number='SALE-001',
-        status=SaleStatusChoices.DRAFT
+        status=SaleStatusChoices.DRAFT,
+        legal_entity=legal_entity
     )
     
     # Add line
-    line = SaleLine.objects.create(
+    SaleLine.objects.create(
         sale=sale,
         product=product,
         product_name=product.name,
-        product_code=product.code,
+        product_code=product.sku,
         quantity=5,
         unit_price=Decimal('300.00')
     )
@@ -173,7 +164,8 @@ def paid_sale(db, patient, product, location, batch_1, batch_2, reception_user):
     sale.recalculate_totals()
     sale.save()
     
-    # Transition to PAID (triggers stock consumption via FEFO)
+    # Transition to PAID (DRAFT→PENDING→PAID)
+    sale.transition_to(SaleStatusChoices.PENDING, user=reception_user)
     sale.transition_to(SaleStatusChoices.PAID, user=reception_user)
     
     return sale
@@ -320,7 +312,7 @@ class TestPartialRefundMultiBatch:
 class TestPartialRefundServiceLine:
     """Test partial refund with service line (no stock)."""
     
-    def test_service_line_refund_creates_no_stock_moves(self, patient, reception_user):
+    def test_service_line_refund_creates_no_stock_moves(self, patient, reception_user, legal_entity):
         """
         Refund a service line (no product).
         
@@ -329,11 +321,18 @@ class TestPartialRefundServiceLine:
         - SaleRefundLine created
         - NO StockMove created
         """
+        # Need default stock location for transition_to(PAID)
+        StockLocation.objects.get_or_create(
+            code='MAIN-WAREHOUSE',
+            defaults={'name': 'Main Warehouse', 'is_active': True}
+        )
+        
         # Create sale with service line
         sale = Sale.objects.create(
             patient=patient,
             sale_number='SALE-SERVICE',
-            status=SaleStatusChoices.DRAFT
+            status=SaleStatusChoices.DRAFT,
+            legal_entity=legal_entity
         )
         
         service_line = SaleLine.objects.create(
@@ -346,6 +345,7 @@ class TestPartialRefundServiceLine:
         
         sale.recalculate_totals()
         sale.save()
+        sale.transition_to(SaleStatusChoices.PENDING, user=reception_user)
         sale.transition_to(SaleStatusChoices.PAID, user=reception_user)
         
         # Refund service
@@ -429,7 +429,7 @@ class TestPartialRefundValidation:
                 created_by=reception_user
             )
     
-    def test_refund_requires_paid_sale(self, patient, product, reception_user):
+    def test_refund_requires_paid_sale(self, patient, product, reception_user, legal_entity):
         """
         Attempt to refund a DRAFT sale.
         
@@ -438,7 +438,8 @@ class TestPartialRefundValidation:
         sale = Sale.objects.create(
             patient=patient,
             sale_number='SALE-DRAFT',
-            status=SaleStatusChoices.DRAFT
+            status=SaleStatusChoices.DRAFT,
+            legal_entity=legal_entity
         )
         
         line = SaleLine.objects.create(
@@ -576,12 +577,12 @@ class TestPartialRefundAtomicity:
         
         # Patch StockOnHand.save to raise exception
         def failing_save(self, *args, **kwargs):
-            raise Exception("Simulated stock update failure")
+            raise RuntimeError("Simulated stock update failure")
         
         monkeypatch.setattr(StockOnHand, 'save', failing_save)
         
         # Attempt refund
-        with pytest.raises(Exception, match="Simulated stock update failure"):
+        with pytest.raises(RuntimeError, match="Simulated stock update failure"):
             refund_partial_for_sale(
                 sale=paid_sale,
                 refund_payload={

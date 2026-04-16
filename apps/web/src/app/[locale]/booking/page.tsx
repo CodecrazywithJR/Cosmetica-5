@@ -3,7 +3,7 @@
  * 
  * Sprint 4: UX Booking desde Availability
  * 
- * Native appointment booking system (no Calendly).
+ * Native appointment booking system.
  * 
  * Features:
  * - RBAC: Admin/Reception can select any practitioner, Practitioner sees own calendar only

@@ -15,12 +15,18 @@ from rest_framework.permissions import IsAuthenticated
 
 from apps.clinical.models import ClinicalPhoto, Encounter, EncounterPhoto, PhotoKindChoices
 from apps.clinical.permissions import EncounterPermission
+from apps.authz.models import RoleChoices
 from apps.clinical.utils_storage import (
     generate_presigned_put_url,
     get_clinical_photo_url,
     generate_object_key,
     delete_object
 )
+from apps.core.audit import log_clinical_access
+from apps.clinical.audit_access_log import ClinicalAccessAction
+from apps.core.tenant import TenantQuerySetMixin
+from apps.ops.services import log_event
+from apps.ops.models import AuditEventType
 
 
 # File validation constants
@@ -28,8 +34,10 @@ ALLOWED_PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp']
 ALLOWED_PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp']
 MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
+ERROR_PERMISSION_DENIED = 'Permission denied'
 
-class ClinicalPhotoViewSet(viewsets.ViewSet):
+
+class ClinicalPhotoViewSet(TenantQuerySetMixin, viewsets.ViewSet):
     """
     ViewSet for managing clinical photos in encounters.
     
@@ -55,14 +63,14 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
         # Check permissions
         if not self._has_access(request.user, encounter):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
         # Get photos
         photos = []
-        for encounter_photo in encounter.encounter_photos.filter(clinical_photo__is_deleted=False).select_related('clinical_photo'):
-            photo = encounter_photo.clinical_photo
+        for encounter_photo in encounter.encounter_photos.filter(photo__is_deleted=False).select_related('photo'):
+            photo = encounter_photo.photo
             try:
                 url = get_clinical_photo_url(photo)
             except Exception:
@@ -104,7 +112,7 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
         # Check permissions
         if not self._has_write_access(request.user, encounter):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -179,7 +187,8 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
             # Link to encounter
             EncounterPhoto.objects.create(
                 encounter=encounter,
-                clinical_photo=clinical_photo
+                photo=clinical_photo,
+                relation_type='attached'
             )
             # Recalcular y persistir contadores
             recalc_attachment_counters(encounter.id)
@@ -198,6 +207,20 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
                 {'error': f'Failed to generate upload URL: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        log_clinical_access(
+            request,
+            action=ClinicalAccessAction.UPLOAD_CLINICAL_MEDIA,
+            patient=encounter.patient,
+            resource=clinical_photo,
+        )
+        log_event(
+            user=request.user,
+            legal_entity=clinical_photo.legal_entity,
+            entity_type='ClinicalPhoto',
+            entity_id=clinical_photo.pk,
+            event_type=AuditEventType.CLINICAL_PHOTO_UPLOADED,
+            payload={'encounter_id': str(encounter.id), 'classification': classification},
+        )
         return Response({
             'id': str(clinical_photo.id),
             'upload_url': upload_url,
@@ -220,13 +243,13 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
         
         # Check permissions - user must have access to at least one encounter with this photo
         encounters = Encounter.objects.filter(
-            encounter_photos__clinical_photo=photo,
+            encounter_photos__photo=photo,
             is_deleted=False
         )
         
         if not any(self._has_write_access(request.user, enc) for enc in encounters):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -239,17 +262,23 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
                     bucket_name=photo.storage_bucket,
                     object_key=photo.object_key
                 )
-            except Exception as e:
+            except Exception:
                 pass
             # Get affected encounter ids before delete
             affected_encounters = list(
-                Encounter.objects.filter(encounter_photos__clinical_photo=photo, is_deleted=False).values_list('id', flat=True)
+                Encounter.objects.filter(encounter_photos__photo=photo, is_deleted=False).values_list('id', flat=True)
             )
             # Hard delete from database (cascade deletes EncounterPhoto links)
             photo.delete()
             # Recalcular y persistir contadores en todos los encounters afectados
             for eid in affected_encounters:
                 recalc_attachment_counters(eid)
+        log_clinical_access(
+            request,
+            action=ClinicalAccessAction.DELETE_CLINICAL_MEDIA,
+            patient=photo.patient,
+            resource=photo,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
     
     @action(detail=True, methods=['get'])
@@ -265,13 +294,13 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
         
         # Check permissions
         encounters = Encounter.objects.filter(
-            encounter_photos__clinical_photo=photo,
+            encounter_photos__photo=photo,
             is_deleted=False
         )
         
         if not any(self._has_access(request.user, enc) for enc in encounters):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -288,16 +317,15 @@ class ClinicalPhotoViewSet(viewsets.ViewSet):
     
     def _has_access(self, user, encounter):
         """Check if user has read access to encounter."""
-        role = getattr(user, 'role', None)
-        if not role:
+        user_roles = set(
+            user.user_roles.values_list('role__name', flat=True)
+        )
+        if not user_roles:
             return False
         
-        # Admin, ClinicalOps, Practitioner have full access
-        if role in ['admin', 'clinical_ops', 'practitioner']:
-            return True
-        
-        # Accounting, Reception, Marketing have NO access
-        return False
+        # Aligns with EncounterPermission: Admin and Practitioner have full access
+        allowed = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER}
+        return bool(user_roles & allowed)
     
     def _has_write_access(self, user, encounter):
         """Check if user has write access to encounter."""

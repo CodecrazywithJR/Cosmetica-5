@@ -258,7 +258,7 @@ export default function PatientsPage() {
                   {patients.map((patient) => (
                     <tr 
                       key={patient.id} 
-                      onClick={() => router.push(routes.patients.edit(locale, patient.id))}
+                      onClick={() => router.push(routes.patients.detail(locale, patient.id))}
                       className="hover:bg-gray-50 cursor-pointer transition-colors"
                     >
                       <td className="px-6 py-4 whitespace-nowrap">

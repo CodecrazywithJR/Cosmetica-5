@@ -11,7 +11,6 @@ class UserProfileSerializer(serializers.Serializer):
     Returns authenticated user information including roles.
     This is the contract between backend auth and frontend UI.
     
-    FASE 4.0: Includes practitioner_calendly_url if user is a practitioner.
     FASE 4.2: Includes first_name and last_name for display purposes.
     FASE 5: Includes must_change_password for password reset flow.
     """
@@ -23,7 +22,6 @@ class UserProfileSerializer(serializers.Serializer):
     is_superuser = serializers.BooleanField(read_only=True)
     must_change_password = serializers.BooleanField(read_only=True)
     roles = serializers.ListField(child=serializers.CharField(), read_only=True)
-    practitioner_calendly_url = serializers.URLField(read_only=True, required=False, allow_null=True)
 
 
 class ServiceStatusSerializer(serializers.Serializer):

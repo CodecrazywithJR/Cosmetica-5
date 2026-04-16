@@ -8,9 +8,12 @@ export interface Appointment {
   patient_name?: string; // SerializerMethodField from backend
   practitioner_id: string; // UUID
   practitioner_name?: string; // SerializerMethodField from backend
-  location_id?: string; // UUID
-  location_name?: string; // SerializerMethodField from backend
-  source: string; // 'calendly' | 'manual'
+  clinic_id?: string; // UUID
+  clinic_name?: string; // SerializerMethodField from backend
+  appointment_type_id?: string; // UUID
+  appointment_type_name?: string; // SerializerMethodField from backend
+  duration_planned?: number;
+  source: string; // 'erp' | 'public_api' | 'manual'
   status: 'scheduled' | 'confirmed' | 'checked_in' | 'completed' | 'cancelled' | 'no_show';
   scheduled_start: string; // ISO datetime
   scheduled_end?: string; // ISO datetime
@@ -19,14 +22,40 @@ export interface Appointment {
   updated_at: string; // ISO datetime
 }
 
+export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'cancelled' | 'expired';
+
+export interface ProposalLine {
+  id: string; // UUID
+  treatment_id: string;
+  treatment_name: string;
+  quantity: number;
+  unit_price: string; // Decimal as string
+  total_price: string;
+  type: 'per_session' | 'full_package';
+  notes?: string;
+}
+
 export interface ClinicalChargeProposal {
-  id: number;
-  patient_id: string; // UUID
-  practitioner_id: number;
-  title: string;
-  description?: string;
-  total_amount: number;
-  status: 'draft' | 'pending' | 'approved' | 'rejected';
+  id: string; // UUID
+  patient: {
+    id: string;
+    full_name: string;
+    email: string;
+  };
+  practitioner: {
+    id: string;
+    display_name: string;
+  };
+  encounter_id?: string;
+  lines: ProposalLine[];
+  total_amount: string; // Decimal as string
+  currency: string;
+  status: ProposalStatus;
+  valid_until?: string; // ISO date
+  sent_at?: string;
+  accepted_at?: string;
+  cancelled_at?: string;
+  cancellation_reason?: string;
   created_at: string;
   updated_at: string;
 }

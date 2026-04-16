@@ -2,9 +2,9 @@
 Tests for Consent API endpoints.
 
 Endpoints tested:
-- POST /api/v1/patients/{id}/consents/grant/
-- POST /api/v1/patients/{id}/consents/revoke/
-- GET /api/v1/patients/{id}/consents/status/
+- POST /api/v1/clinical/patients/{id}/consents/grant/
+- POST /api/v1/clinical/patients/{id}/consents/revoke/
+- GET /api/v1/clinical/patients/{id}/consents/status/
 
 Business Rules:
 - Consents are IMMUTABLE - revoke creates a NEW record, doesn't update
@@ -20,11 +20,11 @@ from django.utils import timezone as django_timezone
 
 @pytest.mark.django_db
 class TestConsentGrant:
-    """Test POST /api/v1/patients/{id}/consents/grant/ endpoint"""
+    """Test POST /api/v1/clinical/patients/{id}/consents/grant/ endpoint"""
     
     def test_grant_consent_success(self, admin_client, patient):
         """Admin can grant consent and creates new Consent record"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {
             'consent_type': 'clinical_photos',
         }
@@ -57,7 +57,7 @@ class TestConsentGrant:
         import uuid
         document_id = uuid.uuid4()
         
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {
             'consent_type': 'marketing_photos',
             'document_id': str(document_id),
@@ -74,7 +74,7 @@ class TestConsentGrant:
     
     def test_grant_consent_without_document_id(self, admin_client, patient):
         """Grant consent without document_id (should be allowed)"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {
             'consent_type': 'newsletter',
         }
@@ -95,7 +95,7 @@ class TestConsentGrant:
         consent_types = ['clinical_photos', 'marketing_photos', 'newsletter', 'marketing_messages']
         
         for consent_type in consent_types:
-            url = f'/api/v1/patients/{patient.id}/consents/grant/'
+            url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
             payload = {'consent_type': consent_type}
             
             response = admin_client.post(url, payload, format='json')
@@ -109,7 +109,7 @@ class TestConsentGrant:
     
     def test_grant_consent_practitioner_allowed(self, practitioner_client, patient):
         """Practitioner can grant consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {'consent_type': 'clinical_photos'}
         
         response = practitioner_client.post(url, payload, format='json')
@@ -122,7 +122,7 @@ class TestConsentGrant:
     
     def test_grant_consent_reception_allowed(self, reception_client, patient):
         """Reception can grant consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {'consent_type': 'newsletter'}
         
         response = reception_client.post(url, payload, format='json')
@@ -135,7 +135,7 @@ class TestConsentGrant:
     
     def test_grant_consent_accounting_forbidden(self, accounting_client, patient):
         """Accounting cannot grant consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {'consent_type': 'clinical_photos'}
         
         response = accounting_client.post(url, payload, format='json')
@@ -147,7 +147,7 @@ class TestConsentGrant:
     
     def test_grant_consent_marketing_forbidden(self, marketing_client, patient):
         """Marketing cannot grant consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {'consent_type': 'marketing_messages'}
         
         response = marketing_client.post(url, payload, format='json')
@@ -159,7 +159,7 @@ class TestConsentGrant:
     
     def test_grant_consent_invalid_type(self, admin_client, patient):
         """Grant consent with invalid consent_type returns 400"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {'consent_type': 'invalid_type'}
         
         response = admin_client.post(url, payload, format='json')
@@ -171,7 +171,7 @@ class TestConsentGrant:
     
     def test_grant_consent_missing_type(self, admin_client, patient):
         """Grant consent without consent_type returns 400"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {}
         
         response = admin_client.post(url, payload, format='json')
@@ -185,7 +185,7 @@ class TestConsentGrant:
         """Grant consent for nonexistent patient returns 404"""
         import uuid
         fake_patient_id = uuid.uuid4()
-        url = f'/api/v1/patients/{fake_patient_id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{fake_patient_id}/consents/grant/'
         payload = {'consent_type': 'clinical_photos'}
         
         response = admin_client.post(url, payload, format='json')
@@ -201,7 +201,7 @@ class TestConsentGrant:
 
 @pytest.mark.django_db
 class TestConsentRevoke:
-    """Test POST /api/v1/patients/{id}/consents/revoke/ endpoint"""
+    """Test POST /api/v1/clinical/patients/{id}/consents/revoke/ endpoint"""
     
     def test_revoke_consent_creates_new_record(self, admin_client, patient):
         """Revoke creates NEW consent record (immutable pattern), doesn't update existing"""
@@ -216,7 +216,7 @@ class TestConsentRevoke:
         original_id = granted_consent.id
         
         # Now revoke
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'clinical_photos'}
         
         response = admin_client.post(url, payload, format='json')
@@ -262,7 +262,7 @@ class TestConsentRevoke:
             )
             
             # Revoke
-            url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+            url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
             payload = {'consent_type': consent_type}
             
             response = admin_client.post(url, payload, format='json')
@@ -276,7 +276,7 @@ class TestConsentRevoke:
     
     def test_revoke_consent_without_prior_grant(self, admin_client, patient):
         """Revoking without prior grant should still work (creates revoked record)"""
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'newsletter'}
         
         response = admin_client.post(url, payload, format='json')
@@ -290,7 +290,7 @@ class TestConsentRevoke:
     
     def test_revoke_consent_practitioner_allowed(self, practitioner_client, patient):
         """Practitioner can revoke consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'clinical_photos'}
         
         response = practitioner_client.post(url, payload, format='json')
@@ -303,7 +303,7 @@ class TestConsentRevoke:
     
     def test_revoke_consent_reception_allowed(self, reception_client, patient):
         """Reception can revoke consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'marketing_messages'}
         
         response = reception_client.post(url, payload, format='json')
@@ -316,7 +316,7 @@ class TestConsentRevoke:
     
     def test_revoke_consent_accounting_forbidden(self, accounting_client, patient):
         """Accounting cannot revoke consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'clinical_photos'}
         
         response = accounting_client.post(url, payload, format='json')
@@ -328,7 +328,7 @@ class TestConsentRevoke:
     
     def test_revoke_consent_marketing_forbidden(self, marketing_client, patient):
         """Marketing cannot revoke consent"""
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'newsletter'}
         
         response = marketing_client.post(url, payload, format='json')
@@ -340,7 +340,7 @@ class TestConsentRevoke:
     
     def test_revoke_consent_invalid_type(self, admin_client, patient):
         """Revoke consent with invalid consent_type returns 400"""
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'invalid_type'}
         
         response = admin_client.post(url, payload, format='json')
@@ -363,7 +363,7 @@ class TestConsentRevoke:
         )
         
         # Revoke twice
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'clinical_photos'}
         
         response1 = admin_client.post(url, payload, format='json')
@@ -384,7 +384,7 @@ class TestConsentRevoke:
 
 @pytest.mark.django_db
 class TestConsentStatus:
-    """Test GET /api/v1/patients/{id}/consents/status/ endpoint"""
+    """Test GET /api/v1/clinical/patients/{id}/consents/status/ endpoint"""
     
     def test_get_consent_status_all_types(self, admin_client, patient):
         """Status endpoint returns current status for all 4 consent types"""
@@ -415,7 +415,7 @@ class TestConsentStatus:
         
         # marketing_messages not touched (no records)
         
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = admin_client.get(url)
         
         if response.status_code == 404:
@@ -471,7 +471,7 @@ class TestConsentStatus:
             granted_at=django_timezone.now(),
         )
         
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = admin_client.get(url)
         
         if response.status_code == 404:
@@ -484,7 +484,7 @@ class TestConsentStatus:
     
     def test_get_consent_status_admin_allowed(self, admin_client, patient):
         """Admin can read consent status"""
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = admin_client.get(url)
         
         if response.status_code == 404:
@@ -494,7 +494,7 @@ class TestConsentStatus:
     
     def test_get_consent_status_practitioner_allowed(self, practitioner_client, patient):
         """Practitioner can read consent status"""
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = practitioner_client.get(url)
         
         if response.status_code == 404:
@@ -504,7 +504,7 @@ class TestConsentStatus:
     
     def test_get_consent_status_reception_allowed(self, reception_client, patient):
         """Reception can read consent status"""
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = reception_client.get(url)
         
         if response.status_code == 404:
@@ -514,7 +514,7 @@ class TestConsentStatus:
     
     def test_get_consent_status_accounting_allowed(self, accounting_client, patient):
         """Accounting can read consent status (read-only role)"""
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = accounting_client.get(url)
         
         if response.status_code == 404:
@@ -524,7 +524,7 @@ class TestConsentStatus:
     
     def test_get_consent_status_marketing_forbidden_by_default(self, marketing_client, patient):
         """Marketing CANNOT read consent status unless contract explicitly allows"""
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = marketing_client.get(url)
         
         if response.status_code == 404:
@@ -535,7 +535,7 @@ class TestConsentStatus:
     
     def test_get_consent_status_empty_patient(self, admin_client, patient):
         """Status for patient with no consents returns all types with null/not_granted status"""
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = admin_client.get(url)
         
         if response.status_code == 404:
@@ -554,7 +554,7 @@ class TestConsentStatus:
         """Status for nonexistent patient returns 404"""
         import uuid
         fake_patient_id = uuid.uuid4()
-        url = f'/api/v1/patients/{fake_patient_id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{fake_patient_id}/consents/status/'
         
         response = admin_client.get(url)
         
@@ -573,7 +573,7 @@ class TestConsentImmutability:
         from apps.clinical.models import Consent
         
         # Grant
-        grant_url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        grant_url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         grant_response = admin_client.post(grant_url, {'consent_type': 'clinical_photos'}, format='json')
         
         if grant_response.status_code == 404:
@@ -583,7 +583,7 @@ class TestConsentImmutability:
         granted_at_time = grant_response.data['granted_at']
         
         # Revoke
-        revoke_url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        revoke_url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         revoke_response = admin_client.post(revoke_url, {'consent_type': 'clinical_photos'}, format='json')
         
         revoked_id = revoke_response.data['id']
@@ -610,8 +610,8 @@ class TestConsentImmutability:
         """Multiple grant/revoke operations create complete audit timeline"""
         from apps.clinical.models import Consent
         
-        grant_url = f'/api/v1/patients/{patient.id}/consents/grant/'
-        revoke_url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        grant_url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
+        revoke_url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {'consent_type': 'newsletter'}
         
         # Grant → Revoke → Grant → Revoke
@@ -634,7 +634,7 @@ class TestConsentImmutability:
         assert Consent.objects.filter(patient=patient, consent_type='newsletter').count() == 4
         
         # Latest status should be revoked
-        status_url = f'/api/v1/patients/{patient.id}/consents/status/'
+        status_url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         status_response = admin_client.get(status_url)
         assert status_response.data['newsletter'] == 'revoked'
 
@@ -645,7 +645,7 @@ class TestConsentDocumentLink:
     
     def test_grant_with_null_document(self, admin_client, patient):
         """Grant consent with document_id=null is valid"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {
             'consent_type': 'clinical_photos',
             'document_id': None,
@@ -661,7 +661,7 @@ class TestConsentDocumentLink:
     
     def test_grant_without_document_field(self, admin_client, patient):
         """Grant consent without document_id field at all is valid"""
-        url = f'/api/v1/patients/{patient.id}/consents/grant/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
         payload = {
             'consent_type': 'marketing_messages',
             # No document_id field
@@ -677,7 +677,7 @@ class TestConsentDocumentLink:
     
     def test_revoke_does_not_require_document(self, admin_client, patient):
         """Revoke consent without document_id is valid"""
-        url = f'/api/v1/patients/{patient.id}/consents/revoke/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
         payload = {
             'consent_type': 'newsletter',
             # No document_id
@@ -697,7 +697,7 @@ class TestConsentEdgeCases:
     
     def test_grant_with_invalid_uuid_format(self, admin_client, patient):
         """Grant with malformed patient ID returns 404"""
-        url = '/api/v1/patients/not-a-uuid/consents/grant/'
+        url = '/api/v1/clinical/patients/not-a-uuid/consents/grant/'
         payload = {'consent_type': 'clinical_photos'}
         
         response = admin_client.post(url, payload, format='json')
@@ -717,7 +717,7 @@ class TestConsentEdgeCases:
             granted_at=django_timezone.now(),
         )
         
-        url = f'/api/v1/patients/{patient.id}/consents/status/'
+        url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         response = admin_client.get(url)
         
         if response.status_code == 404:
@@ -730,9 +730,9 @@ class TestConsentEdgeCases:
     
     def test_unauthenticated_access_denied(self, api_client, patient):
         """Unauthenticated requests to consent endpoints return 401"""
-        grant_url = f'/api/v1/patients/{patient.id}/consents/grant/'
-        revoke_url = f'/api/v1/patients/{patient.id}/consents/revoke/'
-        status_url = f'/api/v1/patients/{patient.id}/consents/status/'
+        grant_url = f'/api/v1/clinical/patients/{patient.id}/consents/grant/'
+        revoke_url = f'/api/v1/clinical/patients/{patient.id}/consents/revoke/'
+        status_url = f'/api/v1/clinical/patients/{patient.id}/consents/status/'
         
         grant_response = api_client.post(grant_url, {'consent_type': 'clinical_photos'}, format='json')
         revoke_response = api_client.post(revoke_url, {'consent_type': 'clinical_photos'}, format='json')

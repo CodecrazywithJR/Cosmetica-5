@@ -16,13 +16,16 @@ from .serializers import (
     SaleSerializer, SaleLineSerializer, SaleTransitionSerializer,
     SaleRefundCreateSerializer, SaleRefundSerializer
 )
-from .permissions import IsReceptionOrClinicalOpsOrAdmin
+from .permissions import IsReceptionOrClinicalOpsOrAdmin, SalePermission
 from .services import refund_partial_for_sale
+from apps.core.tenant import TenantQuerySetMixin
+from apps.ops.services import log_event
+from apps.ops.models import AuditEventType
 
 logger = get_sanitized_logger(__name__)
 
 
-class SaleViewSet(viewsets.ModelViewSet):
+class SaleViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """
     ViewSet for Sale management with transition endpoint.
     
@@ -31,11 +34,32 @@ class SaleViewSet(viewsets.ModelViewSet):
     """
     queryset = Sale.objects.all().prefetch_related('lines')
     serializer_class = SaleSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SalePermission]
     ordering = ['-created_at']
     filterset_fields = ['status', 'patient', 'appointment']
     search_fields = ['sale_number', 'notes']
-    
+
+    def perform_destroy(self, instance):
+        """
+        Sales are financial records and must never be physically deleted.
+        Use the cancel action (POST /sales/{id}/transition/ with new_status=cancelled) instead.
+        """
+        raise ValidationError(
+            "Sales cannot be deleted. Use the cancel action instead."
+        )
+
+    def perform_create(self, serializer):
+        serializer.save()
+        sale = serializer.instance
+        log_event(
+            user=self.request.user,
+            legal_entity=sale.legal_entity,
+            entity_type='Sale',
+            entity_id=sale.pk,
+            event_type=AuditEventType.SALE_CREATED,
+            payload={'total': str(sale.total), 'status': sale.status},
+        )
+
     @action(detail=True, methods=['post'], url_path='transition')
     def transition(self, request, pk=None):
         """
@@ -278,28 +302,51 @@ class SaleViewSet(viewsets.ModelViewSet):
             
             # Return created refund
             output_serializer = SaleRefundSerializer(refund)
+            log_event(
+                user=request.user,
+                legal_entity=sale.legal_entity,
+                entity_type='SaleRefund',
+                entity_id=refund.pk,
+                event_type=AuditEventType.REFUND_CREATED,
+                payload={'sale_id': str(sale.id)},
+            )
             return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
 
-class SaleLineViewSet(viewsets.ModelViewSet):
+class SaleLineViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """
     ViewSet for SaleLine management.
     
     Lines are nested under sales.
     """
-    queryset = SaleLine.objects.all().select_related('sale')
+    # Placeholder queryset required by DRF router; real filtering is in get_queryset().
+    queryset = SaleLine.objects.none()
     serializer_class = SaleLineSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SalePermission]
     filterset_fields = ['sale']
+
+    def get_queryset(self):
+        """
+        Always scope SaleLines to the current tenant via the parent Sale FK.
+
+        SaleLine has no TenantManager of its own, so isolation is enforced
+        explicitly through sale__legal_entity.  This prevents cross-tenant
+        data leakage even when get_current_tenant() is None (Celery / mgmt).
+        """
+        from apps.core.tenant_context import get_current_tenant
+        tenant = get_current_tenant()
+        return SaleLine.objects.select_related('sale').filter(
+            sale__legal_entity=tenant
+        )
     
     def perform_create(self, serializer):
         """Auto-recalculate sale totals after creating line."""
-        line = serializer.save()
+        serializer.save()
         # Sale totals are auto-recalculated in SaleLine.save()
     
     def perform_update(self, serializer):
         """Auto-recalculate sale totals after updating line."""
-        line = serializer.save()
+        serializer.save()
         # Sale totals are auto-recalculated in SaleLine.save()
     
     def perform_destroy(self, instance):

@@ -4,6 +4,11 @@
  * Access token is injected via tokenProvider (set by AuthContext).
  * No localStorage reads. No direct auth dependency.
  * 401 → single refresh attempt → retry once → throw.
+ *
+ * Superuser plane switching:
+ * - X-Active-Legal-Entity header injected for business endpoints
+ *   when activeLegalEntityIdProvider returns a non-null ID.
+ * - Header is NOT sent to /api/auth/... or /api/v1/system/... endpoints.
  */
 
 const API_BASE_URL =
@@ -30,6 +35,30 @@ let refreshHandler: (() => Promise<boolean>) | null = null;
 export const setRefreshHandler = (handler: () => Promise<boolean>): void => {
   refreshHandler = handler;
 };
+
+// ---------------------------------------------------------------------------
+// Active Legal Entity ID provider — set by ActiveLegalEntityContext
+// ---------------------------------------------------------------------------
+let activeLegalEntityIdProvider: () => string | null = () => null;
+
+export const setActiveLegalEntityIdProvider = (
+  provider: () => string | null,
+): void => {
+  activeLegalEntityIdProvider = provider;
+};
+
+// ---------------------------------------------------------------------------
+// Endpoints exempt from X-Active-Legal-Entity header
+// ---------------------------------------------------------------------------
+const HEADER_EXEMPT_PREFIXES = [
+  '/api/auth/',
+  '/api/v1/system/',
+  '/health',
+];
+
+function isExemptFromLeHeader(endpoint: string): boolean {
+  return HEADER_EXEMPT_PREFIXES.some((prefix) => endpoint.startsWith(prefix));
+}
 
 // ---------------------------------------------------------------------------
 // Refresh lock — ensures only one refresh call is in flight at a time
@@ -103,6 +132,14 @@ class ApiClient {
     const token = tokenProvider();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Inject X-Active-Legal-Entity for business endpoints (superuser plane)
+    if (!isExemptFromLeHeader(endpoint)) {
+      const leId = activeLegalEntityIdProvider();
+      if (leId) {
+        headers['X-Active-Legal-Entity'] = leId;
+      }
     }
 
     const response = await fetch(url, { ...fetchOptions, headers });

@@ -25,7 +25,8 @@ from apps.sales.admin import SaleAdmin, SaleLineAdmin
 from apps.stock.models import StockMove, StockLocation, StockBatch, StockMoveTypeChoices
 from apps.stock.admin import StockMoveAdmin
 from apps.products.models import Product
-from apps.authz.models import User
+from apps.authz.models import User, Practitioner
+from tests.conftest import TEST_PASSWORD
 
 
 @pytest.fixture
@@ -66,10 +67,23 @@ def patient(db):
 
 
 @pytest.fixture
+def practitioner(db):
+    """Create test practitioner."""
+    user = User.objects.create_user(
+        email='practitioner@test.com',
+        password=TEST_PASSWORD
+    )
+    return Practitioner.objects.create(
+        user=user,
+        display_name='Dr. Test',
+    )
+
+
+@pytest.fixture
 def legacy_patient(db):
     """Create test patient (legacy patients app - for Sales, etc)."""
     from datetime import date
-    return LegacyPatient.objects.create(
+    return Patient.objects.create(
         first_name='Test',
         last_name='LegacyPatient',
         birth_date=date(1990, 1, 1),
@@ -78,7 +92,7 @@ def legacy_patient(db):
 
 
 @pytest.fixture
-def completed_appointment(patient):
+def completed_appointment(patient, practitioner):
     """
     Create completed appointment (terminal status).
     Uses skip_validation=True because creating an appointment
@@ -86,6 +100,7 @@ def completed_appointment(patient):
     """
     appointment = Appointment(
         patient=patient,
+        practitioner=practitioner,
         source='manual',
         status=AppointmentStatusChoices.COMPLETED,
         scheduled_start=timezone.now(),
@@ -96,15 +111,16 @@ def completed_appointment(patient):
 
 
 @pytest.fixture
-def draft_appointment(patient):
+def draft_appointment(patient, practitioner):
     """
-    Create draft appointment (modifiable).
+    Create scheduled appointment (modifiable).
     Uses skip_validation=True for test setup consistency.
     """
     appointment = Appointment(
         patient=patient,
+        practitioner=practitioner,
         source='manual',
-        status=AppointmentStatusChoices.DRAFT,
+        status=AppointmentStatusChoices.SCHEDULED,
         scheduled_start=timezone.now() + timedelta(days=1),
         scheduled_end=timezone.now() + timedelta(days=1, hours=1),
     )
@@ -119,13 +135,14 @@ def draft_appointment(patient):
 class TestSkipValidationFlag:
     """Sanity check that skip_validation flag works correctly."""
     
-    def test_save_without_flag_validates(self, patient):
+    def test_save_without_flag_validates(self, patient, practitioner):
         """save() without skip_validation should call full_clean() and raise ValidationError for invalid data."""
         # Create appointment with invalid data (end before start)
         appointment = Appointment(
             patient=patient,
+            practitioner=practitioner,
             source='manual',
-            status=AppointmentStatusChoices.DRAFT,
+            status=AppointmentStatusChoices.SCHEDULED,
             scheduled_start=timezone.now(),
             scheduled_end=timezone.now() - timedelta(hours=1),  # Invalid: end before start
         )
@@ -136,13 +153,14 @@ class TestSkipValidationFlag:
         
         assert 'scheduled_end' in str(exc_info.value)
     
-    def test_save_with_skip_validation_bypasses_validation(self, patient):
+    def test_save_with_skip_validation_bypasses_validation(self, patient, practitioner):
         """save(skip_validation=True) should bypass full_clean() and allow invalid data."""
         # Create appointment with invalid data (end before start)
         appointment = Appointment(
             patient=patient,
+            practitioner=practitioner,
             source='manual',
-            status=AppointmentStatusChoices.DRAFT,
+            status=AppointmentStatusChoices.SCHEDULED,
             scheduled_start=timezone.now(),
             scheduled_end=timezone.now() - timedelta(hours=1),  # Invalid: end before start
         )
@@ -203,7 +221,7 @@ class TestAppointmentAdminProtection:
         assert 'patient' in readonly_fields
     
     def test_draft_appointment_allows_editing(self, admin_request, draft_appointment):
-        """Draft appointments should allow editing."""
+        """Scheduled appointments should allow editing."""
         admin = AppointmentAdmin(Appointment, AdminSite())
         readonly_fields = admin.get_readonly_fields(admin_request, draft_appointment)
         
@@ -219,7 +237,7 @@ class TestAppointmentAdminProtection:
         # Create regular admin user (not superuser)
         regular_admin = User.objects.create_user(
             email='regular@test.com',
-            password='test123',
+            password=TEST_PASSWORD,
             is_staff=True
         )
         request = request_factory.get('/admin/')
@@ -233,13 +251,14 @@ class TestAppointmentAdminProtection:
         admin = AppointmentAdmin(Appointment, AdminSite())
         assert admin.has_delete_permission(admin_request, completed_appointment) == True
     
-    def test_appointment_save_enforces_validation(self, patient):
+    def test_appointment_save_enforces_validation(self, patient, practitioner):
         """Saving appointment without validation should fail for invalid data."""
         # Create appointment with invalid data (end before start)
         appointment = Appointment(
             patient=patient,
+            practitioner=practitioner,
             source='manual',
-            status=AppointmentStatusChoices.DRAFT,
+            status=AppointmentStatusChoices.SCHEDULED,
             scheduled_start=timezone.now(),
             scheduled_end=timezone.now() - timedelta(hours=1)  # Invalid: end before start
         )
@@ -256,7 +275,7 @@ class TestAppointmentAdminProtection:
 # ============================================================================
 
 @pytest.fixture
-def paid_sale(legacy_patient):
+def paid_sale(legacy_patient, legal_entity):
     """
     Create paid sale (terminal status).
     Uses skip_validation=True because we're creating a sale
@@ -269,13 +288,14 @@ def paid_sale(legacy_patient):
         subtotal=Decimal('100.00'),
         tax=Decimal('10.00'),
         total=Decimal('110.00'),
+        legal_entity=legal_entity,
     )
     sale.save(skip_validation=True)  # Terminal status bypass for testing
     return sale
 
 
 @pytest.fixture
-def draft_sale(legacy_patient):
+def draft_sale(legacy_patient, legal_entity):
     """
     Create draft sale (modifiable).
     Uses skip_validation=True for test setup consistency.
@@ -287,6 +307,7 @@ def draft_sale(legacy_patient):
         subtotal=Decimal('0.00'),
         tax=Decimal('0.00'),
         total=Decimal('0.00'),
+        legal_entity=legal_entity,
     )
     sale.save(skip_validation=True)
     return sale
@@ -320,7 +341,7 @@ class TestSaleAdminProtection:
         """Regular admin cannot delete terminal status sales."""
         regular_admin = User.objects.create_user(
             email='regular@test.com',
-            password='test123',
+            password=TEST_PASSWORD,
             is_staff=True
         )
         request = request_factory.get('/admin/')
@@ -329,7 +350,7 @@ class TestSaleAdminProtection:
         admin = SaleAdmin(Sale, AdminSite())
         assert admin.has_delete_permission(request, paid_sale) == False
     
-    def test_sale_save_enforces_validation(self, legacy_patient):
+    def test_sale_save_enforces_validation(self, legacy_patient, legal_entity):
         """Saving sale without validation should fail for invalid totals."""
         # Create sale with inconsistent totals
         sale = Sale(
@@ -338,7 +359,8 @@ class TestSaleAdminProtection:
             currency='USD',
             subtotal=Decimal('100.00'),
             tax=Decimal('10.00'),
-            total=Decimal('50.00')  # Invalid: should be 110.00
+            total=Decimal('50.00'),  # Invalid: should be 110.00
+            legal_entity=legal_entity,
         )
         
         with pytest.raises(ValidationError) as exc_info:
@@ -607,19 +629,20 @@ class TestEncounterAdminProtection:
 class TestAdminBypassPreventionIntegration:
     """Integration tests for admin bypass prevention."""
     
-    def test_appointment_full_lifecycle_protection(self, patient):
+    def test_appointment_full_lifecycle_protection(self, patient, practitioner):
         """Test appointment protection through full lifecycle."""
-        # Create draft appointment
+        # Create scheduled appointment
         apt = Appointment(
             patient=patient,
+            practitioner=practitioner,
             source='manual',
-            status=AppointmentStatusChoices.DRAFT,
+            status=AppointmentStatusChoices.SCHEDULED,
             scheduled_start=timezone.now() + timedelta(days=1),
             scheduled_end=timezone.now() + timedelta(days=1, hours=1),
         )
         apt.save(skip_validation=True)
         
-        # Can update draft
+        # Can update scheduled appointment
         apt.notes = 'Updated notes'
         apt.save()
         assert apt.notes == 'Updated notes'
@@ -642,13 +665,14 @@ class TestAdminBypassPreventionIntegration:
         assert 'status' in readonly  # Terminal appointment has readonly status
     
     @pytest.mark.skip(reason="SaleLine.calculate_line_total() needs quantize() fix - decimal precision issue")
-    def test_sale_and_lines_protection_integration(self, legacy_patient):
+    def test_sale_and_lines_protection_integration(self, legacy_patient, legal_entity):
         """Test sale and line protection together."""
         # Create draft sale
         sale = Sale(
             patient=legacy_patient,
             status=SaleStatusChoices.DRAFT,
             currency='USD',
+            legal_entity=legal_entity,
         )
         sale.save(skip_validation=True)
         

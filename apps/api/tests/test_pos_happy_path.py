@@ -12,6 +12,8 @@ from django.test import TestCase
 from apps.clinical.models import Patient
 from apps.sales.models import Sale, SaleLine, SaleStatusChoices
 from apps.products.models import Product
+from apps.stock.models import StockLocation
+from tests.conftest import TEST_PASSWORD
 
 User = get_user_model()
 
@@ -24,14 +26,33 @@ class TestPOSHappyPathPatientNoAppointment(TestCase):
         """Set up test data."""
         self.user = User.objects.create_user(
             email='reception@clinic.com',
-            password='testpass123'
+            password=TEST_PASSWORD
+        )
+
+        # Create legal entity for sales
+        from apps.legal.models import LegalEntity
+        self.legal_entity, _ = LegalEntity.objects.get_or_create(
+            siret='00000000000099',
+            defaults={
+                'legal_name': 'Test POS Entity SRL',
+                'trade_name': 'Test POS Entity',
+                'country_code': 'FR',
+                'is_active': True,
+            }
         )
 
         # Create a product for the sale
         self.product = Product.objects.create(
             sku='PROD-WALK-001',
             name='Facial Cream',
-            price=Decimal('75.00')
+            price=Decimal('75.00'),
+            legal_entity=self.legal_entity
+        )
+
+        # Create default stock location
+        StockLocation.objects.get_or_create(
+            code='MAIN-WAREHOUSE',
+            defaults={'name': 'Main Warehouse', 'is_active': True, 'legal_entity': self.legal_entity}
         )
 
     def test_sale_with_patient_no_appointment_success(self):
@@ -55,6 +76,7 @@ class TestPOSHappyPathPatientNoAppointment(TestCase):
         # WHEN: Creating a sale for this patient WITHOUT an appointment
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=self.legal_entity,
             appointment=None,  # No appointment (POS walk-in)
             status=SaleStatusChoices.DRAFT,
             subtotal=Decimal('150.00'),
@@ -111,6 +133,7 @@ class TestPOSHappyPathPatientNoAppointment(TestCase):
         # WHEN: Creating a POS sale
         sale = Sale.objects.create(
             patient=patient,
+            legal_entity=self.legal_entity,
             appointment=None,
             status=SaleStatusChoices.PAID,
             subtotal=Decimal('200.00'),
@@ -143,6 +166,7 @@ class TestPOSHappyPathPatientNoAppointment(TestCase):
         # WHEN: Creating multiple sales for the same patient
         sale1 = Sale.objects.create(
             patient=patient,
+            legal_entity=self.legal_entity,
             appointment=None,
             status=SaleStatusChoices.PAID,
             subtotal=Decimal('100.00'),
@@ -151,6 +175,7 @@ class TestPOSHappyPathPatientNoAppointment(TestCase):
 
         sale2 = Sale.objects.create(
             patient=patient,
+            legal_entity=self.legal_entity,
             appointment=None,
             status=SaleStatusChoices.PAID,
             subtotal=Decimal('150.00'),
@@ -159,6 +184,7 @@ class TestPOSHappyPathPatientNoAppointment(TestCase):
 
         sale3 = Sale.objects.create(
             patient=patient,
+            legal_entity=self.legal_entity,
             appointment=None,
             status=SaleStatusChoices.DRAFT,
             subtotal=Decimal('200.00'),

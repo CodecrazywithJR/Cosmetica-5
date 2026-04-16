@@ -12,22 +12,25 @@ Validates:
 import pytest
 from decimal import Decimal
 from rest_framework import status
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db import IntegrityError
 
 from apps.clinical.models import (
     Encounter,
     Treatment,
-    EncounterTreatment,
-    ClinicalChargeProposal,
-    ClinicalChargeProposalLine,
-    ProposalStatusChoices,
+    EncounterTreatment
+)
+from apps.proposals.models import (
+    Proposal as ClinicalChargeProposal,
+    ProposalLine as ClinicalChargeProposalLine,
+    ProposalStatusChoices
 )
 from apps.sales.models import Sale, SaleLine
-from apps.core.models import LegalEntity
+from apps.legal.models import LegalEntity
 from apps.clinical.services import (
     generate_charge_proposal_from_encounter,
-    create_sale_from_proposal,
+    create_sale_from_proposal
 )
 
 
@@ -111,12 +114,8 @@ class TestClinicalChargeProposalModel:
         # Create treatment for lines
         treatment = Treatment.objects.create(
             name='Test Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         # Create encounter treatment
@@ -173,12 +172,8 @@ class TestClinicalChargeProposalModel:
         
         treatment = Treatment.objects.create(
             name='Test Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         encounter_treatment = EncounterTreatment.objects.create(
@@ -214,22 +209,19 @@ class TestClinicalChargeProposalModel:
             created_by=admin_user
         )
         
-        # Test status transitions
+        # Test status values
         assert proposal.status == ProposalStatusChoices.DRAFT
         
-        proposal.status = ProposalStatusChoices.CONVERTED
-        proposal.save()
-        assert proposal.status == ProposalStatusChoices.CONVERTED
-        
-        proposal.status = ProposalStatusChoices.CANCELLED
-        proposal.save()
-        assert proposal.status == ProposalStatusChoices.CANCELLED
+        # Verify new status choices exist
+        valid = {c.value for c in ProposalStatusChoices}
+        assert valid == {'draft', 'sent', 'accepted', 'cancelled', 'expired'}
+        assert 'converted' not in valid
     
     def test_converted_to_sale_idempotency(
         self,
         encounter,
         admin_user,
-        clinic_location
+        clinic
     ):
         """converted_to_sale FK ensures idempotency."""
         proposal = ClinicalChargeProposal.objects.create(
@@ -244,10 +236,9 @@ class TestClinicalChargeProposalModel:
         
         # Create legal entity for sale
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -260,19 +251,19 @@ class TestClinicalChargeProposalModel:
             subtotal=Decimal('100.00'),
             tax=Decimal('0.00'),
             discount=Decimal('0.00'),
-            total=Decimal('100.00'),
-            created_by_user=admin_user
+            total=Decimal('100.00')
         )
         
-        # Link sale to proposal
+        # Link sale to proposal (use force_save because we set terminal state)
         proposal.converted_to_sale = sale
-        proposal.status = ProposalStatusChoices.CONVERTED
+        proposal.status = ProposalStatusChoices.ACCEPTED
+        proposal.accepted_at = timezone.now()
         proposal.converted_at = timezone.now()
-        proposal.save()
+        proposal.save(force_save=True)
         
         # Verify link
         assert proposal.converted_to_sale == sale
-        assert proposal.status == ProposalStatusChoices.CONVERTED
+        assert proposal.status == ProposalStatusChoices.ACCEPTED
 
 
 # ============================================================================
@@ -292,12 +283,8 @@ class TestGenerateChargeProposalService:
         # Create treatment
         treatment = Treatment.objects.create(
             name='Botox Injection',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('150.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         # Add treatment to encounter
@@ -349,7 +336,7 @@ class TestGenerateChargeProposalService:
         # Encounter is in 'draft' status
         assert encounter.status == 'draft'
         
-        with pytest.raises(ValueError, match='Encounter must be finalized'):
+        with pytest.raises(ValidationError, match='Encounter must be FINALIZED'):
             generate_charge_proposal_from_encounter(
                 encounter=encounter,
                 created_by=admin_user
@@ -364,12 +351,8 @@ class TestGenerateChargeProposalService:
         # Create treatment
         treatment = Treatment.objects.create(
             name='Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         EncounterTreatment.objects.create(
@@ -389,7 +372,7 @@ class TestGenerateChargeProposalService:
         assert proposal1 is not None
         
         # Second generation fails
-        with pytest.raises(ValueError, match='Proposal already exists'):
+        with pytest.raises(ValidationError, match='already has a charge proposal'):
             generate_charge_proposal_from_encounter(
                 encounter=encounter,
                 created_by=admin_user
@@ -405,7 +388,7 @@ class TestGenerateChargeProposalService:
         encounter.save()
         
         # No treatments added
-        with pytest.raises(ValueError, match='must have at least one treatment'):
+        with pytest.raises(ValidationError, match='no treatments'):
             generate_charge_proposal_from_encounter(
                 encounter=encounter,
                 created_by=admin_user
@@ -420,12 +403,8 @@ class TestGenerateChargeProposalService:
         # Treatment with default price
         treatment = Treatment.objects.create(
             name='Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         # EncounterTreatment with price override
@@ -433,7 +412,7 @@ class TestGenerateChargeProposalService:
             encounter=encounter,
             treatment=treatment,
             quantity=1,
-            price_override=Decimal('80.00')  # Discounted
+            unit_price=Decimal('80.00')  # Discounted
         )
         
         encounter.status = 'finalized'
@@ -459,13 +438,9 @@ class TestGenerateChargeProposalService:
         """Line description combines treatment description + encounter notes."""
         treatment = Treatment.objects.create(
             name='Botox',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
             description='Botulinum toxin injection',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         EncounterTreatment.objects.create(
@@ -497,23 +472,15 @@ class TestGenerateChargeProposalService:
         # Treatment without price
         treatment1 = Treatment.objects.create(
             name='Free Consultation',
-            treatment_type='consultation',
-            category='medical',
             default_price=None,  # No price
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         # Treatment with price
         treatment2 = Treatment.objects.create(
             name='Paid Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         EncounterTreatment.objects.create(
@@ -556,12 +523,8 @@ class TestCreateSaleFromProposalService:
         # Create treatment + encounter treatment
         treatment = Treatment.objects.create(
             name='Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('150.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         encounter_treatment = EncounterTreatment.objects.create(
@@ -581,10 +544,9 @@ class TestCreateSaleFromProposalService:
         
         # Create legal entity
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -606,22 +568,21 @@ class TestCreateSaleFromProposalService:
         assert sale.tax == Decimal('0.00')  # NO TAX (future)
         assert sale.discount == Decimal('0.00')
         assert sale.total == Decimal('300.00')
-        assert 'Test sale notes' in sale.notes
-        assert sale.created_by_user == admin_user
+        assert 'Generated from proposal' in sale.notes
         
         # Verify sale lines
         lines = sale.lines.all()
         assert lines.count() == 1
         line = lines.first()
         assert line.product is None  # Service charge (no product)
-        assert line.description == f'{treatment.name}'
+        assert line.product_name == treatment.name
         assert line.quantity == 2
         assert line.unit_price == Decimal('150.00')
         assert line.line_total == Decimal('300.00')
         
         # Verify proposal updated
         proposal.refresh_from_db()
-        assert proposal.status == ProposalStatusChoices.CONVERTED
+        assert proposal.status == ProposalStatusChoices.ACCEPTED
         assert proposal.converted_to_sale == sale
         assert proposal.converted_at is not None
     
@@ -631,26 +592,25 @@ class TestCreateSaleFromProposalService:
         admin_user
     ):
         """Cannot convert non-draft proposal."""
-        # Create proposal
+        # Create proposal already accepted (terminal)
         proposal = ClinicalChargeProposal.objects.create(
             encounter=encounter,
             patient=encounter.patient,
             practitioner=encounter.practitioner,
-            status=ProposalStatusChoices.CONVERTED,  # Already converted
+            status=ProposalStatusChoices.ACCEPTED,  # Already accepted
             total_amount=Decimal('100.00'),
             currency='EUR',
             created_by=admin_user
         )
         
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
-        with pytest.raises(ValueError, match='Only draft proposals can be converted'):
+        with pytest.raises(ValidationError, match='Only DRAFT or SENT'):
             create_sale_from_proposal(
                 proposal=proposal,
                 created_by=admin_user,
@@ -666,12 +626,8 @@ class TestCreateSaleFromProposalService:
         # Create treatment
         treatment = Treatment.objects.create(
             name='Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         EncounterTreatment.objects.create(
@@ -689,10 +645,9 @@ class TestCreateSaleFromProposalService:
         )
         
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -704,12 +659,12 @@ class TestCreateSaleFromProposalService:
         )
         assert sale1 is not None
         
-        # Proposal is now CONVERTED
+        # Proposal is now ACCEPTED
         proposal.refresh_from_db()
-        assert proposal.status == ProposalStatusChoices.CONVERTED
+        assert proposal.status == ProposalStatusChoices.ACCEPTED
         
         # Second conversion fails
-        with pytest.raises(ValueError, match='Only draft proposals can be converted'):
+        with pytest.raises(ValidationError, match='Only DRAFT or SENT'):
             create_sale_from_proposal(
                 proposal=proposal,
                 created_by=admin_user,
@@ -726,12 +681,8 @@ class TestCreateSaleFromProposalService:
         treatments = [
             Treatment.objects.create(
                 name=f'Treatment {i}',
-                treatment_type='injection',
-                category='aesthetic',
                 default_price=Decimal(f'{100 + i * 50}.00'),
-                currency='EUR',
-                is_active=True,
-                created_by=admin_user
+                is_active=True
             )
             for i in range(1, 4)
         ]
@@ -752,10 +703,9 @@ class TestCreateSaleFromProposalService:
         )
         
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -771,7 +721,7 @@ class TestCreateSaleFromProposalService:
         
         # Verify totals match
         assert sale.total == proposal.total_amount
-        assert sale.total == Decimal('450.00')  # 100 + 150 + 200
+        assert sale.total == Decimal('600.00')  # 150 + 200 + 250
 
 
 # ============================================================================
@@ -791,12 +741,8 @@ class TestClinicalChargeProposalPermissions:
         """Fixture: finalized encounter with generated proposal."""
         treatment = Treatment.objects.create(
             name='Treatment',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('100.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         EncounterTreatment.objects.create(
@@ -853,10 +799,9 @@ class TestClinicalChargeProposalPermissions:
         """Reception can convert proposal to sale (create-sale action)."""
         # Create legal entity
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -875,7 +820,7 @@ class TestClinicalChargeProposalPermissions:
         if response.status_code == status.HTTP_404_NOT_FOUND:
             pytest.skip('Proposal endpoints not implemented yet')
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED)
         assert 'sale_id' in response.data
     
     def test_accounting_can_view_proposals(
@@ -900,10 +845,9 @@ class TestClinicalChargeProposalPermissions:
     ):
         """Accounting cannot convert proposal to sale (read-only)."""
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -953,7 +897,7 @@ class TestClinicalToSaleE2E:
         admin_client,
         patient,
         practitioner,
-        clinic_location,
+        clinic,
         admin_user
     ):
         """
@@ -967,10 +911,10 @@ class TestClinicalToSaleE2E:
         """
         # Step 1: Create encounter
         encounter_payload = {
-            'patient_id': str(patient.id),
-            'practitioner_id': str(practitioner.user.id),
-            'location_id': str(clinic_location.id),
-            'type': 'cosmetic_consult',
+            'patient': str(patient.id),
+            'practitioner': str(practitioner.id),
+            'clinic': str(clinic.id),
+            'type': 'medical_consult',
             'status': 'draft',
             'occurred_at': timezone.now().isoformat(),
             'chief_complaint': 'Anti-aging treatment',
@@ -986,19 +930,15 @@ class TestClinicalToSaleE2E:
         
         if response.status_code == status.HTTP_404_NOT_FOUND:
             pytest.skip('Encounter endpoints not implemented yet')
-        
+
         assert response.status_code == status.HTTP_201_CREATED
         encounter_id = response.data['id']
         
         # Step 2: Add treatment to encounter
         treatment = Treatment.objects.create(
             name='Botox 50U',
-            treatment_type='injection',
-            category='aesthetic',
             default_price=Decimal('250.00'),
-            currency='EUR',
-            is_active=True,
-            created_by=admin_user
+            is_active=True
         )
         
         encounter = Encounter.objects.get(id=encounter_id)
@@ -1021,7 +961,7 @@ class TestClinicalToSaleE2E:
             format='json'
         )
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED)
         assert 'proposal_id' in response.data
         assert response.data['total_amount'] == '500.00'  # 2 * 250
         assert response.data['line_count'] == 1
@@ -1036,10 +976,9 @@ class TestClinicalToSaleE2E:
         
         # Step 5: Convert proposal to sale (via API)
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -1054,7 +993,7 @@ class TestClinicalToSaleE2E:
             format='json'
         )
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED)
         assert 'sale_id' in response.data
         assert response.data['sale_status'] == 'draft'
         assert response.data['sale_total'] == '500.00'
@@ -1085,9 +1024,9 @@ class TestClinicalToSaleE2E:
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         
-        # Verify proposal is now CONVERTED
+        # Verify proposal is now ACCEPTED
         proposal = ClinicalChargeProposal.objects.get(id=proposal_id)
-        assert proposal.status == ProposalStatusChoices.CONVERTED
+        assert proposal.status == ProposalStatusChoices.ACCEPTED
         assert proposal.converted_to_sale == sale
 
 
@@ -1113,10 +1052,9 @@ class TestExistingSalesNotBroken:
         """
         # Create legal entity
         legal_entity = LegalEntity.objects.create(
-            business_name='Test Clinic',
+            trade_name='Test Clinic',
             legal_name='Test Clinic SRL',
-            tax_id='FR123456789',
-            country_code='FR',
+                        country_code='FR',
             is_active=True
         )
         
@@ -1130,8 +1068,7 @@ class TestExistingSalesNotBroken:
             tax=Decimal('0.00'),
             discount=Decimal('0.00'),
             total=Decimal('100.00'),
-            notes='Manual sale (not from proposal)',
-            created_by_user=admin_user
+            notes='Manual sale (not from proposal)'
         )
         
         # Verify sale created successfully

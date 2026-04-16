@@ -26,9 +26,12 @@ from .services import (
     ExpiredBatchError,
 )
 from .permissions import IsClinicalOpsOrAdmin
+from apps.core.tenant import TenantQuerySetMixin
+
+STOCK_NO_DELETE_MSG = 'Stock records cannot be deleted to preserve audit history.'
 
 
-class StockLocationViewSet(viewsets.ModelViewSet):
+class StockLocationViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """ViewSet for StockLocation management."""
     
     queryset = StockLocation.objects.all()
@@ -38,8 +41,13 @@ class StockLocationViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'code']
     ordering = ['name']
 
+    def perform_destroy(self, instance):
+        raise ValidationError(
+            STOCK_NO_DELETE_MSG
+        )
 
-class StockBatchViewSet(viewsets.ModelViewSet):
+
+class StockBatchViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """ViewSet for StockBatch management."""
     
     queryset = StockBatch.objects.select_related('product').all()
@@ -48,6 +56,11 @@ class StockBatchViewSet(viewsets.ModelViewSet):
     filterset_fields = ['product']
     search_fields = ['batch_number', 'product__sku', 'product__name']
     ordering = ['expiry_date', 'batch_number']
+
+    def perform_destroy(self, instance):
+        raise ValidationError(
+            STOCK_NO_DELETE_MSG
+        )
     
     @action(detail=False, methods=['get'], url_path='expiring-soon')
     def expiring_soon(self, request):
@@ -90,7 +103,7 @@ class StockBatchViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class StockMoveViewSet(viewsets.ModelViewSet):
+class StockMoveViewSet(TenantQuerySetMixin, viewsets.ModelViewSet):
     """ViewSet for StockMove management."""
     
     queryset = StockMove.objects.select_related(
@@ -105,6 +118,11 @@ class StockMoveViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Auto-set created_by to current user."""
         serializer.save(created_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        raise ValidationError(
+            STOCK_NO_DELETE_MSG
+        )
     
     @action(detail=False, methods=['post'], url_path='consume-fefo')
     def consume_fefo(self, request):
@@ -161,7 +179,7 @@ class StockMoveViewSet(viewsets.ModelViewSet):
             )
 
 
-class StockOnHandViewSet(viewsets.ReadOnlyModelViewSet):
+class StockOnHandViewSet(TenantQuerySetMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for StockOnHand (read-only).
     

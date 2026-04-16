@@ -102,7 +102,8 @@
         "status": "Վիճակ",
         "birthDate": "Ծննդյան օր",
         "sex": "Սեռ",
-        "actions": "Գործողություններ"      },
+        "actions": "Գործողություններ"
+      },
       "warnings": {
         "incompleteConsents": "Պահանջվում են իրավական համաձայնություններ",
         "missingDocuments": "Փաստաթղթերը սպասվում են",
@@ -208,7 +209,8 @@
       "bannerTitle": "Պահանջվում են իրավական համաձայնություններ",
       "bannerMessage": "Այս հիվանդը չի ընդունել անհրաժեշտ իրավական համաձայնությունները: Կլինիկական խորհրդակցություններ չեն կարող ստեղծվել մինչև ընդունվեն ինչպես գաղտնիության քաղաքականությունը, այնպես էլ օգտագործման պայմանները:",
       "reviewCta": "Վերանայել և ընդունել համաձայնությունները"
-    },    "consentDocuments": {
+    },
+    "consentDocuments": {
       "missingDocumentsBanner": {
         "title": "Համաձայնության փաստաթղթերը սպասվում են",
         "message": "Որոշ համաձայնությունների սկանավորված ֆայլը դեռ կցված չէ: Դուք կարող եք վերբեռնել դրանք փաստաթղթերի բաժնից, երբ հասանելի լինեն:"
@@ -250,7 +252,8 @@
         "generic": "Որոշ փաստաթղթեր չհաջողվեց մշակել որրեկտ"
       },
       "uploadWarningsTitle": "Փաստաթղթերի նախազգուշացումներ"
-    },    "documentType": {
+    },
+    "documentType": {
       "dni": "Ազգային անձնագիր",
       "passport": "Անձնագիր",
       "other": "Այլ"
@@ -327,7 +330,8 @@
       "confirm": "Հաստատել",
       "checkIn": "Գրանցել",
       "complete": "Ավարտել",
-      "cancel": "Չեղարկել"
+      "cancel": "Չեղարկել",
+      "startEncounter": "Consultation"
     },
     "summary": {
       "totalAppointments": "Հանդիպումների թիվը"
@@ -493,6 +497,264 @@
       "title": "Չթույլատրված մուտք",
       "description": "Դուք չունեք մուտքի թույլտվություն այս բաժին: Միայն ադմինիստրատորները կարող են կառավարել օգտվողներին:",
       "action": "Անցնել գլխավոր"
+    }
+  },
+  "system": {
+    "badge": {
+      "system": "Համակարգ"
+    },
+    "header": {
+      "operating_in": "Աշխատում է՝ {name}"
+    },
+    "actions": {
+      "select_legal_entity": "Ընտրել իրավաբանական անձ",
+      "switch_legal_entity": "Փոխել իրավաբանական անձ",
+      "return_to_system": "Վերադառնալ համակարգ"
+    },
+    "selector": {
+      "title": "Ընտրել իրավաբանական անձ",
+      "search_placeholder": "Օրոնել անունով, երկրով կամ քաղաքով...",
+      "no_results": "Իրավաբանական անձեր չեն գտնվել",
+      "create_first": "Ստեղծել առաջին իրավաբանական անձ",
+      "manage": "Կառավարել իրավաբանական անձեր"
+    },
+    "guard": {
+      "title": "Ընտրեք իրավաբանական անձ աշխատելու համար",
+      "description": "Օրպես համակարգի կառավարիչ, դուք պետք է ընտրեք իրավաբանական անձ՝ նախքան բիզնես գործառույթներին հասանելուց:"
+    }
+  },
+  "proposals": {
+    "detail": {
+      "title": "Առաջարկի մանրամասներ",
+      "info": "Առաջարկի տեղեկատվություն",
+      "patient": "Հիվանդ",
+      "practitioner": "Բժիշկ",
+      "created": "Ստեղծված",
+      "validUntil": "Գործում է մինչև",
+      "sentAt": "Ուղարկված",
+      "acceptedAt": "Ընդունված",
+      "cancellationReason": "Չեղարկման պատճառ",
+      "notes": "Նոտաներ",
+      "lines": "Բուժման տողեր",
+      "treatmentName": "Բուժում",
+      "quantity": "Ք-ությ",
+      "unitPrice": "Միավորի գին",
+      "lineTotal": "Ընդամենը",
+      "total": "Ընդամենը",
+      "noLines": "Բուժման տողեր չկան:",
+      "saleCreated": "Վաճառքը ստեղծված է",
+      "readonlyMessage": {
+        "cancelled": "Այս առաջարկը չեղարկված է:",
+        "expired": "Այս առաջարկի ժամկետը լրացել է:"
+      }
+    },
+    "status": {
+      "draft": "Սևագիր",
+      "sent": "Ուղարկված",
+      "accepted": "Ընդունված",
+      "cancelled": "Չեղարկված",
+      "expired": "Ժամկետը լրացել է"
+    },
+    "actions": {
+      "backToList": "Վերադառնալ առաջարկներին",
+      "send": "Ուղարկել առաջարկը",
+      "sending": "Ուղարկում…",
+      "accept": "Ընդունել առաջարկը",
+      "accepting": "Ընդունում…",
+      "confirmAccept": "Հաստատել ընդունումը",
+      "cancel": "Չեղարկել առաջարկը",
+      "cancelling": "Չեղարկում…",
+      "back": "Վերադառնալ"
+    },
+    "modals": {
+      "acceptTitle": "Ընդունել առաջարկը",
+      "acceptDescription": "Առաջարկի ընդունումը կստեղծի վաճառք և բուժման պլաններ: Այս գործողությունը չի կարելի չեղարկել:",
+      "legalEntityLabel": "Իրավաբանական անձի ID",
+      "legalEntityPlaceholder": "Մուտքագրեք իրավաբանական անձի UUID",
+      "cancelTitle": "Չեղարկել առաջարկը",
+      "cancelDescription": "Այս գործողությունը չի կարելի չեղարկել: Առաջարկը ընդմիշտ կչեղարկվի:",
+      "cancellationReasonLabel": "Չեղարկման պատճառ",
+      "cancellationReasonPlaceholder": "Մուտքագրեք չեղարկման պատճառը…",
+      "confirmCancel": "Հաստատել չեղարկումը"
+    },
+    "errors": {
+      "loadFailed": "Չհաջողվեց բեռնել առաջարկը:"
+    }
+  },
+  "patient360": {
+    "tabs": {
+      "overview": "Ակնարկ",
+      "encounters": "Խորհրդակցություններ",
+      "treatmentPlans": "Բուժման պլաններ",
+      "proposals": "Առաջարկներ",
+      "sales": "Վաճառքներ"
+    },
+    "comingSoon": "Շուտով",
+    "overview": {
+      "personalData": "Անձնական տվյալներ",
+      "notes": "Նոտագրություններ",
+      "noNotes": "Նոտագրություններ չկան:",
+      "activeCoverage": "Ակտիվ ծածկույթ",
+      "providerName": "Մատակարար",
+      "memberNumber": "Անդամի համար",
+      "socialSecurityNumber": "Սոցիալական ապահովագրության համար",
+      "validFrom": "Գործում է",
+      "financialKpis": "Ֆինանսական KPI",
+      "proposalsDraft": "Սևգագիր առաջարկներ",
+      "proposalsSent": "Ուղարկված առաջարկներ",
+      "lastSaleDate": "Վերջին վաճառք",
+      "clinicalKpis": "Կլինիկական KPI",
+      "totalEncounters": "Ընդհանուր խորհրդակցություններ",
+      "activeTreatmentPlans": "Ակտիվ բուժման պլաններ",
+      "errorLoading": "Չհաջողվեց բեռնել հիվանդի ակնարկը:",
+      "clinicalHistory": "Կլինիկական պատմություն",
+      "allStatuses": "Բոլոր կարգավիճակները",
+      "dateFrom": "Սկսած",
+      "dateTo": "Մինչև",
+      "clearFilters": "Մաքրել",
+      "pageOf": "Էջ {page} / {total}",
+      "results": "{count} արդյունք",
+      "previous": "Նախորդ",
+      "next": "Հաջորդ",
+      "viewEncounter": "Դիտել",
+      "errorLoadingEncounters": "Խորհրդատվությունների բեռնման սխալ։",
+      "noEncounters": "Խորհրդատվություններ չեն գտնվել։",
+      "financialHistory": "Ֆինանսական պատմություն",
+      "viewProposal": "Դիտել",
+      "errorLoadingProposals": "Առաջարկների բեռնման սխալ։",
+      "noProposals": "Առաջարկներ չեն գտնվել։",
+      "colDate": "Ամսաթիվ",
+      "colStatus": "Կարգավիճակ",
+      "colTotal": "Ընդամենը",
+      "colValidUntil": "Վավեր է մինչեվ",
+      "colPractitioner": "Մասնագետ"
+    },
+    "treatmentPlans": "Բուժման Պլաններ",
+    "noTreatmentPlans": "Բուժման պլաններ չեն գտնվել."
+  },
+  "treatmentPlans": {
+    "status": {
+      "draft": "Սևագիր",
+      "active": "Ակտիվ",
+      "completed": "Ավարտված",
+      "cancelled": "Չեղարկված"
+    },
+    "colDate": "Ամսաթիվ",
+    "colStatus": "Կարգավիճակ",
+    "colSessions": "Նիստեր",
+    "colRemaining": "Մնացած",
+    "colProgress": "Առաջընթաց",
+    "view": "Դիտել",
+    "errorLoading": "Չհաջողվեց բեռնել բուժման պլանները."
+  },
+  "treatmentSession": {
+    "pageTitle": "Բուժման Նիստ",
+    "header": {
+      "patient": "Հիվանդ",
+      "package": "Փաթեթ",
+      "practitioner": "Մասնագետ",
+      "performedAt": "Իրականացվել է"
+    },
+    "status": {
+      "draft": "Սևագիր",
+      "completed": "Ավարտված",
+      "cancelled": "Չեղարկված"
+    },
+    "actions": {
+      "complete": "Ավարտել Նիստը",
+      "cancel": "Չեղարկել Նիստը",
+      "back": "Հետ"
+    },
+    "confirm": {
+      "completeTitle": "Ավարտել Նիստը",
+      "completeMessage": "Հաստատե՞լ, որ նիստը իրականացվել է՞ Այս գործողությունը հետ վերադարձնել հնարավոր չէ։",
+      "cancelTitle": "Չեղարկել Նիստը",
+      "cancelMessage": "Չեղարկե՞լ այս նիստը՞ Այս գործողությունը հետ վերադարձնել հնարավոր չէ։",
+      "yes": "Հաստատել",
+      "no": "Հետ"
+    },
+    "editor": {
+      "title": "Կլինիկական Նոտաներ",
+      "placeholder": "Գրել կլինիկական նոտաներ այս նիստի համար...",
+      "saving": "Պահպանվում է...",
+      "saved": "Պահպանված է"
+    },
+    "photos": {
+      "title": "Լուսանկարներ",
+      "dropHere": "Տեղադրեք паտկերները այստեղ",
+      "uploadHint": "կամ սեղմեք ֆայլեր ընտրելու համար",
+      "noPhotos": "Լուսանկարներ դեռ կցված չեն։"
+    },
+    "error": {
+      "loading": "Չհաջողվեց բեռնել բուժման նիստը։",
+      "completing": "Չհաջողվեց ավարտել նիստը։",
+      "cancelling": "Չհաջողվեց չեղարկել նիստը։"
+    }
+  },
+  "admin": {
+    "section": "Կառdelays",
+    "legalEntities": {
+      "title": "Իdelays",
+      "pageTitle": "Իdelays",
+      "createTitle": "Նdelays",
+      "editTitle": "Խdelays",
+      "columns": {
+        "tradeName": "Аdelays",
+        "legalName": "Иdelays",
+        "country": "Еdelays",
+        "siret": "SIRET",
+        "active": "Аdelays",
+        "users": "Оdelays",
+        "actions": "Дdelays"
+      },
+      "empty": "Иdelays",
+      "emptyHint": "Сdelays",
+      "create": "Нdelays",
+      "edit": "Хdelays",
+      "view": "Дdelays",
+      "form": {
+        "sectionIdentity": "Иdelays",
+        "sectionAddress": "Аdelays",
+        "sectionContact": "Кdelays",
+        "sectionAdmin": "Аdelays",
+        "sectionStatus": "Кdelays",
+        "tradeName": "Аdelays",
+        "legalName": "Иdelays",
+        "siret": "SIRET",
+        "siren": "SIREN",
+        "vatNumber": "ԱdelaysН",
+        "countryCode": "Еdelays",
+        "addressLine1": "Аdelays 1",
+        "addressLine2": "Аdelays 2",
+        "postalCode": "Фdelays",
+        "city": "Qdelays",
+        "legalEmail": "Иdelay email",
+        "phone": "Нdelays",
+        "currency": "Аdelays",
+        "timezone": "Жdelays",
+        "isActive": "Аdelays",
+        "adminEmail": "Аdelays email",
+        "adminFirstName": "Аdelays",
+        "adminLastName": "Аdelays"
+      },
+      "actions": {
+        "create": "Сdelays",
+        "save": "Пdelays",
+        "cancel": "Оdelays"
+      },
+      "messages": {
+        "created": "Иdelays.",
+        "updated": "Иdelays.",
+        "errorCreate": "Чdelays.",
+        "errorUpdate": "Чdelays.",
+        "errorLoad": "Чdelays.",
+        "tempPasswordNotice": "A temporary password was generated for the admin user. Please copy it now — it will not be shown again.",
+        "goToList": "Go to Legal Entities"
+      },
+      "status": {
+        "active": "Аdelays",
+        "inactive": "Аdelays"
+      }
     }
   }
 }

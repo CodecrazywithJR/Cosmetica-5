@@ -22,7 +22,6 @@ interface UserData {
     id: number;
     display_name: string;
     specialty: string;
-    calendly_url: string | null;
   } | null;
 }
 
@@ -32,7 +31,6 @@ interface FormData {
   last_name: string;
   roles: string[];
   is_active: boolean;
-  calendly_url: string;
   create_practitioner: boolean;
   display_name: string;
   specialty: string;
@@ -56,7 +54,6 @@ export default function EditUserPage() {
     last_name: '',
     roles: [],
     is_active: true,
-    calendly_url: '',
     create_practitioner: false,
     display_name: '',
     specialty: '',
@@ -66,7 +63,6 @@ export default function EditUserPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [calendlyWarnings, setCalendlyWarnings] = useState<string[]>([]);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -101,7 +97,6 @@ export default function EditUserPage() {
           last_name: user.last_name,
           roles: user.roles,
           is_active: user.is_active,
-          calendly_url: (user.practitioner?.calendly_url || user.practitioner_data?.calendly_url) || '',
           create_practitioner: false,
           display_name: user.practitioner_data?.display_name || '',
           specialty: user.practitioner_data?.specialty || '',
@@ -132,11 +127,6 @@ export default function EditUserPage() {
         delete newErrors[field];
         return newErrors;
       });
-    }
-
-    // Clear calendly warnings when URL changes
-    if (field === 'calendly_url') {
-      setCalendlyWarnings([]);
     }
 
     // Clear success message on any change
@@ -197,18 +187,6 @@ export default function EditUserPage() {
       }
     }
 
-    // Calendly URL validation (blocking errors if provided)
-    if (formData.calendly_url.trim()) {
-      if (!formData.calendly_url.startsWith('https://calendly.com/')) {
-        newErrors.calendly_url = t('validation.calendlyUrlFormat');
-      } else {
-        const parts = formData.calendly_url.replace('https://calendly.com/', '').split('/');
-        if (parts.length < 2 || !parts[0] || !parts[1]) {
-          newErrors.calendly_url = t('validation.calendlyUrlSlug');
-        }
-      }
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -234,7 +212,7 @@ export default function EditUserPage() {
       };
 
       // Add practitioner data if creating new profile or updating existing
-      if (formData.create_practitioner || userData?.practitioner_data || formData.calendly_url.trim()) {
+      if (formData.create_practitioner || userData?.practitioner_data) {
         const practitionerData: any = {};
         
         // If creating new practitioner, include required fields
@@ -247,10 +225,9 @@ export default function EditUserPage() {
           }
         }
         
-        // Always include calendly_url (can be null to remove it)
-        practitionerData.calendly_url = formData.calendly_url.trim() || null;
-        
-        payload.practitioner_data = practitionerData;
+        if (Object.keys(practitionerData).length > 0) {
+          payload.practitioner_data = practitionerData;
+        }
       }
 
       await apiClient.patch(`/api/v1/users/${id}/`, payload);
@@ -269,7 +246,6 @@ export default function EditUserPage() {
         last_name: user.last_name,
         roles: user.roles,
         is_active: user.is_active,
-        calendly_url: (user.practitioner?.calendly_url || user.practitioner_data?.calendly_url) || '',
         create_practitioner: false, // Reset after save
         display_name: user.practitioner_data?.display_name || '',
         specialty: user.practitioner_data?.specialty || '',
@@ -618,35 +594,6 @@ export default function EditUserPage() {
                   {errors.specialty && <p className="mt-1 text-sm text-red-600">{errors.specialty}</p>}
                 </div>
               )}
-
-              {/* Calendly URL (always editable) */}
-              <div className="mb-4">
-                <label htmlFor="calendly_url" className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('practitioner.calendlyUrl')}
-                </label>
-                <input
-                  type="url"
-                  id="calendly_url"
-                  value={formData.calendly_url}
-                  onChange={(e) => handleInputChange('calendly_url', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-md ${
-                    errors.calendly_url ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  disabled={isSubmitting}
-                  placeholder="https://calendly.com/usuario/evento"
-                />
-                {errors.calendly_url && <p className="mt-1 text-sm text-red-600">{errors.calendly_url}</p>}
-                {calendlyWarnings.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {calendlyWarnings.map((warning, index) => (
-                      <p key={index} className="text-sm text-yellow-600 flex items-start">
-                        <span className="mr-1">⚠️</span>
-                        <span>{warning}</span>
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               {!userData.practitioner_data && !formData.create_practitioner && (
                 <p className="text-sm text-gray-600">{t('practitioner.noPractitioner')}</p>

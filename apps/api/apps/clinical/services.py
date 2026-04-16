@@ -41,6 +41,12 @@ class PatientMergeError(Exception):
     pass
 
 
+def _track_merge_failure(reason: str) -> None:
+    """Increment the merge failure metric if Prometheus is available."""
+    if METRICS_AVAILABLE:
+        MERGE_FAILURE_COUNTER.labels(reason=reason).inc()
+
+
 def merge_patients(
     source_id: str,
     target_id: str,
@@ -80,9 +86,8 @@ def merge_patients(
         try:
             source = Patient.objects.select_for_update().get(id=source_id)
             target = Patient.objects.select_for_update().get(id=target_id)
-        except Patient.DoesNotExist as e:
-            if METRICS_AVAILABLE:
-                MERGE_FAILURE_COUNTER.labels(reason='patient_not_found').inc()
+        except Patient.DoesNotExist:
+            _track_merge_failure('patient_not_found')
             logger.error(
                 "Patient merge failed - patient not found",
                 extra={'source_id': str(source_id), 'target_id': str(target_id)}
@@ -91,14 +96,12 @@ def merge_patients(
         
         # Validation 1: Cannot merge into self
         if source.id == target.id:
-            if METRICS_AVAILABLE:
-                MERGE_FAILURE_COUNTER.labels(reason='self_merge').inc()
+            _track_merge_failure('self_merge')
             raise PatientMergeError("Cannot merge patient into itself")
         
         # Validation 2: Source must not be already merged
         if source.is_merged:
-            if METRICS_AVAILABLE:
-                MERGE_FAILURE_COUNTER.labels(reason='source_already_merged').inc()
+            _track_merge_failure('source_already_merged')
             raise PatientMergeError(
                 f"Source patient {source.id} is already merged into "
                 f"{source.merged_into_patient_id}"
@@ -106,8 +109,7 @@ def merge_patients(
         
         # Validation 3: Target must not be merged (or resolve to root)
         if target.is_merged:
-            if METRICS_AVAILABLE:
-                MERGE_FAILURE_COUNTER.labels(reason='target_already_merged').inc()
+            _track_merge_failure('target_already_merged')
             raise PatientMergeError(
                 f"Target patient {target.id} is already merged into another patient. "
                 f"Cannot merge into a merged patient."
@@ -116,8 +118,7 @@ def merge_patients(
         # Validation 4: Prevent cycles (source's merged_patients shouldn't include target)
         # This is implicitly prevented by validation 2 & 3, but double-check
         if target.merged_patients.filter(id=source.id).exists():
-            if METRICS_AVAILABLE:
-                MERGE_FAILURE_COUNTER.labels(reason='circular_merge').inc()
+            _track_merge_failure('circular_merge')
             raise PatientMergeError("Circular merge detected - cannot proceed")
         
         # Count relationships before merge
@@ -244,7 +245,21 @@ def get_merge_candidates(
     from django.contrib.postgres.search import TrigramSimilarity
     from django.db.models import Q, FloatField, Value
     from apps.pos.utils import mask_phone, mask_email, normalize_search_query
-    
+
+    def _build_candidate(p, base_score, reasons):
+        score = base_score
+        if patient.birth_date and p['birth_date'] == patient.birth_date:
+            score = min(score + 0.05, 1.00)
+        return {
+            'patient_id': p['id'],
+            'display_name': p['full_name_normalized'] or f"{p['first_name']} {p['last_name']}",
+            'masked_phone': mask_phone(p['phone_e164']),
+            'masked_email': mask_email(p['email']),
+            'birth_date': p['birth_date'],
+            'score': score,
+            'match_reasons': reasons,
+        }
+
     candidates = []
     seen_ids = {patient.id}  # Exclude self
     
@@ -260,20 +275,7 @@ def get_merge_candidates(
         )
         
         for p in phone_matches:
-            score = 1.00
-            # Bonus if birth_date also matches
-            if patient.birth_date and p['birth_date'] == patient.birth_date:
-                score = min(score + 0.05, 1.00)
-            
-            candidates.append({
-                'patient_id': p['id'],
-                'display_name': p['full_name_normalized'] or f"{p['first_name']} {p['last_name']}",
-                'masked_phone': mask_phone(p['phone_e164']),
-                'masked_email': mask_email(p['email']),
-                'birth_date': p['birth_date'],
-                'score': score,
-                'match_reasons': ['phone_exact']
-            })
+            candidates.append(_build_candidate(p, 1.00, ['phone_exact']))
             seen_ids.add(p['id'])
     
     # Strategy 2: Exact email match (score: 0.95)
@@ -288,19 +290,7 @@ def get_merge_candidates(
         )
         
         for p in email_matches:
-            score = 0.95
-            if patient.birth_date and p['birth_date'] == patient.birth_date:
-                score = min(score + 0.05, 1.00)
-            
-            candidates.append({
-                'patient_id': p['id'],
-                'display_name': p['full_name_normalized'] or f"{p['first_name']} {p['last_name']}",
-                'masked_phone': mask_phone(p['phone_e164']),
-                'masked_email': mask_email(p['email']),
-                'birth_date': p['birth_date'],
-                'score': score,
-                'match_reasons': ['email_exact']
-            })
+            candidates.append(_build_candidate(p, 0.95, ['email_exact']))
             seen_ids.add(p['id'])
     
     # Strategy 3: Fuzzy name match (score: 0.30-0.90)
@@ -319,19 +309,7 @@ def get_merge_candidates(
         ).order_by('-similarity')[:limit * 2]
         
         for p in fuzzy_matches:
-            score = min(float(p['similarity']), 0.90)
-            if patient.birth_date and p['birth_date'] == patient.birth_date:
-                score = min(score + 0.05, 1.00)
-            
-            candidates.append({
-                'patient_id': p['id'],
-                'display_name': p['full_name_normalized'] or f"{p['first_name']} {p['last_name']}",
-                'masked_phone': mask_phone(p['phone_e164']),
-                'masked_email': mask_email(p['email']),
-                'birth_date': p['birth_date'],
-                'score': score,
-                'match_reasons': ['name_trigram']
-            })
+            candidates.append(_build_candidate(p, min(float(p['similarity']), 0.90), ['name_trigram']))
             seen_ids.add(p['id'])
     
     # Sort by score DESC and limit
@@ -348,6 +326,7 @@ def create_encounter_from_appointment(
     encounter_type: str,
     created_by: User,
     occurred_at=None,
+    mark_completed: bool = False,
     **encounter_kwargs
 ):
     """
@@ -408,7 +387,7 @@ def create_encounter_from_appointment(
         encounter = Encounter.objects.create(
             patient=appointment.patient,
             practitioner=appointment.practitioner,
-            location=appointment.location,
+            clinic=appointment.clinic,
             type=encounter_type,
             status='draft',  # Always start as draft
             occurred_at=occurred_at,
@@ -487,9 +466,11 @@ def generate_charge_proposal_from_encounter(
     from apps.clinical.models import (
         Encounter,
         EncounterStatusChoices,
-        ClinicalChargeProposal,
-        ClinicalChargeProposalLine,
-        ProposalStatusChoices
+    )
+    from apps.proposals.models import (
+        Proposal,
+        ProposalLine,
+        ProposalStatusChoices,
     )
     from decimal import Decimal
     
@@ -518,12 +499,12 @@ def generate_charge_proposal_from_encounter(
     # Create proposal with lines atomically
     with transaction.atomic():
         # Create proposal header
-        proposal = ClinicalChargeProposal.objects.create(
+        proposal = Proposal.objects.create(
             encounter=encounter,
             patient=encounter.patient,
             practitioner=encounter.practitioner,
             status=ProposalStatusChoices.DRAFT,
-            currency='EUR',  # TODO: Make configurable via LegalEntity
+            currency='EUR',  # FUTURE: derive from LegalEntity.currency
             notes=notes or '',
             created_by=created_by
         )
@@ -557,7 +538,7 @@ def generate_charge_proposal_from_encounter(
             total_amount += line_total
             
             # Create proposal line
-            ClinicalChargeProposalLine.objects.create(
+            ProposalLine.objects.create(
                 proposal=proposal,
                 encounter_treatment=enc_treatment,
                 treatment=enc_treatment.treatment,
@@ -595,122 +576,78 @@ def create_sale_from_proposal(
     notes: Optional[str] = None
 ):
     """
-    Convert a ClinicalChargeProposal to a Sale (draft status).
+    Convert a Proposal to a Sale (draft status).
     
-    This is the EXPLICIT conversion step, allowing:
-    - Review of charges before finalizing sale
-    - Sale starts in DRAFT status (can be modified if needed)
-    - Idempotency: Cannot create duplicate Sales from same proposal
-    - Cross-references: Sale ↔ Proposal ↔ Encounter
+    Delegates to Proposal.accept() state-machine method, which atomically:
+    - Sets status → ACCEPTED
+    - Creates Sale + SaleLines
+    - Links converted_to_sale
+
+    If the proposal is still in DRAFT, auto-sends it first.
     
     Business Rules:
-    - Proposal must be in DRAFT status
-    - Proposal must not already be converted (idempotency)
-    - Sale created with status=DRAFT (not paid)
-    - Sale lines match proposal lines exactly
-    - Product=null for all lines (service charges, no stock)
-    - NO TAX calculation (tax field = 0)
-    - Proposal status → CONVERTED (terminal state)
+    - Proposal must be in DRAFT or SENT status
+    - Proposal must not already have a sale (idempotency)
+    - Proposal must not be expired (valid_until check inside accept())
+    - Proposal status → ACCEPTED (terminal state)
     
     Args:
-        proposal: ClinicalChargeProposal instance
+        proposal: Proposal instance
         created_by: User creating the sale
         legal_entity: LegalEntity for the sale
-        notes: Optional notes for the sale
+        notes: Optional notes for the sale (currently unused — kept for API compat)
     
     Returns:
         Sale instance (status=DRAFT) with lines
     
     Raises:
-        ValidationError: If proposal already converted or not in draft status
-    
-    Example:
-        from apps.legal.models import LegalEntity
-        
-        legal_entity = LegalEntity.objects.get(is_active=True)
-        sale = create_sale_from_proposal(
-            proposal=proposal,
-            created_by=request.user,
-            legal_entity=legal_entity,
-            notes='Converted from encounter consultation'
-        )
-        # sale.status → 'draft'
-        # sale.lines.count() → matches proposal.lines.count()
+        ValidationError: If proposal not in draft/sent or already converted
     """
-    from apps.clinical.models import ProposalStatusChoices
-    from apps.sales.models import Sale, SaleLine, SaleStatusChoices
-    from decimal import Decimal
-    
-    # Validation: Proposal must be in DRAFT status
-    if proposal.status != ProposalStatusChoices.DRAFT:
+    from apps.proposals.models import ProposalStatusChoices
+    from django.utils import timezone as tz
+
+    # Validation: Proposal must be in DRAFT or SENT status
+    if proposal.status not in (ProposalStatusChoices.DRAFT, ProposalStatusChoices.SENT):
         raise ValidationError({
             'proposal': f"Cannot convert proposal with status '{proposal.status}'. "
-                       "Only DRAFT proposals can be converted to sales."
+                       "Only DRAFT or SENT proposals can be converted to sales."
         })
-    
+
     # Validation: Proposal must not already have a sale (idempotency)
     if proposal.converted_to_sale is not None:
         raise ValidationError({
             'proposal': f"Proposal {proposal.id} already converted to sale "
                        f"(Sale ID: {proposal.converted_to_sale.id})"
         })
-    
+
     # Validation: Proposal must have lines
     proposal_lines = proposal.lines.all()
     if not proposal_lines.exists():
         raise ValidationError({
             'proposal': f"Cannot convert proposal {proposal.id} with no lines."
         })
-    
-    # Create sale with lines atomically
-    with transaction.atomic():
-        # Create sale header
-        sale = Sale.objects.create(
-            legal_entity=legal_entity,
-            patient=proposal.patient,
-            status=SaleStatusChoices.DRAFT,
-            subtotal=proposal.total_amount,
-            tax=Decimal('0.00'),  # NO TAX - deferred to fiscal module
-            discount=Decimal('0.00'),
-            total=proposal.total_amount,  # total = subtotal (no tax, no discount)
-            currency=proposal.currency,
-            notes=notes or f"Generated from encounter {proposal.encounter.id}"
-        )
-        
-        # Create sale lines from proposal lines
-        for prop_line in proposal_lines:
-            SaleLine.objects.create(
-                sale=sale,
-                product=None,  # Service line - no stock product
-                product_name=prop_line.treatment_name,
-                product_code='',  # No code for services
-                description=prop_line.description or '',
-                quantity=prop_line.quantity,
-                unit_price=prop_line.unit_price,
-                discount=Decimal('0.00'),
-                line_total=prop_line.line_total
-            )
-        
-        # Update proposal status and link to sale
-        proposal.status = ProposalStatusChoices.CONVERTED
-        proposal.converted_to_sale = sale
-        proposal.converted_at = transaction.now()
-        proposal.save(update_fields=['status', 'converted_to_sale', 'converted_at', 'updated_at'])
-        
-        logger.info(
-            f"Converted proposal {proposal.id} to sale {sale.id}",
-            extra={
-                'proposal_id': str(proposal.id),
-                'sale_id': str(sale.id),
-                'encounter_id': str(proposal.encounter.id),
-                'patient_id': str(proposal.patient.id),
-                'legal_entity_id': str(legal_entity.id),
-                'line_count': sale.lines.count(),
-                'total_amount': str(sale.total),
-                'created_by': str(created_by.id)
-            }
-        )
-    
+
+    # If still in draft, auto-send first so accept() works
+    if proposal.status == ProposalStatusChoices.DRAFT:
+        proposal.send(user=created_by)
+
+    # Delegate to model state machine (atomic inside accept())
+    sale = proposal.accept(user=created_by, legal_entity=legal_entity)
+
+    logger.info(
+        f"Converted proposal {proposal.id} to sale {sale.id}",
+        extra={
+            'proposal_id': str(proposal.id),
+            'sale_id': str(sale.id),
+            'encounter_id': str(proposal.encounter.id),
+            'patient_id': str(proposal.patient.id),
+            'legal_entity_id': str(legal_entity.id),
+            'line_count': sale.lines.count(),
+            'total_amount': str(sale.total),
+            'created_by': str(created_by.id)
+        }
+    )
+
     return sale
 
 
@@ -722,63 +659,54 @@ class AvailabilityService:
     """
     Service for calculating practitioner availability slots.
     
-    Sprint 2 Implementation:
-    - Calculates free time slots based on working hours
-    - Subtracts existing appointments
-    - Subtracts practitioner blocks (vacations, etc.)
-    - Returns slots of configurable duration
-    - No hardcoded data
-    - No appointment creation
+    Calculates free time slots based on PractitionerSchedule working hours,
+    subtracts existing appointments and practitioner blocks,
+    supports treatment-aware slot duration and practitioner capability
+    validation.
     
-    DEFAULT WORKING HOURS: 09:00 - 17:00 (UTC)
-    Note: No schedule model exists yet. This is documented assumption.
+    Phase 4 upgrade:
+    - Working hours sourced from PractitionerSchedule (per practitioner/clinic/weekday)
+    - Treatment.duration_minutes overrides slot_duration when treatment_id provided
+    - PractitionerTreatment capability validated before generating slots
+    - Appointments filtered by clinic
+    - Multi-day PractitionerBlock correctly spans across days
     """
     
-    DEFAULT_START_TIME = "09:00"
-    DEFAULT_END_TIME = "17:00"
-    DEFAULT_SLOT_DURATION = 30  # minutes
+    DEFAULT_SLOT_DURATION = 30  # minutes — fallback when no treatment_id
     
     @staticmethod
     def calculate_availability(
         practitioner_id: str,
+        clinic_id: str,
         date_from: str,
         date_to: str,
+        treatment_id: str = None,
         slot_duration: int = DEFAULT_SLOT_DURATION,
         timezone_str: str = "UTC"
     ) -> dict:
         """
-        Calculate available time slots for a practitioner.
+        Calculate available time slots for a practitioner at a specific clinic.
         
         Args:
             practitioner_id: UUID of practitioner
+            clinic_id: UUID of clinic (required)
             date_from: Start date (YYYY-MM-DD)
             date_to: End date (YYYY-MM-DD)
-            slot_duration: Duration of each slot in minutes
+            treatment_id: Optional UUID of treatment — overrides slot_duration
+            slot_duration: Duration of each slot in minutes (fallback)
             timezone_str: Timezone for calculations (default UTC)
             
         Returns:
-            Dict with availability data:
-            {
-                "practitioner_id": "<uuid>",
-                "date_from": "YYYY-MM-DD",
-                "date_to": "YYYY-MM-DD",
-                "slot_duration": 30,
-                "timezone": "UTC",
-                "availability": [
-                    {
-                        "date": "YYYY-MM-DD",
-                        "slots": [
-                            {"start": "10:00", "end": "10:30"},
-                            {"start": "10:30", "end": "11:00"}
-                        ]
-                    }
-                ]
-            }
+            Dict with availability data including clinic_id and optional
+            treatment_id in the response envelope.
         """
         from datetime import datetime, timedelta, date as date_class, time
         from django.utils import timezone
         import pytz
-        from apps.clinical.models import Appointment, PractitionerBlock
+        from apps.clinical.models import (
+            Appointment, PractitionerBlock, PractitionerSchedule,
+            PractitionerTreatment, Treatment,
+        )
         
         # Parse dates
         date_from_obj = datetime.strptime(date_from, "%Y-%m-%d").date()
@@ -788,24 +716,82 @@ class AvailabilityService:
         tz = pytz.timezone(timezone_str)
         now = timezone.now()
         
-        # Fetch appointments for practitioner in range
+        # ------------------------------------------------------------------
+        # Treatment-aware slot duration (Step 2)
+        # ------------------------------------------------------------------
+        resolved_treatment_id = None
+        if treatment_id:
+            try:
+                treatment_obj = Treatment.objects.get(id=treatment_id, is_active=True)
+                slot_duration = treatment_obj.duration_minutes
+                resolved_treatment_id = str(treatment_obj.id)
+            except Treatment.DoesNotExist:
+                # Inactive or missing treatment → empty availability
+                return AvailabilityService._empty_response(
+                    practitioner_id, clinic_id, date_from, date_to,
+                    slot_duration, timezone_str, treatment_id,
+                )
+        
+        # ------------------------------------------------------------------
+        # Practitioner capability check (Step 3)
+        # ------------------------------------------------------------------
+        if resolved_treatment_id:
+            has_capability = PractitionerTreatment.objects.filter(
+                practitioner_id=practitioner_id,
+                treatment_id=resolved_treatment_id,
+                is_active=True,
+                treatment__is_active=True,
+            ).exists()
+            if not has_capability:
+                return AvailabilityService._empty_response(
+                    practitioner_id, clinic_id, date_from, date_to,
+                    slot_duration, timezone_str, resolved_treatment_id,
+                )
+        
+        # ------------------------------------------------------------------
+        # Fetch PractitionerSchedule rows for practitioner+clinic (Step 4)
+        # ------------------------------------------------------------------
+        schedule_qs = PractitionerSchedule.objects.filter(
+            practitioner_id=practitioner_id,
+            clinic_id=clinic_id,
+            is_active=True,
+        )
+        # Build lookup: weekday → list of (start_time, end_time)
+        schedule_by_weekday: dict[int, list] = {}
+        for sched in schedule_qs:
+            schedule_by_weekday.setdefault(sched.weekday, []).append(
+                (sched.start_time, sched.end_time)
+            )
+        
+        # ------------------------------------------------------------------
+        # Clinic-scoped appointment query (Step 5)
+        # ------------------------------------------------------------------
         appointments = Appointment.objects.filter(
             practitioner_id=practitioner_id,
+            clinic_id=clinic_id,
             is_deleted=False,
             scheduled_start__date__gte=date_from_obj,
             scheduled_start__date__lte=date_to_obj,
-            status__in=['draft', 'scheduled', 'confirmed', 'checked_in']  # Active statuses
+            status__in=['scheduled', 'confirmed', 'checked_in'],
         ).order_by('scheduled_start')
         
-        # Fetch blocks for practitioner in range
+        # ------------------------------------------------------------------
+        # Multi-day block fix (Step 6)
+        # Blocks whose time-span overlaps the requested date range:
+        #   block.start <= range_end  AND  block.end >= range_start
+        # ------------------------------------------------------------------
+        range_start_dt = tz.localize(datetime.combine(date_from_obj, time.min))
+        range_end_dt = tz.localize(datetime.combine(date_to_obj, time.max))
         blocks = PractitionerBlock.objects.filter(
             practitioner_id=practitioner_id,
             is_deleted=False,
-            start__date__gte=date_from_obj,
-            start__date__lte=date_to_obj
+            start__lte=range_end_dt,
+            end__gte=range_start_dt,
         ).order_by('start')
         
-        # Calculate availability for each day
+        # ------------------------------------------------------------------
+        # Day-by-day slot generation
+        # ------------------------------------------------------------------
         availability = []
         current_date = date_from_obj
         
@@ -815,70 +801,112 @@ class AvailabilityService:
                 current_date += timedelta(days=1)
                 continue
             
-            # Get working hours for this day
-            work_start_time = datetime.strptime(AvailabilityService.DEFAULT_START_TIME, "%H:%M").time()
-            work_end_time = datetime.strptime(AvailabilityService.DEFAULT_END_TIME, "%H:%M").time()
+            # Look up schedule windows for this weekday
+            windows = schedule_by_weekday.get(current_date.weekday())
+            if not windows:
+                # No schedule for this day → skip entirely
+                current_date += timedelta(days=1)
+                continue
             
-            # Create datetime objects for this day
-            work_start_dt = tz.localize(datetime.combine(current_date, work_start_time))
-            work_end_dt = tz.localize(datetime.combine(current_date, work_end_time))
-            
-            # Filter appointments and blocks for this day
-            day_appointments = [
-                appt for appt in appointments
-                if appt.scheduled_start.astimezone(tz).date() == current_date
-            ]
-            
-            day_blocks = [
-                block for block in blocks
-                if block.start.astimezone(tz).date() == current_date
-            ]
-            
-            # Generate busy periods
-            busy_periods = []
-            
-            # Add appointments as busy
-            for appt in day_appointments:
-                busy_periods.append({
-                    'start': appt.scheduled_start.astimezone(tz),
-                    'end': appt.scheduled_end.astimezone(tz)
-                })
-            
-            # Add blocks as busy
-            for block in day_blocks:
-                busy_periods.append({
-                    'start': block.start.astimezone(tz),
-                    'end': block.end.astimezone(tz)
-                })
-            
-            # Sort busy periods by start time
-            busy_periods.sort(key=lambda x: x['start'])
-            
-            # Calculate free slots
-            free_slots = AvailabilityService._calculate_free_slots(
-                work_start_dt,
-                work_end_dt,
-                busy_periods,
-                slot_duration,
-                now,
-                tz
+            day_result = AvailabilityService._process_day(
+                current_date, windows, appointments, blocks,
+                slot_duration, now, tz,
             )
-            
-            availability.append({
-                'date': current_date.isoformat(),
-                'slots': free_slots
-            })
+            availability.append(day_result)
             
             current_date += timedelta(days=1)
         
-        return {
+        result = {
             'practitioner_id': practitioner_id,
+            'clinic_id': clinic_id,
             'date_from': date_from,
             'date_to': date_to,
             'slot_duration': slot_duration,
             'timezone': timezone_str,
-            'availability': availability
+            'availability': availability,
         }
+        if resolved_treatment_id:
+            result['treatment_id'] = resolved_treatment_id
+        return result
+    
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _process_day(current_date, windows, appointments, blocks, slot_duration, now, tz):
+        """Build availability slots for a single date."""
+        from datetime import datetime, time
+
+        day_appointments = [
+            appt for appt in appointments
+            if appt.scheduled_start.astimezone(tz).date() == current_date
+        ]
+
+        day_start_dt = tz.localize(datetime.combine(current_date, time.min))
+        day_end_dt = tz.localize(datetime.combine(current_date, time.max))
+        day_blocks = [
+            block for block in blocks
+            if block.start.astimezone(tz) < day_end_dt and block.end.astimezone(tz) > day_start_dt
+        ]
+
+        busy_periods = []
+        for appt in day_appointments:
+            busy_periods.append({
+                'start': appt.scheduled_start.astimezone(tz),
+                'end': appt.scheduled_end.astimezone(tz),
+            })
+        for block in day_blocks:
+            busy_periods.append({
+                'start': block.start.astimezone(tz),
+                'end': block.end.astimezone(tz),
+            })
+        busy_periods.sort(key=lambda x: x['start'])
+
+        day_slots = []
+        for win_start, win_end in sorted(windows):
+            work_start_dt = tz.localize(datetime.combine(current_date, win_start))
+            work_end_dt = tz.localize(datetime.combine(current_date, win_end))
+            free_slots = AvailabilityService._calculate_free_slots(
+                work_start_dt, work_end_dt, busy_periods,
+                slot_duration, now, tz,
+            )
+            day_slots.extend(free_slots)
+
+        return {'date': current_date.isoformat(), 'slots': day_slots}
+
+    @staticmethod
+    def _empty_response(
+        practitioner_id, clinic_id, date_from, date_to,
+        slot_duration, timezone_str, treatment_id=None,
+    ) -> dict:
+        """Return a valid response envelope with zero availability days."""
+        result = {
+            'practitioner_id': practitioner_id,
+            'clinic_id': clinic_id,
+            'date_from': date_from,
+            'date_to': date_to,
+            'slot_duration': slot_duration,
+            'timezone': timezone_str,
+            'availability': [],
+        }
+        if treatment_id:
+            result['treatment_id'] = str(treatment_id)
+        return result
+    
+    @staticmethod
+    def _align_to_slot_boundary(current_time, work_start_dt, slot_duration):
+        """
+        Re-align *current_time* forward to the next slot boundary relative
+        to *work_start_dt*.  If already aligned, return unchanged.
+        """
+        from datetime import timedelta
+        elapsed = (current_time - work_start_dt).total_seconds()
+        slot_secs = slot_duration * 60
+        remainder = elapsed % slot_secs
+        if remainder == 0:
+            return current_time
+        return current_time + timedelta(seconds=slot_secs - remainder)
     
     @staticmethod
     def _calculate_free_slots(
@@ -925,8 +953,10 @@ class AvailabilityService:
                 # Check overlap: slot_start < busy_end AND busy_start < slot_end
                 if current_time < busy['end'] and busy['start'] < slot_end:
                     is_busy = True
-                    # Jump to end of busy period
-                    current_time = busy['end']
+                    # Jump to end of busy period and re-align to slot boundary
+                    current_time = AvailabilityService._align_to_slot_boundary(
+                        busy['end'], work_start_dt, slot_duration
+                    )
                     break
             
             if not is_busy:

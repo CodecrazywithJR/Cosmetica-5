@@ -13,7 +13,7 @@ import apiClient from '@/lib/api-client';
 import { useState } from 'react';
 
 export default function DebugAuthPage() {
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user, isInitializing, isAuthenticated } = useAuth();
   const [testResult, setTestResult] = useState<string>('');
 
   if (process.env.NODE_ENV !== 'development') {

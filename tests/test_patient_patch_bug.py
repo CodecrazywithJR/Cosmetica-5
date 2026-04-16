@@ -1,3 +1,4 @@
+TEST_PASSWORD = "testpass123"  # noqa: S105
 """
 Test to reproduce the PATCH bug with new Patient fields.
 This test MUST FAIL before the fix and PASS after the fix.
@@ -20,7 +21,7 @@ class TestPatientPatchBug:
         """Create admin user"""
         user = User.objects.create_user(
             email='admin@test.com',
-            password='test123',
+            password=TEST_PASSWORD,
             first_name='Admin',
             last_name='User'
         )

@@ -5,6 +5,7 @@
 'use client';
 
 import { AuthProvider } from '@/lib/auth-context';
+import { ActiveLegalEntityProvider } from '@/lib/active-legal-entity-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useState } from 'react';
 
@@ -21,7 +22,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {children}
+        <ActiveLegalEntityProvider>
+          {children}
+        </ActiveLegalEntityProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

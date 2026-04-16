@@ -26,10 +26,10 @@ class IsAdmin(permissions.BasePermission):
             return True
         
         # Check if user has admin role (case-insensitive)
-        user_roles = set(
+        user_roles = {
             role.upper() for role in 
             request.user.user_roles.values_list('role__name', flat=True)
-        )
+        }
         
         # Support both 'admin' and 'ADMIN' in database
         return 'ADMIN' in user_roles
@@ -62,12 +62,11 @@ class PractitionerPermission(permissions.BasePermission):
         
         # Safe methods (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
-            # Admin, ClinicalOps, Practitioner, Reception can read
+            # Admin, Practitioner, Reception can read
             allowed_roles = {
                 RoleChoices.ADMIN,
-                'clinical_ops',  # ClinicalOps from legacy
                 RoleChoices.PRACTITIONER,
-                RoleChoices.RECEPTION
+                RoleChoices.RECEPTION,
             }
             return bool(user_roles & allowed_roles)
         

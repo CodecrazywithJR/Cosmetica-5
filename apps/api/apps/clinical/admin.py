@@ -1,8 +1,25 @@
 from django.contrib import admin
 from .models import (
-    ReferralSource, Patient, PatientGuardian, Encounter, Appointment,
+    ReferralSource, Patient, PatientGuardian, PatientInsurance,
+    Encounter, Appointment, AppointmentType, Treatment, PractitionerTreatment, PractitionerSchedule,
     Consent, ClinicalPhoto, EncounterPhoto, EncounterDocument, PractitionerBlock
 )
+
+
+@admin.register(PractitionerTreatment)
+class PractitionerTreatmentAdmin(admin.ModelAdmin):
+    list_display = ['practitioner', 'treatment', 'is_active', 'created_at']
+    list_filter = ['treatment', 'practitioner', 'is_active']
+    autocomplete_fields = ['practitioner', 'treatment']
+    readonly_fields = ['id', 'created_at']
+
+
+@admin.register(PractitionerSchedule)
+class PractitionerScheduleAdmin(admin.ModelAdmin):
+    list_display = ['practitioner', 'clinic', 'weekday', 'start_time', 'end_time', 'is_active']
+    list_filter = ['clinic', 'practitioner', 'weekday', 'is_active']
+    autocomplete_fields = ['practitioner', 'clinic']
+    readonly_fields = ['id', 'created_at']
 
 
 @admin.register(ReferralSource)
@@ -51,11 +68,24 @@ class PatientAdmin(admin.ModelAdmin):
         }),
     )
 
+    def has_delete_permission(self, request, obj=None):
+        """Patients cannot be deleted to preserve clinical history."""
+        return False
+
 
 @admin.register(PatientGuardian)
 class PatientGuardianAdmin(admin.ModelAdmin):
     list_display = ['full_name', 'relationship', 'patient', 'phone', 'email']
     search_fields = ['full_name', 'patient__first_name', 'patient__last_name', 'phone', 'email']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    autocomplete_fields = ['patient']
+
+
+@admin.register(PatientInsurance)
+class PatientInsuranceAdmin(admin.ModelAdmin):
+    list_display = ['provider_name', 'patient', 'valid_from', 'valid_to', 'is_active']
+    list_filter = ['is_active']
+    search_fields = ['provider_name', 'member_number', 'patient__first_name', 'patient__last_name']
     readonly_fields = ['id', 'created_at', 'updated_at']
     autocomplete_fields = ['patient']
 
@@ -66,7 +96,7 @@ class EncounterAdmin(admin.ModelAdmin):
     list_filter = ['type', 'status', 'is_deleted', 'occurred_at']
     search_fields = ['patient__first_name', 'patient__last_name', 'chief_complaint']
     readonly_fields = ['id', 'row_version', 'created_at', 'updated_at', 'deleted_at', 'signed_at']
-    autocomplete_fields = ['patient', 'practitioner', 'location', 'created_by_user', 'deleted_by_user', 'signed_by_user']
+    autocomplete_fields = ['patient', 'practitioner', 'clinic', 'created_by_user', 'deleted_by_user', 'signed_by_user']
     date_hierarchy = 'occurred_at'
     
     def save_model(self, request, obj, form, change):
@@ -78,14 +108,35 @@ class EncounterAdmin(admin.ModelAdmin):
         obj.full_clean()
         super().save_model(request, obj, form, change)
 
+    def has_delete_permission(self, request, obj=None):
+        """Encounters cannot be deleted to preserve clinical history."""
+        return False
+
+
+@admin.register(Treatment)
+class TreatmentAdmin(admin.ModelAdmin):
+    list_display = ['name', 'duration_minutes', 'default_price', 'is_active', 'requires_stock']
+    list_filter = ['is_active', 'requires_stock']
+    search_fields = ['name', 'description']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    list_editable = ['duration_minutes', 'default_price', 'is_active']
+
+
+@admin.register(AppointmentType)
+class AppointmentTypeAdmin(admin.ModelAdmin):
+    list_display = ['name', 'default_duration_minutes', 'color', 'is_active']
+    list_filter = ['is_active']
+    search_fields = ['name']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+
 
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
-    list_display = ['scheduled_start', 'patient', 'practitioner', 'source', 'status', 'is_deleted']
+    list_display = ['scheduled_start', 'patient', 'practitioner', 'appointment_type', 'source', 'status', 'is_deleted']
     list_filter = ['source', 'status', 'is_deleted']
-    search_fields = ['patient__first_name', 'patient__last_name', 'external_id']
+    search_fields = ['patient__first_name', 'patient__last_name']
     readonly_fields = ['id', 'created_at', 'updated_at', 'deleted_at']
-    autocomplete_fields = ['patient', 'practitioner', 'location', 'encounter']
+    autocomplete_fields = ['patient', 'practitioner', 'clinic', 'encounter', 'treatment', 'appointment_type']
     date_hierarchy = 'scheduled_start'
     
     def get_readonly_fields(self, request, obj=None):

@@ -6,8 +6,10 @@ import uuid
 from django.db import models
 from django.conf import settings
 
+from apps.core.tenant_model import TenantModel
 
-class Document(models.Model):
+
+class Document(TenantModel):
     """
     Unified document storage (PDFs, attachments, consent forms, etc.).
     

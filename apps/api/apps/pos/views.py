@@ -1,6 +1,6 @@
 """POS patient views with fuzzy search."""
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from decimal import Decimal
 
 from django.db.models import Q, Value, FloatField
@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from apps.clinical.models import Patient
+from apps.core.tenant import TenantQuerySetMixin
 from .serializers import (
     POSPatientSearchResultSerializer,
     POSPatientUpsertSerializer,
@@ -28,7 +29,7 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-class PatientSearchView(APIView):
+class PatientSearchView(TenantQuerySetMixin, APIView):
     """
     GET /api/v1/pos/patients/search
     
@@ -45,6 +46,11 @@ class PatientSearchView(APIView):
         4. Name contains fallback: 0.20
     """
     permission_classes = [IsPOSUser]
+    
+    def _tenant_patients(self) -> "models.Manager":
+        """Return Patient queryset scoped to current tenant."""
+        tenant = self.get_tenant()
+        return Patient.objects.filter(legal_entity=tenant)
     
     def get(self, request):
         query = request.query_params.get('q', '').strip()
@@ -100,7 +106,7 @@ class PatientSearchView(APIView):
         if is_phone_like(query):
             phone_e164 = normalize_phone_to_e164(query)
             if phone_e164:
-                phone_matches = Patient.objects.filter(
+                phone_matches = self._tenant_patients().filter(
                     phone_e164=phone_e164,
                     is_deleted=False
                 ).values('id', 'full_name_normalized', 'identity_confidence', 'phone_e164', 'email')
@@ -121,7 +127,7 @@ class PatientSearchView(APIView):
         # Strategy 2: Exact email match (score: 0.95)
         if is_email_like(query):
             email_normalized = query.lower().strip()
-            email_matches = Patient.objects.filter(
+            email_matches = self._tenant_patients().filter(
                 email__iexact=email_normalized,
                 is_deleted=False
             ).values('id', 'full_name_normalized', 'identity_confidence', 'phone_e164', 'email')
@@ -144,7 +150,7 @@ class PatientSearchView(APIView):
             q_norm = normalize_search_query(query)
             
             # Use TrigramSimilarity for fuzzy matching
-            fuzzy_matches = Patient.objects.annotate(
+            fuzzy_matches = self._tenant_patients().annotate(
                 similarity=TrigramSimilarity('full_name_normalized', q_norm)
             ).filter(
                 similarity__gte=0.2,  # Minimum threshold
@@ -172,7 +178,7 @@ class PatientSearchView(APIView):
             
             # Strategy 4: Fallback to icontains if no fuzzy results (score: 0.20)
             if len([r for r in results if r['match_reason'] == 'name_fuzzy']) == 0:
-                contains_matches = Patient.objects.filter(
+                contains_matches = self._tenant_patients().filter(
                     Q(first_name__icontains=q_norm) | 
                     Q(last_name__icontains=q_norm) |
                     Q(full_name_normalized__icontains=q_norm),
@@ -200,7 +206,7 @@ class PatientSearchView(APIView):
         return results[:limit]
 
 
-class PatientUpsertView(APIView):
+class PatientUpsertView(TenantQuerySetMixin, APIView):
     """
     POST /api/v1/pos/patients/upsert
     
@@ -214,6 +220,11 @@ class PatientUpsertView(APIView):
     Does NOT do fuzzy name matching for upsert (too risky for auto-merge).
     """
     permission_classes = [IsPOSUser]
+    
+    def _tenant_patients(self) -> "models.Manager":
+        """Return Patient queryset scoped to current tenant."""
+        tenant = self.get_tenant()
+        return Patient.objects.filter(legal_entity=tenant)
     
     def post(self, request):
         serializer = POSPatientUpsertSerializer(data=request.data)
@@ -232,7 +243,7 @@ class PatientUpsertView(APIView):
         
         # Try to find existing patient by phone (highest priority)
         if phone_e164:
-            existing = Patient.objects.filter(
+            existing = self._tenant_patients().filter(
                 phone_e164=phone_e164,
                 is_deleted=False
             ).first()
@@ -252,7 +263,7 @@ class PatientUpsertView(APIView):
         
         # Try to find existing patient by email
         if email_normalized:
-            existing = Patient.objects.filter(
+            existing = self._tenant_patients().filter(
                 email__iexact=email_normalized,
                 is_deleted=False
             ).first()
@@ -274,6 +285,7 @@ class PatientUpsertView(APIView):
         full_name = f"{data['first_name']} {data['last_name']}".strip()
         full_name_normalized = full_name.lower()
         
+        tenant = self.get_tenant()
         new_patient = Patient.objects.create(
             first_name=data['first_name'],
             last_name=data['last_name'],
@@ -284,6 +296,7 @@ class PatientUpsertView(APIView):
             birth_date=data.get('birth_date'),
             sex=data.get('sex', 'U'),
             identity_confidence='low',  # POS-created patients start with low confidence
+            legal_entity=tenant,
         )
         
         patient_data = self._patient_to_response(new_patient, 'created', created=True)

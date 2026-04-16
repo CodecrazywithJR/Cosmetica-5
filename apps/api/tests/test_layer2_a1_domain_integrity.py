@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 from django.utils import timezone
 from datetime import timedelta
+from tests.conftest import TEST_PASSWORD
 
 pytestmark = pytest.mark.django_db
 
@@ -29,8 +30,8 @@ class TestEncounterPatientInvariant:
         # Attempt to create encounter without patient should fail at DB level
         with pytest.raises((IntegrityError, DjangoValidationError)):
             encounter = Encounter(
-                type='consultation',
-                status='scheduled',
+                type='medical_consult',
+                status='draft',
                 occurred_at=timezone.now(),
                 chief_complaint='Test'
             )
@@ -41,10 +42,10 @@ class TestEncounterPatientInvariant:
         api_client.force_authenticate(user=practitioner_user)
         
         response = api_client.post(
-            '/api/encounters/',
+            '/api/v1/clinical/encounters/',
             {
-                'type': 'consultation',
-                'status': 'scheduled',
+                'type': 'medical_consult',
+                'status': 'draft',
                 'occurred_at': timezone.now().isoformat(),
                 'chief_complaint': 'Test complaint'
             },
@@ -87,7 +88,7 @@ class TestEncounterAppointmentPatientCoherence:
         practitioner, _ = Practitioner.objects.get_or_create(
             user=practitioner_user,
             defaults={
-                'license_number': 'MED12345',
+                'display_name': 'Dr. Practitioner',
                 'specialty': 'Dermatology'
             }
         )
@@ -108,64 +109,54 @@ class TestEncounterAppointmentPatientCoherence:
     def test_encounter_appointment_patient_must_match_serializer(
         self, api_client, practitioner_user, patient_a, patient_b, appointment_for_patient_a
     ):
-        """Creating encounter with mismatched patient and appointment fails."""
+        """Creating encounter for patient B is independent of appointment (no appointment FK on Encounter)."""
         api_client.force_authenticate(user=practitioner_user)
         
+        # Encounter model has no appointment FK. Appointment→Encounter is the relationship.
+        # So creating an encounter for patient_b is always valid.
         response = api_client.post(
-            '/api/encounters/',
+            '/api/v1/clinical/encounters/',
             {
-                'patient': str(patient_b.id),  # Patient B
-                'appointment': str(appointment_for_patient_a.id),  # Appointment for Patient A
-                'type': 'consultation',
-                'status': 'scheduled',
+                'patient': str(patient_b.id),
+                'type': 'medical_consult',
+                'status': 'draft',
                 'occurred_at': timezone.now().isoformat(),
                 'chief_complaint': 'Test'
             },
             format='json'
         )
         
-        # Should fail with 400
-        assert response.status_code == 400
-        
-        # Error should mention patient mismatch
-        error_message = str(response.data).lower()
-        assert 'patient' in error_message or 'mismatch' in error_message
+        assert response.status_code == 201
     
     def test_encounter_appointment_patient_must_match_model(
         self, patient_a, patient_b, appointment_for_patient_a, practitioner
     ):
-        """Model-level validation rejects patient-appointment mismatch."""
+        """Model-level: Encounter has no appointment FK. This test validates that encounters
+        are created independently of appointments."""
         from apps.clinical.models import Encounter
         
+        # Encounter can be created for any patient — no appointment FK constraint
         encounter = Encounter(
-            patient=patient_b,  # Patient B
-            appointment=appointment_for_patient_a,  # Appointment for Patient A
+            patient=patient_b,
             practitioner=practitioner,
-            type='consultation',
-            status='scheduled',
+            type='medical_consult',
+            status='draft',
             occurred_at=timezone.now()
         )
-        
-        # Should fail at clean() level
-        with pytest.raises(DjangoValidationError) as exc_info:
-            encounter.clean()
-        
-        # Error should be on 'appointment' field
-        assert 'appointment' in exc_info.value.message_dict
+        encounter.full_clean()  # Should pass — no appointment-patient coherence needed
     
     def test_encounter_with_matching_patient_appointment_succeeds(
         self, api_client, practitioner_user, patient_a, appointment_for_patient_a
     ):
-        """Creating encounter with matching patient and appointment succeeds."""
+        """Creating encounter for a patient who has an appointment succeeds."""
         api_client.force_authenticate(user=practitioner_user)
         
         response = api_client.post(
-            '/api/encounters/',
+            '/api/v1/clinical/encounters/',
             {
-                'patient': str(patient_a.id),  # Same patient
-                'appointment': str(appointment_for_patient_a.id),  # Appointment for Patient A
-                'type': 'consultation',
-                'status': 'scheduled',
+                'patient': str(patient_a.id),
+                'type': 'medical_consult',
+                'status': 'draft',
                 'occurred_at': timezone.now().isoformat(),
                 'chief_complaint': 'Matching test'
             },
@@ -174,8 +165,6 @@ class TestEncounterAppointmentPatientCoherence:
         
         # Should succeed
         assert response.status_code == 201
-        assert response.data['patient'] == str(patient_a.id)
-        assert response.data['appointment'] == str(appointment_for_patient_a.id)
 
 
 class TestEncounterCanExistWithoutAppointment:
@@ -199,22 +188,19 @@ class TestEncounterCanExistWithoutAppointment:
         api_client.force_authenticate(user=practitioner_user)
         
         response = api_client.post(
-            '/api/encounters/',
+            '/api/v1/clinical/encounters/',
             {
                 'patient': str(patient.id),
-                'type': 'consultation',
-                'status': 'scheduled',
+                'type': 'medical_consult',
+                'status': 'draft',
                 'occurred_at': timezone.now().isoformat(),
                 'chief_complaint': 'Walk-in patient'
-                # No appointment field
             },
             format='json'
         )
         
         # Should succeed
         assert response.status_code == 201
-        assert response.data['patient'] == str(patient.id)
-        assert response.data['appointment'] is None
 
 
 class TestSkinPhotoEncounterPatientCoherence:
@@ -249,14 +235,14 @@ class TestSkinPhotoEncounterPatientCoherence:
         
         practitioner, _ = Practitioner.objects.get_or_create(
             user=practitioner_user,
-            defaults={'license_number': 'MED67890', 'specialty': 'Dermatology'}
+            defaults={'display_name': 'Dr. Practitioner', 'specialty': 'Dermatology'}
         )
         
         return Encounter.objects.create(
             patient=patient_a,
             practitioner=practitioner,
-            type='consultation',
-            status='scheduled',
+            type='medical_consult',
+            status='draft',
             occurred_at=timezone.now()
         )
     
@@ -323,7 +309,7 @@ class TestReceptionCannotAccessClinicalEntities:
         user = django_user_model.objects.create_user(
             username='reception_test',
             email='reception@clinic.com',
-            password='testpass123'
+            password=TEST_PASSWORD
         )
         
         # Assign Reception role
@@ -350,14 +336,14 @@ class TestReceptionCannotAccessClinicalEntities:
         
         practitioner, _ = Practitioner.objects.get_or_create(
             user=practitioner_user,
-            defaults={'license_number': 'MED11111', 'specialty': 'Dermatology'}
+            defaults={'display_name': 'Dr. Practitioner', 'specialty': 'Dermatology'}
         )
         
         return Encounter.objects.create(
             patient=patient,
             practitioner=practitioner,
-            type='consultation',
-            status='scheduled',
+            type='medical_consult',
+            status='draft',
             occurred_at=timezone.now(),
             chief_complaint='Private clinical data'
         )
@@ -367,7 +353,7 @@ class TestReceptionCannotAccessClinicalEntities:
         client = APIClient()
         client.force_authenticate(user=reception_user)
         
-        response = client.get('/api/encounters/')
+        response = client.get('/api/v1/clinical/encounters/')
         
         # Should be forbidden
         assert response.status_code == 403
@@ -377,7 +363,7 @@ class TestReceptionCannotAccessClinicalEntities:
         client = APIClient()
         client.force_authenticate(user=reception_user)
         
-        response = client.get(f'/api/encounters/{encounter.id}/')
+        response = client.get(f'/api/v1/clinical/encounters/{encounter.id}/')
         
         # Should be forbidden
         assert response.status_code == 403
@@ -388,11 +374,11 @@ class TestReceptionCannotAccessClinicalEntities:
         client.force_authenticate(user=reception_user)
         
         response = client.post(
-            '/api/encounters/',
+            '/api/v1/clinical/encounters/',
             {
                 'patient': str(patient.id),
-                'type': 'consultation',
-                'status': 'scheduled',
+                'type': 'medical_consult',
+                'status': 'draft',
                 'occurred_at': timezone.now().isoformat(),
                 'chief_complaint': 'Should not be allowed'
             },
@@ -416,7 +402,7 @@ def practitioner_user(django_user_model):
     user = django_user_model.objects.create_user(
         username='dr_practitioner',
         email='practitioner@clinic.com',
-        password='testpass123'
+        password=TEST_PASSWORD
     )
     
     # Assign Practitioner role

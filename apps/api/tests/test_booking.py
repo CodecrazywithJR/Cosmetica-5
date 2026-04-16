@@ -12,15 +12,17 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from apps.authz.models import User, Practitioner, Role, UserRole, RoleChoices
 from apps.clinical.models import Appointment, PractitionerBlock, Patient
-from apps.core.models import ClinicLocation
+from apps.core.models import Clinic
+from apps.clinical.models import PractitionerSchedule
 import pytz
+from tests.conftest import TEST_PASSWORD
 
 
 def create_user_with_role(email, role_name):
     """Helper function to create user with role"""
     user = User.objects.create_user(
         email=email,
-        password='test123',
+        password=TEST_PASSWORD,
         is_active=True
     )
     role, _ = Role.objects.get_or_create(
@@ -93,14 +95,33 @@ def patient(db):
 
 
 @pytest.fixture
-def location(db):
-    """Test clinic location"""
-    return ClinicLocation.objects.create(
+def location(db, legal_entity):
+    return Clinic.objects.create(
         name='Test Clinic',
         address_line1='123 Test St',
         city='Test City',
-        is_active=True
+        is_active=True,
+        legal_entity=legal_entity,
     )
+
+
+@pytest.fixture(autouse=True)
+def practitioner_schedule(db, practitioner_user, location):
+    """Create working hours for all weekdays so AvailabilityService generates slots."""
+    _, practitioner = practitioner_user
+    from datetime import time
+    schedules = []
+    for weekday in range(7):  # Mon-Sun
+        schedules.append(PractitionerSchedule(
+            practitioner=practitioner,
+            clinic=location,
+            weekday=weekday,
+            start_time=time(8, 0),
+            end_time=time(18, 0),
+            is_active=True,
+        ))
+    PractitionerSchedule.objects.bulk_create(schedules)
+    return schedules
 
 
 @pytest.mark.django_db
@@ -144,7 +165,7 @@ class TestBookingEndpoint:
         assert appointment.practitioner == practitioner
         assert appointment.patient == patient
         assert appointment.status == 'scheduled'
-        assert appointment.source == 'manual'
+        assert appointment.source == 'erp'
     
     def test_reject_slot_that_already_started(self, api_client, admin_user, practitioner_user, patient, location):
         """
@@ -227,11 +248,11 @@ class TestBookingEndpoint:
         existing_appointment = Appointment.objects.create(
             practitioner=practitioner,
             patient=patient,
-            location=location,
+            clinic=location,
             scheduled_start=slot_start,
             scheduled_end=slot_end,
             status='scheduled',
-            source='manual'
+            source='erp'
         )
         
         # Try to book the same slot again
@@ -456,3 +477,104 @@ class TestBookingEndpoint:
         # Assert 400 BAD REQUEST
         assert response.status_code == 400
         assert 'Invalid time range' in response.data['error']
+
+
+@pytest.mark.django_db(transaction=True)
+class TestConcurrentBooking:
+    """
+    Test database-level overbooking protection under concurrent requests.
+
+    Uses threading to simulate two simultaneous booking attempts for the
+    same practitioner and time slot. The ExclusionConstraint
+    'prevent_practitioner_overbooking' ensures exactly one succeeds.
+    """
+
+    def test_concurrent_booking_one_wins(
+        self, api_client, admin_user, practitioner_user, patient, location
+    ):
+        """Two threads book the same slot — exactly one gets 201, the other gets 409."""
+        import threading
+
+        _, practitioner = practitioner_user
+        future_date = (timezone.now() + timedelta(days=5)).date()
+
+        payload = {
+            'date': future_date.strftime('%Y-%m-%d'),
+            'start': '09:00',
+            'end': '09:30',
+            'slot_duration': 30,
+            'patient_id': str(patient.id),
+            'location_id': str(location.id),
+        }
+        url = f'/api/v1/clinical/practitioners/{practitioner.id}/book/'
+        results = [None, None]
+
+        def book(index):
+            client = APIClient()
+            client.force_authenticate(user=admin_user)
+            results[index] = client.post(url, data=payload, format='json')
+
+        t1 = threading.Thread(target=book, args=(0,))
+        t2 = threading.Thread(target=book, args=(1,))
+        t1.start()
+        t2.start()
+        t1.join(timeout=30)
+        t2.join(timeout=30)
+
+        codes = sorted([results[0].status_code, results[1].status_code])
+        # Exactly one 201 and one 409 (or 400/409 if availability check caught it)
+        assert 201 in codes, f"Expected one 201, got {codes}"
+        assert codes[0] != 201 or codes[1] != 201, (
+            f"Both requests succeeded — overbooking NOT prevented! Codes: {codes}"
+        )
+        # The failing request should be 409 (constraint) or 409 (slot not available)
+        failing_code = codes[1] if codes[0] == 201 else codes[0]
+        assert failing_code == 409, f"Expected 409 for the losing request, got {failing_code}"
+
+        # Verify exactly one appointment exists for that slot
+        from apps.clinical.models import Appointment as Apt
+        count = Apt.unfiltered.filter(
+            practitioner=practitioner,
+            scheduled_start__date=future_date,
+            is_deleted=False,
+            status__in=Apt._ACTIVE_STATUSES,
+        ).count()
+        assert count == 1, f"Expected exactly 1 appointment, found {count}"
+
+    def test_db_constraint_blocks_raw_overlap(self, practitioner_user, patient, location):
+        """
+        Direct ORM test: creating two overlapping appointments for the same
+        practitioner raises IntegrityError from the exclusion constraint.
+        """
+        from django.db import IntegrityError as DjangoIntegrityError
+
+        _, practitioner = practitioner_user
+        future_date = (timezone.now() + timedelta(days=6)).date()
+        tz = pytz.UTC
+        slot_start = tz.localize(datetime.combine(future_date, datetime.strptime('11:00', '%H:%M').time()))
+        slot_end = tz.localize(datetime.combine(future_date, datetime.strptime('11:30', '%H:%M').time()))
+
+        # First appointment succeeds
+        apt1 = Appointment(
+            practitioner=practitioner,
+            patient=patient,
+            clinic=location,
+            scheduled_start=slot_start,
+            scheduled_end=slot_end,
+            status='scheduled',
+            source='erp',
+        )
+        apt1.save(skip_validation=True)
+
+        # Second overlapping appointment must fail at DB level
+        apt2 = Appointment(
+            practitioner=practitioner,
+            patient=patient,
+            clinic=location,
+            scheduled_start=slot_start,
+            scheduled_end=slot_end,
+            status='scheduled',
+            source='erp',
+        )
+        with pytest.raises(DjangoIntegrityError):
+            apt2.save(skip_validation=True)

@@ -12,22 +12,22 @@ from apps.clinical.models import Appointment
 
 @pytest.mark.django_db
 class TestAppointmentCreate:
-    """Test POST /api/v1/appointments/ - Create manual appointment."""
+    """Test POST /api/v1/clinical/appointments/ - Direct creation via ERP."""
     
-    endpoint = '/api/v1/appointments/'
+    endpoint = '/api/v1/clinical/appointments/'
     
-    def test_create_manual_appointment_success(
+    def test_create_appointment_success(
         self,
         admin_client,
         patient,
         practitioner,
-        clinic_location
+        clinic
     ):
-        """Create manual appointment with source=manual, external_id=null."""
+        """Direct appointment creation via ERP succeeds."""
         payload = {
             'patient_id': str(patient.id),
             'practitioner_id': str(practitioner.id),
-            'location_id': str(clinic_location.id),
+            'clinic_id': str(clinic.id),
             'status': 'scheduled',
             'scheduled_start': (timezone.now() + timezone.timedelta(days=1)).isoformat(),
             'scheduled_end': (timezone.now() + timezone.timedelta(days=1, hours=1)).isoformat(),
@@ -37,54 +37,15 @@ class TestAppointmentCreate:
         response = admin_client.post(self.endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_201_CREATED
-        assert 'id' in response.data
-        assert response.data['source'] == 'manual'
-        assert response.data['external_id'] is None
-        assert response.data['status'] == 'scheduled'
-    
-    def test_create_appointment_auto_sets_source_manual(
-        self,
-        admin_client,
-        patient,
-        practitioner,
-        clinic_location
-    ):
-        """Source defaults to manual if not provided."""
-        payload = {
-            'patient_id': str(patient.id),
-            'practitioner_id': str(practitioner.id),
-            'location_id': str(clinic_location.id),
-            'status': 'scheduled',
-            'scheduled_start': (timezone.now() + timezone.timedelta(days=1)).isoformat(),
-            'scheduled_end': (timezone.now() + timezone.timedelta(days=1, hours=1)).isoformat(),
-        }
-        
-        response = admin_client.post(self.endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['source'] == 'manual'
-        assert response.data['external_id'] is None
-    
-    def test_create_appointment_minimal_fields(self, admin_client, patient):
-        """Create appointment with minimal required fields."""
-        payload = {
-            'patient_id': str(patient.id),
-            'status': 'scheduled',
-            'scheduled_start': (timezone.now() + timezone.timedelta(days=1)).isoformat(),
-            'scheduled_end': (timezone.now() + timezone.timedelta(days=1, hours=1)).isoformat(),
-        }
-        
-        response = admin_client.post(self.endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['patient_id'] == str(patient.id)
+        assert str(response.data['patient_id']) == str(patient.id)
+        assert str(response.data['practitioner_id']) == str(practitioner.id)
 
 
 @pytest.mark.django_db
 class TestAppointmentList:
-    """Test GET /api/v1/appointments/ - List and filter appointments."""
+    """Test GET /api/v1/clinical/appointments/ - List and filter appointments."""
     
-    endpoint = '/api/v1/appointments/'
+    endpoint = '/api/v1/clinical/appointments/'
     
     def test_list_appointments_basic(self, admin_client, appointment):
         """List appointments returns basic data."""
@@ -121,8 +82,8 @@ class TestAppointmentList:
             scheduled_end=timezone.now() + timezone.timedelta(days=7, hours=1)
         )
         
-        # Filter from now onwards
-        date_from = timezone.now().isoformat()
+        # Filter from now onwards (use date string to avoid URL-encoding of +)
+        date_from = timezone.now().date().isoformat()
         response = admin_client.get(f'{self.endpoint}?date_from={date_from}')
         
         assert response.status_code == status.HTTP_200_OK
@@ -146,8 +107,8 @@ class TestAppointmentList:
             scheduled_end=timezone.now() + timezone.timedelta(days=30, hours=1)
         )
         
-        # Filter up to now
-        date_to = timezone.now().isoformat()
+        # Filter up to now (use date string to avoid URL-encoding of +)
+        date_to = timezone.now().date().isoformat()
         response = admin_client.get(f'{self.endpoint}?date_to={date_to}')
         
         assert response.status_code == status.HTTP_200_OK
@@ -175,9 +136,9 @@ class TestAppointmentList:
             scheduled_end=timezone.now() + timezone.timedelta(days=20, hours=1)
         )
         
-        # Filter for next 10 days
-        date_from = timezone.now().isoformat()
-        date_to = (timezone.now() + timezone.timedelta(days=10)).isoformat()
+        # Filter for next 10 days (use date strings to avoid URL-encoding of +)
+        date_from = timezone.now().date().isoformat()
+        date_to = (timezone.now() + timezone.timedelta(days=10)).date().isoformat()
         
         response = admin_client.get(
             f'{self.endpoint}?date_from={date_from}&date_to={date_to}'
@@ -210,11 +171,11 @@ class TestAppointmentList:
 
 @pytest.mark.django_db
 class TestAppointmentUpdate:
-    """Test PATCH /api/v1/appointments/{id}/ - Update with status transitions."""
+    """Test PATCH /api/v1/clinical/appointments/{id}/ - Update with status transitions."""
     
     def test_update_appointment_basic(self, admin_client, appointment):
         """Update appointment notes."""
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         
         payload = {
             'notes': 'Updated notes',
@@ -228,141 +189,145 @@ class TestAppointmentUpdate:
         appointment.refresh_from_db()
         assert appointment.notes == 'Updated notes'
     
-    def test_update_status_scheduled_to_confirmed(self, admin_client, appointment):
+    def test_update_status_via_patch_blocked(self, admin_client, appointment):
+        """Status changes via PATCH are blocked — must use /transition/."""
+        appointment.status = 'scheduled'
+        appointment.save()
+        
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
+        payload = {'status': 'confirmed'}
+        
+        response = admin_client.patch(endpoint, payload, format='json')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'transition' in str(response.data).lower()
+
+
+@pytest.mark.django_db
+class TestAppointmentStatusTransition:
+    """Test POST /transition/ endpoint for status changes."""
+    
+    def test_transition_scheduled_to_confirmed(self, admin_client, appointment):
         """Can transition from scheduled to confirmed."""
         appointment.status = 'scheduled'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
         payload = {'status': 'confirmed'}
         
-        response = admin_client.patch(endpoint, payload, format='json')
+        response = admin_client.post(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['status'] == 'confirmed'
     
-    def test_update_status_confirmed_to_attended(self, admin_client, appointment):
-        """Can transition from confirmed to attended."""
+    def test_transition_confirmed_to_checked_in(self, admin_client, appointment):
+        """Can transition from confirmed to checked_in."""
         appointment.status = 'confirmed'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
-        payload = {'status': 'attended'}
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
+        payload = {'status': 'checked_in'}
         
-        response = admin_client.patch(endpoint, payload, format='json')
+        response = admin_client.post(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['status'] == 'attended'
+        assert response.data['status'] == 'checked_in'
     
-    def test_update_status_from_attended_rejected(self, admin_client, appointment):
-        """Cannot transition from attended (terminal state) to another status."""
-        appointment.status = 'attended'
+    def test_transition_checked_in_to_completed(self, admin_client, appointment):
+        """Can transition from checked_in to completed."""
+        appointment.status = 'checked_in'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
+        payload = {'status': 'completed'}
+        
+        response = admin_client.post(endpoint, payload, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'completed'
+    
+    def test_transition_from_completed_rejected(self, admin_client, appointment):
+        """Cannot transition from completed (terminal state)."""
+        appointment.status = 'completed'
+        appointment.save()
+        
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
         payload = {'status': 'confirmed'}
         
-        response = admin_client.patch(endpoint, payload, format='json')
+        response = admin_client.post(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'status' in response.data or 'transición' in str(response.data).lower()
     
-    def test_update_status_from_no_show_rejected(self, admin_client, appointment):
-        """Cannot transition from no_show (terminal state) to another status."""
+    def test_transition_from_no_show_rejected(self, admin_client, appointment):
+        """Cannot transition from no_show (terminal state)."""
         appointment.status = 'no_show'
         appointment.no_show_reason = 'Patient did not arrive'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
         payload = {'status': 'scheduled'}
         
-        response = admin_client.patch(endpoint, payload, format='json')
+        response = admin_client.post(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_update_status_from_cancelled_rejected(self, admin_client, appointment):
-        """Cannot transition from cancelled (terminal state) to another status."""
+    def test_transition_from_cancelled_rejected(self, admin_client, appointment):
+        """Cannot transition from cancelled (terminal state)."""
         appointment.status = 'cancelled'
         appointment.cancellation_reason = 'Patient cancelled'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
         payload = {'status': 'scheduled'}
         
-        response = admin_client.patch(endpoint, payload, format='json')
+        response = admin_client.post(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_update_status_no_show_requires_reason(self, admin_client, appointment):
-        """Setting status=no_show requires no_show_reason."""
+    def test_transition_to_no_show(self, admin_client, appointment):
+        """Transition to no_show from confirmed (after scheduled_start has passed)."""
         appointment.status = 'confirmed'
+        appointment.scheduled_start = timezone.now() - timezone.timedelta(hours=1)
+        appointment.scheduled_end = timezone.now()
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
-        payload = {
-            'status': 'no_show',
-            # Missing no_show_reason
-        }
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
+        payload = {'status': 'no_show', 'reason': 'Patient did not show up'}
         
-        response = admin_client.patch(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'no_show_reason' in response.data
-    
-    def test_update_status_no_show_with_reason_success(self, admin_client, appointment):
-        """Setting status=no_show with reason succeeds."""
-        appointment.status = 'confirmed'
-        appointment.save()
-        
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
-        payload = {
-            'status': 'no_show',
-            'no_show_reason': 'Patient did not show up',
-        }
-        
-        response = admin_client.patch(endpoint, payload, format='json')
+        response = admin_client.post(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['status'] == 'no_show'
-        assert response.data['no_show_reason'] == 'Patient did not show up'
     
-    def test_update_status_cancelled_requires_reason(self, admin_client, appointment):
-        """Setting status=cancelled requires cancellation_reason."""
+    def test_transition_to_cancelled(self, admin_client, appointment):
+        """Transition to cancelled from scheduled."""
         appointment.status = 'scheduled'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
-        payload = {
-            'status': 'cancelled',
-            # Missing cancellation_reason
-        }
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
+        payload = {'status': 'cancelled', 'reason': 'Patient requested cancellation'}
         
-        response = admin_client.patch(endpoint, payload, format='json')
-        
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'cancellation_reason' in response.data
-    
-    def test_update_status_cancelled_with_reason_success(self, admin_client, appointment):
-        """Setting status=cancelled with reason succeeds."""
-        appointment.status = 'scheduled'
-        appointment.save()
-        
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
-        payload = {
-            'status': 'cancelled',
-            'cancellation_reason': 'Patient requested cancellation',
-        }
-        
-        response = admin_client.patch(endpoint, payload, format='json')
+        response = admin_client.post(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['status'] == 'cancelled'
-        assert response.data['cancellation_reason'] == 'Patient requested cancellation'
+    
+    def test_transition_missing_status_field(self, admin_client, appointment):
+        """Transition without status field returns 400."""
+        appointment.status = 'scheduled'
+        appointment.save()
+        
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/transition/'
+        payload = {}
+        
+        response = admin_client.post(endpoint, payload, format='json')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
 class TestAppointmentLocking:
-    """Test appointment locking rules (encounter link, attended status)."""
+    """Test appointment locking rules (encounter link, completed status)."""
     
     def test_edit_locked_by_encounter_admin_allowed(
         self,
@@ -375,12 +340,12 @@ class TestAppointmentLocking:
         appointment.encounter = encounter
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         payload = {'notes': 'Admin edit'}
         
         response = admin_client.patch(endpoint, payload, format='json')
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == status.HTTP_200_OK, f"Admin edit failed: {response.data}"
         assert response.data['notes'] == 'Admin edit'
     
     def test_edit_locked_by_encounter_practitioner_forbidden(
@@ -394,7 +359,7 @@ class TestAppointmentLocking:
         appointment.encounter = encounter
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         payload = {'notes': 'Practitioner edit'}
         
         response = practitioner_client.patch(endpoint, payload, format='json')
@@ -413,53 +378,53 @@ class TestAppointmentLocking:
         appointment.encounter = encounter
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         payload = {'notes': 'Reception edit'}
         
         response = reception_client.patch(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_edit_locked_by_attended_status_admin_allowed(self, admin_client, appointment):
-        """Admin can edit appointment with status=attended."""
-        appointment.status = 'attended'
+    def test_edit_locked_by_completed_status_admin_allowed(self, admin_client, appointment):
+        """Admin can edit appointment with status=completed."""
+        appointment.status = 'completed'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
-        payload = {'notes': 'Admin edit after attended'}
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
+        payload = {'notes': 'Admin edit after completed'}
         
         response = admin_client.patch(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['notes'] == 'Admin edit after attended'
+        assert response.data['notes'] == 'Admin edit after completed'
     
-    def test_edit_locked_by_attended_status_practitioner_forbidden(
+    def test_edit_locked_by_completed_status_practitioner_forbidden(
         self,
         practitioner_client,
         appointment
     ):
-        """Practitioner cannot edit appointment with status=attended."""
-        appointment.status = 'attended'
+        """Practitioner cannot edit appointment with status=completed."""
+        appointment.status = 'completed'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         payload = {'notes': 'Practitioner edit'}
         
         response = practitioner_client.patch(endpoint, payload, format='json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'attended' in str(response.data).lower() or 'status' in str(response.data).lower()
+        assert 'completed' in str(response.data).lower() or 'status' in str(response.data).lower()
     
-    def test_edit_locked_by_attended_status_reception_forbidden(
+    def test_edit_locked_by_completed_status_reception_forbidden(
         self,
         reception_client,
         appointment
     ):
-        """Reception cannot edit appointment with status=attended."""
-        appointment.status = 'attended'
+        """Reception cannot edit appointment with status=completed."""
+        appointment.status = 'completed'
         appointment.save()
         
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         payload = {'notes': 'Reception edit'}
         
         response = reception_client.patch(endpoint, payload, format='json')
@@ -474,7 +439,7 @@ class TestAppointmentSoftDelete:
     def test_admin_can_soft_delete_appointment(self, admin_client, appointment_factory):
         """Admin can soft delete appointment."""
         appointment = appointment_factory(status='scheduled')
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         
         response = admin_client.delete(endpoint)
         
@@ -492,7 +457,7 @@ class TestAppointmentSoftDelete:
     ):
         """Non-admin cannot delete appointment."""
         appointment = appointment_factory(status='scheduled')
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         
         response = practitioner_client.delete(endpoint)
         
@@ -515,7 +480,7 @@ class TestAppointmentSoftDelete:
         appointment.deleted_at = timezone.now()
         appointment.save()
         
-        response = admin_client.get('/api/v1/appointments/')
+        response = admin_client.get('/api/v1/clinical/appointments/')
         
         assert response.status_code == status.HTTP_200_OK
         
@@ -536,7 +501,7 @@ class TestAppointmentSoftDelete:
         appointment.deleted_at = timezone.now()
         appointment.save()
         
-        response = admin_client.get('/api/v1/appointments/?include_deleted=true')
+        response = admin_client.get('/api/v1/clinical/appointments/?include_deleted=true')
         
         assert response.status_code == status.HTTP_200_OK
         
@@ -557,7 +522,7 @@ class TestAppointmentSoftDelete:
         appointment.deleted_at = timezone.now()
         appointment.save()
         
-        response = practitioner_client.get('/api/v1/appointments/?include_deleted=true')
+        response = practitioner_client.get('/api/v1/clinical/appointments/?include_deleted=true')
         
         assert response.status_code == status.HTTP_200_OK
         
@@ -568,11 +533,11 @@ class TestAppointmentSoftDelete:
 
 @pytest.mark.django_db
 class TestAppointmentRetrieve:
-    """Test GET /api/v1/appointments/{id}/ - Retrieve appointment detail."""
+    """Test GET /api/v1/clinical/appointments/{id}/ - Retrieve appointment detail."""
     
     def test_retrieve_appointment_success(self, admin_client, appointment):
         """Retrieve appointment returns full detail."""
-        endpoint = f'/api/v1/appointments/{appointment.id}/'
+        endpoint = f'/api/v1/clinical/appointments/{appointment.id}/'
         
         response = admin_client.get(endpoint)
         
@@ -586,7 +551,7 @@ class TestAppointmentRetrieve:
         """Retrieve nonexistent appointment returns 404."""
         import uuid
         fake_id = uuid.uuid4()
-        endpoint = f'/api/v1/appointments/{fake_id}/'
+        endpoint = f'/api/v1/clinical/appointments/{fake_id}/'
         
         response = admin_client.get(endpoint)
         

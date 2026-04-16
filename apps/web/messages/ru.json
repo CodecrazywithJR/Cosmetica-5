@@ -106,7 +106,8 @@
         "status": "Статус",
         "birthDate": "Дата рожд.",
         "sex": "Пол",
-        "actions": "Действия"      },
+        "actions": "Действия"
+      },
       "warnings": {
         "incompleteConsents": "Требуются юридические согласия",
         "missingDocuments": "Документы ожидаются",
@@ -331,7 +332,8 @@
       "confirm": "Подтвердить",
       "checkIn": "Зарегистрировать",
       "complete": "Завершить",
-      "cancel": "Отменить"
+      "cancel": "Отменить",
+      "startEncounter": "Consultation"
     },
     "summary": {
       "totalAppointments": "Всего встреч"
@@ -360,7 +362,9 @@
   },
   "auth": {
     "login": {
-      "title": "Войти",      "subtitle": "Система управления клиникой и продажами",      "emailLabel": "Электронная почта",
+      "title": "Войти",
+      "subtitle": "Система управления клиникой и продажами",
+      "emailLabel": "Электронная почта",
       "emailPlaceholder": "your@email.com",
       "passwordLabel": "Пароль",
       "passwordPlaceholder": "Введите ваш пароль",
@@ -495,6 +499,264 @@
       "title": "Несанкционированный доступ",
       "description": "У вас нет прав доступа к этому разделу. Только администраторы могут управлять пользователями.",
       "action": "Перейти на главную"
+    }
+  },
+  "system": {
+    "badge": {
+      "system": "Система"
+    },
+    "header": {
+      "operating_in": "Работа в: {name}"
+    },
+    "actions": {
+      "select_legal_entity": "Выбрать юридическое лицо",
+      "switch_legal_entity": "Сменить юридическое лицо",
+      "return_to_system": "Вернуться в систему"
+    },
+    "selector": {
+      "title": "Выбрать юридическое лицо",
+      "search_placeholder": "Поиск по названию, стране или городу...",
+      "no_results": "Юридические лица не найдены",
+      "create_first": "Создать первое юридическое лицо",
+      "manage": "Управление юридическими лицами"
+    },
+    "guard": {
+      "title": "Выберите юридическое лицо для работы",
+      "description": "Как системный администратор, вы должны выбрать юридическое лицо перед доступом к бизнес-функциям."
+    }
+  },
+  "proposals": {
+    "detail": {
+      "title": "Детали предложения",
+      "info": "Информация о предложении",
+      "patient": "Пациент",
+      "practitioner": "Врач",
+      "created": "Создано",
+      "validUntil": "Действительно до",
+      "sentAt": "Отправлено",
+      "acceptedAt": "Принято",
+      "cancellationReason": "Причина отмены",
+      "notes": "Заметки",
+      "lines": "Линии лечения",
+      "treatmentName": "Лечение",
+      "quantity": "Кол-во",
+      "unitPrice": "Цена за ед.",
+      "lineTotal": "Итого",
+      "total": "Итого",
+      "noLines": "Нет линий лечения.",
+      "saleCreated": "Продажа создана",
+      "readonlyMessage": {
+        "cancelled": "Это предложение было отменено.",
+        "expired": "Срок действия этого предложения истёк."
+      }
+    },
+    "status": {
+      "draft": "Черновик",
+      "sent": "Отправлено",
+      "accepted": "Принято",
+      "cancelled": "Отменено",
+      "expired": "Истекло"
+    },
+    "actions": {
+      "backToList": "Назад к предложениям",
+      "send": "Отправить предложение",
+      "sending": "Отправка…",
+      "accept": "Принять предложение",
+      "accepting": "Принятие…",
+      "confirmAccept": "Подтвердить принятие",
+      "cancel": "Отменить предложение",
+      "cancelling": "Отмена…",
+      "back": "Назад"
+    },
+    "modals": {
+      "acceptTitle": "Принять предложение",
+      "acceptDescription": "Принятие этого предложения создаст продажу и планы лечения. Это действие нельзя отменить.",
+      "legalEntityLabel": "ID юридического лица",
+      "legalEntityPlaceholder": "Введите UUID юридического лица",
+      "cancelTitle": "Отменить предложение",
+      "cancelDescription": "Это действие нельзя отменить. Предложение будет окончательно отменено.",
+      "cancellationReasonLabel": "Причина отмены",
+      "cancellationReasonPlaceholder": "Введите причину отмены…",
+      "confirmCancel": "Подтвердить отмену"
+    },
+    "errors": {
+      "loadFailed": "Не удалось загрузить предложение."
+    }
+  },
+  "patient360": {
+    "tabs": {
+      "overview": "Обзор",
+      "encounters": "Консультации",
+      "treatmentPlans": "Планы лечения",
+      "proposals": "Предложения",
+      "sales": "Продажи"
+    },
+    "comingSoon": "Скоро",
+    "overview": {
+      "personalData": "Персональные данные",
+      "notes": "Заметки",
+      "noNotes": "Заметки отсутствуют.",
+      "activeCoverage": "Активное покрытие",
+      "providerName": "Поставщик",
+      "memberNumber": "Номер участника",
+      "socialSecurityNumber": "Номер социального страхования",
+      "validFrom": "Действует с",
+      "financialKpis": "Финансовые KPI",
+      "proposalsDraft": "Черновики предложений",
+      "proposalsSent": "Отправленные предложения",
+      "lastSaleDate": "Последняя продажа",
+      "clinicalKpis": "Клинические KPI",
+      "totalEncounters": "Всего консультаций",
+      "activeTreatmentPlans": "Активные планы лечения",
+      "errorLoading": "Не удалось загрузить обзор пациента.",
+      "clinicalHistory": "Клиническая история",
+      "allStatuses": "Все статусы",
+      "dateFrom": "С",
+      "dateTo": "По",
+      "clearFilters": "Очистить",
+      "pageOf": "Страница {page} из {total}",
+      "results": "{count} результатов",
+      "previous": "Назад",
+      "next": "Вперёд",
+      "viewEncounter": "Просмотр",
+      "errorLoadingEncounters": "Ошибка загрузки консультаций.",
+      "noEncounters": "Консультации не найдены.",
+      "financialHistory": "Финансовая история",
+      "viewProposal": "Просмотр",
+      "errorLoadingProposals": "Ошибка загрузки предложений.",
+      "noProposals": "Предложения не найдены.",
+      "colDate": "Дата",
+      "colStatus": "Статус",
+      "colTotal": "Сумма",
+      "colValidUntil": "Действует до",
+      "colPractitioner": "Специалист"
+    },
+    "treatmentPlans": "Планы Лечения",
+    "noTreatmentPlans": "Планы лечения не найдены."
+  },
+  "treatmentPlans": {
+    "status": {
+      "draft": "Черновик",
+      "active": "Активный",
+      "completed": "Завершён",
+      "cancelled": "Отменён"
+    },
+    "colDate": "Дата",
+    "colStatus": "Статус",
+    "colSessions": "Сеансы",
+    "colRemaining": "Осталось",
+    "colProgress": "Прогресс",
+    "view": "Открыть",
+    "errorLoading": "Не удалось загрузить планы лечения."
+  },
+  "treatmentSession": {
+    "pageTitle": "Сеанс Лечения",
+    "header": {
+      "patient": "Пациент",
+      "package": "Пакет",
+      "practitioner": "Специалист",
+      "performedAt": "Проведён"
+    },
+    "status": {
+      "draft": "Черновик",
+      "completed": "Завершён",
+      "cancelled": "Отменён"
+    },
+    "actions": {
+      "complete": "Завершить Сеанс",
+      "cancel": "Отменить Сеанс",
+      "back": "Назад"
+    },
+    "confirm": {
+      "completeTitle": "Завершить Сеанс",
+      "completeMessage": "Подтвердить, что сеанс был проведён? Это действие нельзя отменить.",
+      "cancelTitle": "Отменить Сеанс",
+      "cancelMessage": "Отменить этот сеанс? Это действие нельзя отменить.",
+      "yes": "Подтвердить",
+      "no": "Назад"
+    },
+    "editor": {
+      "title": "Клинические Заметки",
+      "placeholder": "Написать клинические заметки к сеансу...",
+      "saving": "Сохранение...",
+      "saved": "Сохранено"
+    },
+    "photos": {
+      "title": "Фотографии",
+      "dropHere": "Перетащите изображения сюда",
+      "uploadHint": "или нажмите для выбора файлов",
+      "noPhotos": "Фотографии ещё не прикреплены."
+    },
+    "error": {
+      "loading": "Не удалось загрузить сеанс лечения.",
+      "completing": "Не удалось завершить сеанс.",
+      "cancelling": "Не удалось отменить сеанс."
+    }
+  },
+  "admin": {
+    "section": "Администрирование",
+    "legalEntities": {
+      "title": "Юридические лица",
+      "pageTitle": "Юридические лица",
+      "createTitle": "Новое юридическое лицо",
+      "editTitle": "Редактировать юридическое лицо",
+      "columns": {
+        "tradeName": "Торговое название",
+        "legalName": "Юридическое название",
+        "country": "Страна",
+        "siret": "SIRET",
+        "active": "Активна",
+        "users": "Пользователи",
+        "actions": "Действия"
+      },
+      "empty": "Юридические лица не найдены.",
+      "emptyHint": "Создайте первое юридическое лицо для начала работы.",
+      "create": "Новое юридическое лицо",
+      "edit": "Редактировать",
+      "view": "Просмотр",
+      "form": {
+        "sectionIdentity": "Идентификация",
+        "sectionAddress": "Адрес",
+        "sectionContact": "Контакт",
+        "sectionAdmin": "Администратор",
+        "sectionStatus": "Статус",
+        "tradeName": "Торговое название",
+        "legalName": "Юридическое название",
+        "siret": "SIRET",
+        "siren": "SIREN",
+        "vatNumber": "Номер НДС",
+        "countryCode": "Код страны",
+        "addressLine1": "Адрес строка 1",
+        "addressLine2": "Адрес строка 2",
+        "postalCode": "Почтовый индекс",
+        "city": "Город",
+        "legalEmail": "Юридический email",
+        "phone": "Телефон",
+        "currency": "Валюта",
+        "timezone": "Часовой пояс",
+        "isActive": "Активна",
+        "adminEmail": "Email администратора",
+        "adminFirstName": "Имя администратора",
+        "adminLastName": "Фифамilia администратора"
+      },
+      "actions": {
+        "create": "Создать",
+        "save": "Сохранить",
+        "cancel": "Отмена"
+      },
+      "messages": {
+        "created": "Юридическое лицо успешно создано.",
+        "updated": "Юридическое лицо успешно обновлено.",
+        "errorCreate": "Не удалось создать юридическое лицо.",
+        "errorUpdate": "Не удалось обновить юридическое лицо.",
+        "errorLoad": "Не удалось загрузить юридические лица.",
+        "tempPasswordNotice": "Для администратора сгенерирован временный пароль. Скопируйте его сейчас — он больше не будет показан.",
+        "goToList": "Перейти к юридическим лицам"
+      },
+      "status": {
+        "active": "Активна",
+        "inactive": "Неактивна"
+      }
     }
   }
 }

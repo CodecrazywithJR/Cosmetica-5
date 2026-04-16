@@ -13,11 +13,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 VERSION = os.environ.get('APP_VERSION', '1.0.0')
 COMMIT_HASH = os.environ.get('COMMIT_HASH', None)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-secret-key-change-in-production')
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# In production (DEBUG=False), SECRET_KEY MUST be set via env var.
+_secret_key_default = 'dev-secret-key-change-in-production' if DEBUG else None
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', _secret_key_default)  # type: ignore[arg-type]
+if not SECRET_KEY:
+    raise RuntimeError(
+        'DJANGO_SECRET_KEY environment variable is required when DEBUG=False. '
+        'Generate one with: python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"'
+    )
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
 
@@ -29,17 +36,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',
     
     # Third-party apps
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'drf_spectacular',
     
     # Local apps - DOMAIN_MODEL.md structure
-    'apps.core',        # app_settings, clinic_location
+    'apps.core',        # app_settings, clinic
     'apps.authz',       # auth_user, auth_role, auth_user_role, practitioner
     'apps.clinical',    # patient, guardian, encounter, appointment, consent, clinical_photo, etc.
+    'apps.proposals',   # proposal, proposal_line (extracted from clinical)
+    'apps.treatment_plans',  # treatment_plan (package session tracking)
     'apps.documents',   # document (unified)
     'apps.commerce',    # products, inventory, sales, invoices, payments
     'apps.website',     # cms_*, website_settings, marketing_media_asset, public_lead
@@ -67,6 +78,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.middleware.TenantMiddleware',  # Tenant context: resolves active LE per request
+    'apps.core.middleware.InactiveLegalEntityMiddleware',  # LE freeze: blocks writes when LE inactive
     'apps.core.observability.correlation.RequestCorrelationMiddleware',  # Request correlation
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -102,7 +115,7 @@ DATABASES = {
         'ENGINE': os.environ.get('DATABASE_ENGINE', 'django.db.backends.postgresql'),
         'NAME': os.environ.get('DATABASE_NAME', 'emr_derma_db'),
         'USER': os.environ.get('DATABASE_USER', 'emr_user'),
-        'PASSWORD': os.environ.get('DATABASE_PASSWORD', 'emr_dev_pass'),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD', 'emr_dev_pass' if DEBUG else ''),
         'HOST': os.environ.get('DATABASE_HOST', 'postgres'),
         'PORT': os.environ.get('DATABASE_PORT', '5432'),
     }
@@ -163,12 +176,26 @@ REST_FRAMEWORK = {
     ],
     # Throttling configuration for public endpoints
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',  # Generic anonymous users (fallback)
-        'user': '1000/hour',  # Authenticated users (not typically throttled)
-        'lead_submissions': '10/hour',  # Public lead form submissions
-        'lead_burst': '2/min',  # Burst protection for lead submissions
+        'anon': '100/hour',
+        'user': '1000/hour',
+        'lead_submissions': '10/hour',
+        'lead_burst': '2/min',
+        'public_avail': '60/hour',         # Availability lookups (public)
+        'public_avail_burst': '15/min',    # Availability burst cap
+        'public_create': '10/hour',        # Booking creation (strict)
+        'public_create_burst': '3/min',    # Booking creation burst cap
     },
 }
+
+# ==============================================================================
+# PUBLIC BOOKING SECURITY
+# ==============================================================================
+# PUBLIC_BOOKING_TOKEN_KEY — HMAC signing key (defaults to SECRET_KEY)
+# Tokens are generated server-side for clinic website embeds / landing pages.
+PUBLIC_BOOKING_TOKEN_MAX_AGE = int(os.environ.get('PUBLIC_BOOKING_TOKEN_MAX_AGE', '3600'))
+PUBLIC_BOOKING_ANTIBOT_BACKEND = os.environ.get('PUBLIC_BOOKING_ANTIBOT_BACKEND', 'noop')
+PUBLIC_BOOKING_MAX_SLOTS = 50
+PUBLIC_BOOKING_MAX_DATE_RANGE_DAYS = 7
 
 # ==============================================================================
 # SIMPLE JWT
@@ -183,7 +210,7 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
-    'SIGNING_KEY': os.environ.get('JWT_SIGNING_KEY', SECRET_KEY),
+    'SIGNING_KEY': os.environ.get('JWT_SIGNING_KEY') or SECRET_KEY,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
@@ -229,8 +256,8 @@ MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
 # Public endpoint for presigned URLs (accessible from browser)
 MINIO_PUBLIC_ENDPOINT = os.environ.get('MINIO_PUBLIC_ENDPOINT', 'localhost:9000')
 
-MINIO_ACCESS_KEY = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin')
-MINIO_SECRET_KEY = os.environ.get('MINIO_SECRET_KEY', 'minioadmin')
+MINIO_ACCESS_KEY = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin' if DEBUG else '')
+MINIO_SECRET_KEY = os.environ.get('MINIO_SECRET_KEY', 'minioadmin' if DEBUG else '')
 MINIO_USE_SSL = os.environ.get('MINIO_USE_SSL', 'False') == 'True'
 MINIO_PUBLIC_URL = os.environ.get('MINIO_PUBLIC_URL', 'http://localhost:9000')
 
@@ -241,16 +268,6 @@ MINIO_DOCUMENTS_BUCKET = os.environ.get('MINIO_DOCUMENTS_BUCKET', 'documents')
 
 # Legacy variable for backward compatibility
 MINIO_BUCKET_NAME = MINIO_CLINICAL_BUCKET
-
-# ==============================================================================
-# CALENDLY INTEGRATION (FASE 4.0)
-# ==============================================================================
-# Default Calendly URL when practitioner.calendly_url is null
-# Override via environment variable: CALENDLY_DEFAULT_URL
-CALENDLY_DEFAULT_URL = os.environ.get(
-    'CALENDLY_DEFAULT_URL',
-    'https://calendly.com/app/scheduling/meeting_types/user/me?pane=event_type_editor&paneState=ZGVmYXVsdE9wZW5LZXk9YXZhaWxhYmlsaXR5JmlkPTE4OTg2OTAzMSZ0eXBlPVN0YW5kYXJkRXZlbnRUeXBlJm93bmVyVHlwZT1Vc2VyJm93bmVySWQ9NDU3MzYwNTUma2luZD1zb2xv'
-)
 
 # Configure Django storage backends
 if not DEBUG:
@@ -335,5 +352,15 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 # ==============================================================================
 # INTEGRATIONS
 # ==============================================================================
-CALENDLY_WEBHOOK_SECRET = os.environ.get('CALENDLY_WEBHOOK_SECRET', 'dev-webhook-secret')
-CALENDLY_API_TOKEN = os.environ.get('CALENDLY_API_TOKEN', '')
+
+# ==============================================================================
+# PRODUCTION SECURITY HEADERS
+# ==============================================================================
+if not DEBUG:
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True') == 'True'
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True

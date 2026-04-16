@@ -106,7 +106,8 @@
         "status": "Estado",
         "birthDate": "Fecha Nac.",
         "sex": "Sexo",
-        "actions": "Acciones"      },
+        "actions": "Acciones"
+      },
       "warnings": {
         "incompleteConsents": "Consentimientos legales requeridos",
         "missingDocuments": "Documentos pendientes",
@@ -211,7 +212,8 @@
       "bannerTitle": "Consentimientos Legales Requeridos",
       "bannerMessage": "Este paciente no ha aceptado los consentimientos legales necesarios. No se pueden crear consultas clínicas hasta que se acepten tanto la política de privacidad como los términos y condiciones.",
       "reviewCta": "Revisar y Aceptar Consentimientos"
-    },    "consentDocuments": {
+    },
+    "consentDocuments": {
       "missingDocumentsBanner": {
         "title": "Documentos de Consentimiento Pendientes",
         "message": "Algunos consentimientos documentales aún no tienen archivo escaneado adjunto. Puede subirlos desde la sección de documentos cuando estén disponibles."
@@ -261,7 +263,8 @@
         "generic": "Algunos documentos no pudieron procesarse correctamente"
       },
       "uploadWarningsTitle": "Advertencias sobre documentos"
-    },    "documentType": {
+    },
+    "documentType": {
       "dni": "DNI",
       "passport": "Pasaporte",
       "other": "Otro"
@@ -338,7 +341,8 @@
       "confirm": "Confirmar",
       "checkIn": "Registrar",
       "complete": "Completar",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "startEncounter": "Iniciar Consulta"
     },
     "errors": {
       "title": "No se pudo cargar la agenda",
@@ -367,7 +371,9 @@
   },
   "auth": {
     "login": {
-      "title": "Iniciar Sesión",      "subtitle": "Sistema de gestión clínico y de ventas",      "emailLabel": "Correo Electrónico",
+      "title": "Iniciar Sesión",
+      "subtitle": "Sistema de gestión clínico y de ventas",
+      "emailLabel": "Correo Electrónico",
       "emailPlaceholder": "tu@email.com",
       "passwordLabel": "Contraseña",
       "passwordPlaceholder": "Ingresa tu contraseña",
@@ -551,6 +557,264 @@
       "loadInitialData": "Error al cargar datos iniciales. Recargue la página.",
       "loadAvailability": "Error al cargar disponibilidad. Intente nuevamente.",
       "noPermissionView": "No tiene permisos para ver la disponibilidad de este profesional."
+    }
+  },
+  "system": {
+    "badge": {
+      "system": "Sistema"
+    },
+    "header": {
+      "operating_in": "Operando en: {name}"
+    },
+    "actions": {
+      "select_legal_entity": "Seleccionar Entidad Legal",
+      "switch_legal_entity": "Cambiar Entidad Legal",
+      "return_to_system": "Volver al Sistema"
+    },
+    "selector": {
+      "title": "Seleccionar Entidad Legal",
+      "search_placeholder": "Buscar por nombre, país o ciudad...",
+      "no_results": "No se encontraron entidades legales",
+      "create_first": "Crear Primera Entidad Legal",
+      "manage": "Administrar Entidades Legales"
+    },
+    "guard": {
+      "title": "Seleccione una Entidad Legal para operar",
+      "description": "Como administrador del sistema, debe seleccionar una entidad legal antes de acceder a las funciones de negocio."
+    }
+  },
+  "proposals": {
+    "detail": {
+      "title": "Detalle de Propuesta",
+      "info": "Información de la Propuesta",
+      "patient": "Paciente",
+      "practitioner": "Profesional",
+      "created": "Creada",
+      "validUntil": "Válida hasta",
+      "sentAt": "Enviada",
+      "acceptedAt": "Aceptada",
+      "cancellationReason": "Motivo de cancelación",
+      "notes": "Notas",
+      "lines": "Líneas de Tratamiento",
+      "treatmentName": "Tratamiento",
+      "quantity": "Cant.",
+      "unitPrice": "Precio unitario",
+      "lineTotal": "Total",
+      "total": "Total",
+      "noLines": "Sin líneas de tratamiento.",
+      "saleCreated": "Venta creada",
+      "readonlyMessage": {
+        "cancelled": "Esta propuesta ha sido cancelada.",
+        "expired": "Esta propuesta ha expirado."
+      }
+    },
+    "status": {
+      "draft": "Borrador",
+      "sent": "Enviada",
+      "accepted": "Aceptada",
+      "cancelled": "Cancelada",
+      "expired": "Expirada"
+    },
+    "actions": {
+      "backToList": "Volver a Propuestas",
+      "send": "Enviar Propuesta",
+      "sending": "Enviando…",
+      "accept": "Aceptar Propuesta",
+      "accepting": "Aceptando…",
+      "confirmAccept": "Confirmar Aceptación",
+      "cancel": "Cancelar Propuesta",
+      "cancelling": "Cancelando…",
+      "back": "Volver"
+    },
+    "modals": {
+      "acceptTitle": "Aceptar Propuesta",
+      "acceptDescription": "Aceptar esta propuesta creará una Venta y Planes de Tratamiento. Esta acción no se puede deshacer.",
+      "legalEntityLabel": "ID de Entidad Legal",
+      "legalEntityPlaceholder": "Ingrese UUID de entidad legal",
+      "cancelTitle": "Cancelar Propuesta",
+      "cancelDescription": "Esta acción no se puede deshacer. La propuesta será cancelada permanentemente.",
+      "cancellationReasonLabel": "Motivo de cancelación",
+      "cancellationReasonPlaceholder": "Ingrese el motivo de cancelación…",
+      "confirmCancel": "Confirmar Cancelación"
+    },
+    "errors": {
+      "loadFailed": "Error al cargar la propuesta."
+    }
+  },
+  "patient360": {
+    "tabs": {
+      "overview": "Resumen",
+      "encounters": "Consultas",
+      "treatmentPlans": "Planes de Tratamiento",
+      "proposals": "Propuestas",
+      "sales": "Ventas"
+    },
+    "comingSoon": "Próximamente",
+    "overview": {
+      "personalData": "Datos Personales",
+      "notes": "Notas",
+      "noNotes": "Sin notas registradas.",
+      "activeCoverage": "Cobertura Activa",
+      "providerName": "Proveedor",
+      "memberNumber": "Número de Afiliado",
+      "socialSecurityNumber": "Número de Seguridad Social",
+      "validFrom": "Vigente Desde",
+      "financialKpis": "KPIs Financieros",
+      "proposalsDraft": "Propuestas en Borrador",
+      "proposalsSent": "Propuestas Enviadas",
+      "lastSaleDate": "Última Venta",
+      "clinicalKpis": "KPIs Clínicos",
+      "totalEncounters": "Consultas Totales",
+      "activeTreatmentPlans": "Planes de Tratamiento Activos",
+      "errorLoading": "Error al cargar el resumen del paciente.",
+      "clinicalHistory": "Historial Clínico",
+      "allStatuses": "Todos los estados",
+      "dateFrom": "Desde",
+      "dateTo": "Hasta",
+      "clearFilters": "Limpiar",
+      "pageOf": "Página {page} de {total}",
+      "results": "{count} resultados",
+      "previous": "Anterior",
+      "next": "Siguiente",
+      "viewEncounter": "Ver",
+      "errorLoadingEncounters": "Error al cargar consultas.",
+      "noEncounters": "No se encontraron consultas.",
+      "financialHistory": "Historial Financiero",
+      "viewProposal": "Ver",
+      "errorLoadingProposals": "Error al cargar presupuestos.",
+      "noProposals": "No se encontraron presupuestos.",
+      "colDate": "Fecha",
+      "colStatus": "Estado",
+      "colTotal": "Total",
+      "colValidUntil": "Válido hasta",
+      "colPractitioner": "Profesional"
+    },
+    "treatmentPlans": "Planes de Tratamiento",
+    "noTreatmentPlans": "No se encontraron planes de tratamiento."
+  },
+  "treatmentPlans": {
+    "status": {
+      "draft": "Borrador",
+      "active": "Activo",
+      "completed": "Completado",
+      "cancelled": "Cancelado"
+    },
+    "colDate": "Fecha",
+    "colStatus": "Estado",
+    "colSessions": "Sesiones",
+    "colRemaining": "Restantes",
+    "colProgress": "Progreso",
+    "view": "Ver",
+    "errorLoading": "Error al cargar los planes de tratamiento."
+  },
+  "treatmentSession": {
+    "pageTitle": "Sesión de Tratamiento",
+    "header": {
+      "patient": "Paciente",
+      "package": "Paquete",
+      "practitioner": "Profesional",
+      "performedAt": "Realizada el"
+    },
+    "status": {
+      "draft": "Borrador",
+      "completed": "Completada",
+      "cancelled": "Cancelada"
+    },
+    "actions": {
+      "complete": "Completar Sesión",
+      "cancel": "Cancelar Sesión",
+      "back": "Volver"
+    },
+    "confirm": {
+      "completeTitle": "Completar Sesión",
+      "completeMessage": "¿Confirmar que esta sesión fue realizada? Esta acción no se puede deshacer.",
+      "cancelTitle": "Cancelar Sesión",
+      "cancelMessage": "¿Cancelar esta sesión? Esta acción no se puede deshacer.",
+      "yes": "Confirmar",
+      "no": "Volver"
+    },
+    "editor": {
+      "title": "Notas Clínicas",
+      "placeholder": "Escribir notas clínicas para esta sesión...",
+      "saving": "Guardando...",
+      "saved": "Guardado"
+    },
+    "photos": {
+      "title": "Fotos",
+      "dropHere": "Soltar imágenes aquí",
+      "uploadHint": "o haga clic para seleccionar archivos",
+      "noPhotos": "No hay fotos adjuntas aún."
+    },
+    "error": {
+      "loading": "Error al cargar la sesión de tratamiento.",
+      "completing": "Error al completar la sesión.",
+      "cancelling": "Error al cancelar la sesión."
+    }
+  },
+  "admin": {
+    "section": "Administración",
+    "legalEntities": {
+      "title": "Entidades Legales",
+      "pageTitle": "Entidades Legales",
+      "createTitle": "Nueva Entidad Legal",
+      "editTitle": "Editar Entidad Legal",
+      "columns": {
+        "tradeName": "Nombre Comercial",
+        "legalName": "Razón Social",
+        "country": "País",
+        "siret": "SIRET",
+        "active": "Activa",
+        "users": "Usuarios",
+        "actions": "Acciones"
+      },
+      "empty": "No se encontraron entidades legales.",
+      "emptyHint": "Cree su primera entidad legal para comenzar.",
+      "create": "Nueva Entidad Legal",
+      "edit": "Editar",
+      "view": "Ver",
+      "form": {
+        "sectionIdentity": "Identidad",
+        "sectionAddress": "Dirección",
+        "sectionContact": "Contacto",
+        "sectionAdmin": "Usuario Administrador",
+        "sectionStatus": "Estado",
+        "tradeName": "Nombre Comercial",
+        "legalName": "Razón Social",
+        "siret": "SIRET",
+        "siren": "SIREN",
+        "vatNumber": "Número de IVA",
+        "countryCode": "Código de País",
+        "addressLine1": "Dirección Línea 1",
+        "addressLine2": "Dirección Línea 2",
+        "postalCode": "Código Postal",
+        "city": "Ciudad",
+        "legalEmail": "Email Legal",
+        "phone": "Teléfono",
+        "currency": "Moneda",
+        "timezone": "Zona Horaria",
+        "isActive": "Activa",
+        "adminEmail": "Email del Administrador",
+        "adminFirstName": "Nombre del Administrador",
+        "adminLastName": "Apellido del Administrador"
+      },
+      "actions": {
+        "create": "Crear Entidad",
+        "save": "Guardar Cambios",
+        "cancel": "Cancelar"
+      },
+      "messages": {
+        "created": "Entidad legal creada exitosamente.",
+        "updated": "Entidad legal actualizada exitosamente.",
+        "errorCreate": "Error al crear la entidad legal.",
+        "errorUpdate": "Error al actualizar la entidad legal.",
+        "errorLoad": "Error al cargar las entidades legales.",
+        "tempPasswordNotice": "Se generó una contraseña temporal para el usuario administrador. Cópiela ahora — no se mostrará de nuevo.",
+        "goToList": "Ir a Entidades Legales"
+      },
+      "status": {
+        "active": "Activa",
+        "inactive": "Inactiva"
+      }
     }
   }
 }

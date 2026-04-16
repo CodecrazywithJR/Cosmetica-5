@@ -81,12 +81,9 @@ class SaleAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         """
-        Prevent deletion of terminal status sales.
-        Only superuser can delete.
+        Sales cannot be deleted to preserve financial records.
         """
-        if obj and obj.is_terminal_status:
-            return request.user.is_superuser
-        return super().has_delete_permission(request, obj)
+        return False
     
     def save_model(self, request, obj, form, change):
         """

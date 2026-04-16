@@ -1,37 +1,51 @@
 """Utility functions for POS operations."""
-import re
+import logging
 from typing import Optional
+
+import phonenumbers
+
+logger = logging.getLogger(__name__)
+
+# ISO 3166-1 alpha-2 → phone country code used by phonenumbers library
+_DEFAULT_REGION = None  # lazily resolved from AppSettings
+
+
+def _get_default_region() -> str:
+    """Return the default region code from AppSettings, cached per-process."""
+    global _DEFAULT_REGION
+    if _DEFAULT_REGION is None:
+        try:
+            from apps.core.models import AppSettings
+            settings = AppSettings.objects.first()
+            _DEFAULT_REGION = settings.default_country_code if settings else 'FR'
+        except Exception:
+            _DEFAULT_REGION = 'FR'
+    return _DEFAULT_REGION
 
 
 def normalize_phone_to_e164(phone: str) -> Optional[str]:
     """
-    Normalize phone to E.164 format.
-    
-    Simple implementation: strip non-digits, ensure it starts with +.
-    Real implementation should use phonenumbers library.
-    
+    Normalize phone to E.164 format using the phonenumbers library.
+
+    Falls back to AppSettings.default_country_code when the number
+    doesn't include a country code prefix.
+
     Args:
         phone: Phone number in any format
-        
+
     Returns:
         E.164 formatted phone or None if invalid
     """
     if not phone:
         return None
-    
-    # Remove all non-digit characters except +
-    cleaned = re.sub(r'[^\d+]', '', phone)
-    
-    # If doesn't start with +, assume it's missing country code
-    if not cleaned.startswith('+'):
-        # Default to Mexico +52 if no country code (adjust as needed)
-        cleaned = '+52' + cleaned
-    
-    # Basic validation: should have at least 10 digits after +
-    if len(cleaned) < 11:  # + and at least 10 digits
+
+    try:
+        parsed = phonenumbers.parse(phone, _get_default_region())
+        if not phonenumbers.is_valid_number(parsed):
+            return None
+        return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+    except phonenumbers.NumberParseException:
         return None
-    
-    return cleaned
 
 
 def mask_phone(phone_e164: Optional[str]) -> str:

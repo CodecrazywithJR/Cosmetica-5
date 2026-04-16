@@ -16,12 +16,14 @@ from rest_framework.permissions import IsAuthenticated
 from apps.clinical.models import Encounter, EncounterDocument
 from apps.documents.models import Document
 from apps.clinical.permissions import EncounterPermission
+from apps.authz.models import RoleChoices
 from apps.clinical.utils_storage import (
     generate_presigned_put_url,
     get_document_url,
     generate_object_key,
     delete_object
 )
+from apps.core.tenant import TenantQuerySetMixin
 
 
 # File validation constants
@@ -35,9 +37,10 @@ ALLOWED_DOCUMENT_MIMES = [
     'text/plain',
 ]
 MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+ERROR_PERMISSION_DENIED = 'Permission denied'
 
 
-class DocumentViewSet(viewsets.ViewSet):
+class DocumentViewSet(TenantQuerySetMixin, viewsets.ViewSet):
     """
     ViewSet for managing documents in encounters.
     
@@ -63,7 +66,7 @@ class DocumentViewSet(viewsets.ViewSet):
         # Check permissions
         if not self._has_access(request.user, encounter):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -112,7 +115,7 @@ class DocumentViewSet(viewsets.ViewSet):
         # Check permissions
         if not self._has_write_access(request.user, encounter):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -221,7 +224,7 @@ class DocumentViewSet(viewsets.ViewSet):
         
         if not any(self._has_write_access(request.user, enc) for enc in encounters):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -234,7 +237,7 @@ class DocumentViewSet(viewsets.ViewSet):
                     bucket_name=document.storage_bucket,
                     object_key=document.object_key
                 )
-            except Exception as e:
+            except Exception:
                 pass
             # Get affected encounter ids before delete
             affected_encounters = list(
@@ -266,7 +269,7 @@ class DocumentViewSet(viewsets.ViewSet):
         
         if not any(self._has_access(request.user, enc) for enc in encounters):
             return Response(
-                {'error': 'Permission denied'},
+                {'error': ERROR_PERMISSION_DENIED},
                 status=status.HTTP_403_FORBIDDEN
             )
         
@@ -283,16 +286,15 @@ class DocumentViewSet(viewsets.ViewSet):
     
     def _has_access(self, user, encounter):
         """Check if user has read access to encounter."""
-        role = getattr(user, 'role', None)
-        if not role:
+        user_roles = set(
+            user.user_roles.values_list('role__name', flat=True)
+        )
+        if not user_roles:
             return False
         
-        # Admin, ClinicalOps, Practitioner have full access
-        if role in ['admin', 'clinical_ops', 'practitioner']:
-            return True
-        
-        # Accounting, Reception, Marketing have NO access
-        return False
+        # Aligns with EncounterPermission: Admin and Practitioner have full access
+        allowed = {RoleChoices.ADMIN, RoleChoices.PRACTITIONER}
+        return bool(user_roles & allowed)
     
     def _has_write_access(self, user, encounter):
         """Check if user has write access to encounter."""

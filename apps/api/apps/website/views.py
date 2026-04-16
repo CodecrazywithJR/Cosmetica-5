@@ -8,7 +8,7 @@ CRITICAL RULES:
 - Rate limiting on leads endpoint: 10/hour + 2/min burst protection
 """
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, throttle_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from django.utils import timezone
@@ -164,6 +164,7 @@ class PublicStaffViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 @api_view(['POST'])
+@permission_classes([])
 @throttle_classes([LeadBurstThrottle, LeadHourlyThrottle])
 def create_lead(request):
     """

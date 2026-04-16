@@ -82,13 +82,13 @@ def generate_presigned_get_url(bucket_name: str, object_key: str, expires: timed
         return url
     except S3Error as e:
         logger.error(f"[Storage] Failed to generate presigned GET URL: {e}")
-        raise Exception(f"Failed to generate presigned GET URL: {e}")
+        raise RuntimeError(f"Failed to generate presigned GET URL: {e}") from e
 
 
 def generate_presigned_put_url(
     bucket_name: str, 
     object_key: str, 
-    content_type: str,
+    content_type: str = '',  # noqa: S1172 - kept for API compatibility
     expires: timedelta = timedelta(minutes=15)
 ) -> str:
     """
@@ -121,7 +121,7 @@ def generate_presigned_put_url(
         return url
     except S3Error as e:
         logger.error(f"[Storage] Failed to generate presigned PUT URL: {e}")
-        raise Exception(f"Failed to generate presigned PUT URL: {e}")
+        raise RuntimeError(f"Failed to generate presigned PUT URL: {e}") from e
 
 
 def generate_object_key(prefix: str, filename: str) -> str:
@@ -162,7 +162,7 @@ def delete_object(bucket_name: str, object_key: str) -> None:
         logger.info(f"[Storage] Deleted object: {bucket_name}/{object_key}")
     except S3Error as e:
         logger.error(f"[Storage] Failed to delete object: {e}")
-        raise Exception(f"Failed to delete object from MinIO: {e}")
+        raise RuntimeError(f"Failed to delete object from MinIO: {e}") from e
 
 
 def get_clinical_photo_url(photo) -> str:

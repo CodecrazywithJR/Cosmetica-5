@@ -5,6 +5,8 @@ import uuid
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.core.tenant_model import TenantModel
+
 
 def photo_upload_path(instance, filename):
     """Generate upload path for photos."""
@@ -13,7 +15,7 @@ def photo_upload_path(instance, filename):
     return f"photos/{instance.patient.id}/{filename}"
 
 
-class SkinPhoto(models.Model):
+class SkinPhoto(TenantModel):
     """
     Skin photo model - stores dermatology photos with metadata.
     """

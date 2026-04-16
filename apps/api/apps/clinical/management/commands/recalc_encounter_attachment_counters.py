@@ -16,7 +16,7 @@ class Command(BaseCommand):
             # Contar fotos reales (ClinicalPhoto no eliminadas)
             photo_count = EncounterPhoto.objects.filter(
                 encounter=encounter,
-                clinical_photo__is_deleted=False
+                photo__is_deleted=False
             ).count()
             # Contar documentos reales (Document no eliminados)
             document_count = EncounterDocument.objects.filter(
